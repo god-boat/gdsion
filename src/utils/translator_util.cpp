@@ -72,6 +72,11 @@ int TranslatorUtil::_sanitize_param_loop(int p_value, int p_min, int p_max, cons
 		return p_value;
 	}
 
+	// Allow -2 and -1 for cases where the minimum allowed value is -2 (e.g., custom/user wave shapes).
+	if (p_min <= -2 && (p_value == -1 || p_value == -2)) {
+		return p_value;
+	}
+
 	// WARN: Max value must be a bitmask, e.g. 0xFF. In other words, it's power-of-2 minus 1 (1, 3, 7, 15, 31, 63, 127, 255, 511).
 	return p_value & p_max;
 }
@@ -115,7 +120,7 @@ void TranslatorUtil::_set_siopm_params_by_array(const Ref<SiOPMChannelParams> &p
 	for (int op_index = 0; op_index < p_params->operator_count; op_index++) {
 		Ref<SiOPMOperatorParams> op_params = p_params->operator_params[op_index];
 
-		op_params->set_pulse_generator_type    (_sanitize_param_loop(p_data[data_index++], 0, 511,  "WS"));       // 1
+		op_params->set_pulse_generator_type    (_sanitize_param_loop(p_data[data_index++], -2, 511,  "WS"));       // 1
 		op_params->attack_rate                = _sanitize_param_loop(p_data[data_index++], 0, 63,   "AR");        // 2
 		op_params->decay_rate                 = _sanitize_param_loop(p_data[data_index++], 0, 63,   "DR");        // 3
 		op_params->sustain_rate               = _sanitize_param_loop(p_data[data_index++], 0, 63,   "SR");        // 4

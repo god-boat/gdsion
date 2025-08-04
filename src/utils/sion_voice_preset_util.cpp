@@ -33,6 +33,9 @@ void SiONVoicePresetUtil::_generate_voices(uint32_t p_flags) {
 	if (p_flags & INCLUDE_SINGLE_DRUM) {
 		_generate_single_drum_voices();
 	}
+	if (p_flags & INCLUDE_EXTRA) {
+		_generate_extra_voices();
+	}
 }
 
 void SiONVoicePresetUtil::_generate_default_voices() {
@@ -822,6 +825,88 @@ void SiONVoicePresetUtil::_generate_single_drum_voices() {
 	_create_single_drum_voice("svmidi.drum84",  "Bell Tree",       18,63,38,16,16, 6,4,0,4.5);
 }
 
+void SiONVoicePresetUtil::_generate_extra_voices() {
+
+	_begin_category("KS");
+	_create_ks_voice("extra.ks", "Bright KS",
+					/*feedback*/3, /*delay*/40,
+					/*wave*/1, /*AR*/48, /*DR*/24,
+					/*SL*/4,  /*RR*/24, /*TL*/115);
+
+	_begin_category("FM (OPL)");
+	// AL, FB,
+	// (WS,AR,DR,RR,ET,SL,TL,KR,KL,ML,AM) × 2
+	_create_opl_voice("extra.opl", "Init OPL", {
+		0,0,
+		0,15, 7, 7, 0, 0,  0,0,0,1,0,   // operator-1
+		0,15, 7, 7, 0, 0,  0,0,0,1,0    // operator-2
+	});
+
+	_begin_category("FM (OPM)");
+	// AL, FB,
+	// (DT,ML,TL,KS,AR,DR,SR,RR,SL,AM,DT2) × 4
+	_create_opm_voice("extra.opm", "Init OPM", {
+		0,0,
+		0,0,  0,0,15,8,0,2,0,0,0,   // op-1
+		0,0,  0,0,15,8,0,2,0,0,0,   // op-2
+		0,0,  0,0,15,8,0,2,0,0,0,   // op-3
+		0,0,  0,0,15,8,0,2,0,0,0    // op-4
+	});                                // 2 + 11×4 = 46 ints
+
+	_begin_category("FM (OPX)");
+	// AL, FB,
+	// (WS,AR,DR,SR,RR,SL,TL,KR,ML,D1,D2,AM) × 4
+	_create_opx_voice("extra.opx", "Init OPX", {
+		0,0,
+		0,15,8,0,8,0,0,0,1,0,0,0,   // op-1
+		0,15,8,0,8,0,0,0,1,0,0,0,   // op-2
+		0,15,8,0,8,0,0,0,1,0,0,0,   // op-3
+		0,15,8,0,8,0,0,0,1,0,0,0    // op-4
+	});                                // 2 + 12×4 = 50 ints
+}
+
+void SiONVoicePresetUtil::_create_ks_voice(const String &p_key, const String &p_name, int p_feedback, int p_delay, int p_wave_shape, int p_attack_rate, int p_decay_rate, int p_sustain_level, int p_release_rate, int p_total_level) {
+	Ref<SiONVoice> voice = memnew(SiONVoice(SiONModuleType::MODULE_KS, p_wave_shape, p_attack_rate, p_release_rate));
+	
+	Ref<SiOPMChannelParams> ch_params = voice->get_channel_params();
+	ch_params->set_feedback(p_feedback);
+
+	Ref<SiOPMOperatorParams> op_params = ch_params->get_operator_params(0);
+	op_params->set_decay_rate(p_decay_rate);
+	op_params->set_sustain_level(p_sustain_level);
+	op_params->set_total_level(p_total_level);
+
+	voice->set_name(p_name);
+	_register_voice(p_key, voice);
+}
+
+void SiONVoicePresetUtil::_create_opl_voice(const String &p_key, const String &p_name, Vector<int> p_params) {
+	Ref<SiONVoice> voice = memnew(SiONVoice);
+	TypedArray<int> params = make_typed_array_from_vector<int>(p_params);
+	voice->set_params_opl(params);
+
+	voice->set_name(p_name);
+	_register_voice(p_key, voice);
+}
+
+void SiONVoicePresetUtil::_create_opm_voice(const String &p_key, const String &p_name, Vector<int> p_params) {
+	Ref<SiONVoice> voice = memnew(SiONVoice);
+	TypedArray<int> params = make_typed_array_from_vector<int>(p_params);
+	voice->set_params_opm(params);
+
+	voice->set_name(p_name);
+	_register_voice(p_key, voice);
+}
+
+void SiONVoicePresetUtil::_create_opx_voice(const String &p_key, const String &p_name, Vector<int> p_params) {
+	Ref<SiONVoice> voice = memnew(SiONVoice);
+	TypedArray<int> params = make_typed_array_from_vector<int>(p_params);
+	voice->set_params_opx(params);
+
+	voice->set_name(p_name);
+	_register_voice(p_key, voice);
+}
+
 void SiONVoicePresetUtil::_create_basic_voice(const String &p_key, const String &p_name, int p_channel_num) {
 	Ref<SiONVoice> voice = memnew(SiONVoice(SiONModuleType::MODULE_GENERIC_PG, p_channel_num));
 
@@ -957,6 +1042,7 @@ void SiONVoicePresetUtil::_bind_methods() {
 	BIND_ENUM_CONSTANT(INCLUDE_MIDIDRUM);
 	BIND_ENUM_CONSTANT(INCLUDE_WAVETABLE);
 	BIND_ENUM_CONSTANT(INCLUDE_SINGLE_DRUM);
+	BIND_ENUM_CONSTANT(INCLUDE_EXTRA);
 	BIND_ENUM_CONSTANT(INCLUDE_ALL);
 }
 
