@@ -8,12 +8,62 @@
 
 #include <godot_cpp/core/error_macros.hpp>
 #include <godot_cpp/classes/audio_stream.hpp>
+#include <godot_cpp/classes/audio_stream_wav.hpp>
 
 #include "sion_enums.h"
+#include <cmath>
 #include "templates/singly_linked_list.h"
+#include <godot_cpp/core/class_db.hpp>
 #include "utils/transformer_util.h"
+#include <utility> // std::move
 
 using namespace godot;
+
+// Target sample rate that GDSiON operates at.
+static constexpr int kTARGET_SR = 48000;
+
+// ---------------------------------------------------------------------------
+// Helper: simple linear resampler for mono/stereo interleaved PCM in [-1, 1]
+// ---------------------------------------------------------------------------
+// Simple linear resampler for mono/stereo interleaved PCM in the range [-1, 1].
+// The result is written into r_dst to avoid an extra copy when the caller moves
+// it back into the original Vector.
+static void _resample_linear(const Vector<double> &p_src, int p_channels, int p_src_rate, int p_dst_rate, Vector<double> &r_dst) {
+    // Sanity checks & trivial cases.
+    if (p_src_rate == p_dst_rate || p_src_rate <= 0 || p_dst_rate <= 0) {
+        r_dst = p_src;
+        return;
+    }
+
+    int src_frame_count = p_src.size() / p_channels;
+    // Guard against very short clips (<= 1 frame per channel).
+    if (src_frame_count < 2) {
+        r_dst = p_src;
+        return;
+    }
+
+    double ratio = static_cast<double>(p_dst_rate) / static_cast<double>(p_src_rate);
+    double inv_ratio = 1.0 / ratio;
+    int dst_frame_count = static_cast<int>(std::ceil(src_frame_count * ratio));
+
+    r_dst.resize_zeroed(dst_frame_count * p_channels);
+
+    for (int ch = 0; ch < p_channels; ch++) {
+        double src_pos = 0.0;
+        for (int i = 0; i < dst_frame_count; ++i, src_pos += inv_ratio) {
+            int idx = static_cast<int>(std::floor(src_pos));
+            double frac = src_pos - idx;
+            if (idx >= src_frame_count - 1) {
+                idx  = src_frame_count - 2;
+                frac = 1.0;
+            }
+            double s0 = p_src[(idx * p_channels) + ch];
+            double s1 = p_src[((idx + 1) * p_channels) + ch];
+            r_dst.write[(i * p_channels) + ch] = s0 + (s1 - s0) * frac;
+        }
+    }
+}
+
 
 void SiOPMWaveSamplerData::_prepare_wave_data(const Variant &p_data, int p_src_channel_count, int p_channel_count) {
 	int source_channels = CLAMP(p_src_channel_count, 1, 2);
@@ -35,6 +85,28 @@ void SiOPMWaveSamplerData::_prepare_wave_data(const Variant &p_data, int p_src_c
 			Ref<AudioStream> audio_stream = p_data;
 			if (audio_stream.is_valid()) {
 				Vector<double> raw_data = _extract_wave_data(audio_stream, &source_channels);
+
+                // --- Sample-rate handling -----------------------------------
+                int src_rate = kTARGET_SR;
+
+                // Query mix rate generically – any AudioStream that reports one via `get_mix_rate`.
+                if (audio_stream->has_method("get_mix_rate")) {
+                    Variant v_rate = audio_stream->call("get_mix_rate");
+                    if (v_rate.get_type() == Variant::INT) {
+                        src_rate = (int)v_rate;
+                    } else if (v_rate.get_type() == Variant::FLOAT) {
+                        src_rate = (int)((double)v_rate);
+                    }
+                }
+
+                _sample_rate = src_rate;
+
+                if (src_rate > 0 && src_rate != kTARGET_SR) {
+                    Vector<double> resampled;
+                    _resample_linear(raw_data, source_channels, src_rate, kTARGET_SR, resampled);
+                    raw_data = std::move(resampled);
+                    _sample_rate = kTARGET_SR;
+                }
 				if (p_channel_count == 0) { // Update if necessary.
 					target_channels = source_channels;
 				}
@@ -57,6 +129,9 @@ void SiOPMWaveSamplerData::_prepare_wave_data(const Variant &p_data, int p_src_c
 
 	_channel_count = target_channels;
 	_end_point = get_length();
+
+	// Store unmodified copy for future fade reapplication.
+	_original_wave_data = _wave_data;
 }
 
 int SiOPMWaveSamplerData::get_length() const {

@@ -17,10 +17,19 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
 	GDCLASS(SiOPMWaveSamplerData, SiOPMWaveBase)
 
 	Vector<double> _wave_data;
+	// Preserve original sample data to allow non-destructive re-application of fades
+	Vector<double> _original_wave_data;
 	int _channel_count = 0;
 	int _pan = 0;
-	// This flag is only available for non-loop samples.
+    // Source sample rate of the decoded audio (Hz). Default sampler target is 48000 Hz.
+    int _sample_rate = 48000;
+    // This flag is only available for non-loop samples.
 	bool _ignore_note_off = false;
+
+	// Track the last applied fade so we can efficiently undo it.
+	int _prev_fade_start = -1;
+	int _prev_fade_end = -1;
+	int _prev_fade_len = 0;
 
 	void _prepare_wave_data(const Variant &p_data, int p_src_channel_count, int p_channel_count);
 
@@ -48,6 +57,8 @@ public:
 	Vector<double> get_wave_data() const { return _wave_data; }
 	int get_channel_count() const { return _channel_count; }
 	int get_pan() const { return _pan; }
+	int get_sample_rate() const { return _sample_rate; }
+	void set_pan(int p_pan);
 	int get_length() const;
 
 	bool is_ignoring_note_off() const { return _ignore_note_off; }
