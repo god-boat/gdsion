@@ -13,6 +13,8 @@
 #include "sion_data.h"
 #include "sion_driver.h"
 #include "sion_voice.h"
+#include "sion_stream.h"
+#include "sion_stream_playback.h"
 
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/channels/siopm_channel_fm.h"
@@ -174,6 +176,14 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 		ClassDB::register_class<SiONData>();
 		ClassDB::register_class<SiONDriver>();
 		ClassDB::register_class<SiONVoice>();
+
+		// AudioStream pull-model classes.
+		if (!ClassDB::class_exists("SiONStream")) {
+			ClassDB::register_class<godot::SiONStream>();
+		}
+		if (!ClassDB::class_exists("SiONStreamPlayback")) {
+			ClassDB::register_internal_class<godot::SiONStreamPlayback>();
+		}
 	}
 
 	// Initialization.

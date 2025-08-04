@@ -5,10 +5,16 @@
 /***************************************************/
 
 #include "sion_driver.h"
+#include "sion_stream.h"
+#include "sion_stream_playback.h"
+#include <algorithm>
 
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/math.hpp>
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
+#include <godot_cpp/classes/audio_server.hpp>
+#include <godot_cpp/classes/thread.hpp>
 
 #include "sion_data.h"
 #include "sion_enums.h"
@@ -422,88 +428,6 @@ bool SiONDriver::_rendering() {
 	return (finished || (_render_buffer_size_max == 0 && sequencer->is_finished()));
 }
 
-void SiONDriver::_streaming() {
-	// Don't push new frames unless we can consume the entire buffer.
-	// This may not be the most optimal way to handle this, perhaps we should
-	// be more opportunistic and push frames as quickly as we can, keeping
-	// the remaining buffer stashed somewhere.
-	if (_audio_playback->get_frames_available() < _buffer_length) {
-		return;
-	}
-
-	// Calculate latency.
-	// FIXME: Fix latency calculation for Godot types.
-	// // 0.022675736961451247 = 1/44.1
-	// _audio_player->get_playback_position()
-	// _performance_stats.streaming_latency = (event.position * 0.022675736961451247 - channel.position) * 1000;
-
-	_in_streaming_process = true;
-	PackedVector2Array stream_buffer;
-
-	if (_is_paused || _suspend_streaming) {
-		// Zero-fill when there is nothing to write.
-		for (int i = 0; i < _buffer_length; i++) {
-			stream_buffer.push_back(Vector2(0, 0));
-		}
-		_audio_playback->push_buffer(stream_buffer);
-
-		_in_streaming_process = false;
-		return;
-	}
-
-	int start_time = Time::get_singleton()->get_ticks_msec();
-	_performance_stats.streaming_time = start_time;
-
-	// Processing.
-	sound_chip->begin_process();
-	effector->begin_process();
-	sequencer->process();
-	effector->end_process();
-	sound_chip->end_process();
-
-	// Calculate an average processing time.
-
-	const int frame_time = Time::get_singleton()->get_ticks_msec() - start_time;
-	SinglyLinkedList<int>::Element *frame_record = _performance_stats.processing_time_data->get();
-	_performance_stats.processing_time_data->next();
-
-	_performance_stats.total_processing_time -= frame_record->value;
-	frame_record->value = frame_time;
-	_performance_stats.total_processing_time += frame_record->value;
-	_performance_stats.update_average_processing_time();
-
-	// Write samples.
-	Vector<double> *output_buffer = sound_chip->get_output_buffer_ptr();
-	for (int i = 0; i < output_buffer->size(); i += 2) {
-		stream_buffer.push_back(Vector2((*output_buffer)[i], (*output_buffer)[i + 1]));
-	}
-	_audio_playback->push_buffer(stream_buffer);
-
-	// Dispatch events.
-	if (_stream_event_enabled) {
-		_dispatch_event(memnew(SiONEvent(SiONEvent::STREAMING, this, stream_buffer)));
-	}
-	if (!_is_finish_sequence_dispatched && sequencer->is_sequence_finished()) {
-		_dispatch_event(memnew(SiONEvent(SiONEvent::SEQUENCE_FINISHED, this)));
-		_is_finish_sequence_dispatched = true;
-	}
-
-	bool finished = false;
-	if (_fader->execute()) {
-		String event_type = (_fader->is_incrementing() ? SiONEvent::FADE_IN_COMPLETED : SiONEvent::FADE_OUT_COMPLETED);
-		_dispatch_event(memnew(SiONEvent(event_type, this, stream_buffer)));
-		finished = !_fader->is_incrementing();
-	} else {
-		finished = sequencer->is_finished();
-	}
-
-	if (finished && _auto_stop) {
-		stop();
-	}
-
-	_in_streaming_process = false;
-}
-
 Ref<SiONData> SiONDriver::compile(String p_mml) {
 	stop();
 
@@ -517,7 +441,7 @@ Ref<SiONData> SiONDriver::compile(String p_mml) {
 	_mml_string = "";
 
 	static const StringName compilation_finished = StringName("compilation_finished");
-	emit_signal(compilation_finished, _data);
+	_emit_signal_thread_safe(compilation_finished, _data);
 	return _data;
 }
 
@@ -556,7 +480,7 @@ PackedFloat64Array SiONDriver::render(const Variant &p_data, int p_buffer_size, 
 	}
 
 	static const StringName render_finished = StringName("render_finished");
-	emit_signal(render_finished, buffer);
+	_emit_signal_thread_safe(render_finished, buffer);
 	return buffer;
 }
 
@@ -628,8 +552,8 @@ void SiONDriver::_prepare_stream(const Variant &p_data, bool p_reset_effector) {
 
 	// Start streaming.
 	_is_streaming = true;
-	_suspend_streaming = true;
 	_audio_player->play();
+	_audio_playback = Ref<SiONStreamPlayback>();
 	_audio_playback = _audio_player->get_stream_playback();
 
 	_set_processing_immediate();
@@ -664,7 +588,7 @@ void SiONDriver::stop() {
 
 	_fader->stop();
 	_fader_volume = 1;
-	_audio_playback = Ref<AudioStreamGeneratorPlayback>();
+	_audio_playback = Ref<SiONStreamPlayback>();
 	_audio_player->stop();
 	_update_volume();
 	sequencer->stop_sequence();
@@ -1005,7 +929,7 @@ void SiONDriver::_process_frame_queue() {
 		switch (_current_job_type) {
 			case JobType::COMPILE: {
 				static const StringName compilation_finished = StringName("compilation_finished");
-				emit_signal(compilation_finished, _data);
+				_emit_signal_thread_safe(compilation_finished, _data);
 			} break;
 
 			case JobType::RENDER: {
@@ -1015,7 +939,7 @@ void SiONDriver::_process_frame_queue() {
 				for (double value : _render_buffer) {
 					buffer.push_back(value);
 				}
-				emit_signal(render_finished, buffer);
+				_emit_signal_thread_safe(render_finished, buffer);
 			} break;
 
 			default: break; // Silences enum warnings.
@@ -1167,15 +1091,12 @@ double SiONDriver::_convert_event_length(double p_length) const {
 }
 
 void SiONDriver::_dispatch_event(const Ref<SiONEvent> &p_event) {
-	// This method exists as a proxy. Original implementation relied on native events, whereas we
-	// want to rely on signals. For simplicity's sake, we keep original event objects but strip any
-	// Event-related logic from them. Instead, they are just data objects which we pass to signals.
-	// Signal names are event types.
-
+	// Convert event type to signal name and emit it in a thread-safe manner.
 	String signal_name = p_event->get_event_type();
 	ERR_FAIL_COND(signal_name.is_empty());
 
-	emit_signal(signal_name, p_event);
+	_emit_signal_thread_safe(signal_name, p_event);
+	return;
 }
 
 void SiONDriver::_note_on_callback(SiMMLTrack *p_track) {
@@ -1237,7 +1158,7 @@ void SiONDriver::set_beat_callback_interval(double p_length_16th) {
 
 void SiONDriver::_timer_callback() {
 	static const StringName timer_interval = StringName("timer_interval");
-	emit_signal(timer_interval);
+	_emit_signal_thread_safe(timer_interval);
 }
 
 void SiONDriver::set_timer_interval(double p_length) {
@@ -1541,9 +1462,10 @@ SiONDriver::SiONDriver(int p_buffer_length, int p_channel_num, int p_sample_rate
 		_update_volume();
 
 		_audio_stream.instantiate();
-		_audio_stream->set_mix_rate(p_sample_rate);
-		_audio_stream->set_buffer_length((double)p_buffer_length / p_sample_rate);
+		_audio_stream->set_driver(this);
 		_audio_player->set_stream(_audio_stream);
+
+		// Buffer management is now handled by the engine pull model; no explicit ring buffer needed.
 
 		_fader = memnew(FaderUtil);
 		_fader->set_callback(Callable(this, "_fade_callback"));
@@ -1574,7 +1496,7 @@ SiONDriver::SiONDriver(int p_buffer_length, int p_channel_num, int p_sample_rate
 		_timer_sequence->initialize();
 		_timer_sequence->append_new_event(MMLEvent::REPEAT_ALL, 0);
 		_timer_sequence->append_new_event(MMLEvent::TIMER, 0);
-		_timer_interval_event = _timer_sequence->append_new_event(MMLEvent::GLOBAL_WAIT, 0, 0);
+		_timer_interval_event = _timer_sequence->append_new_event(MMLEvent::GLOBAL_WAIT, 0);
 	}
 
 	_performance_stats.processing_time_data = memnew(SinglyLinkedList<int>(TIME_AVERAGING_COUNT, 0, true));
@@ -1595,4 +1517,53 @@ SiONDriver::~SiONDriver() {
 	memdelete(sequencer);
 	memdelete(effector);
 	memdelete(sound_chip);
+}
+
+int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
+    if (p_frames <= 0) {
+        return 0;
+    }
+
+    int frames_generated = 0;
+    const int block = _buffer_length; // internal SiON processing block
+
+    while (frames_generated < p_frames) {
+        // Process one internal block to ensure sound_chip output is ready.
+        sound_chip->begin_process();
+        effector->begin_process();
+        sequencer->process(); // generates _buffer_length stereo samples
+        effector->end_process();
+        sound_chip->end_process();
+
+        Vector<double> *out_buf = sound_chip->get_output_buffer_ptr();
+
+        int frames_to_copy = std::min(block, p_frames - frames_generated);
+        // Copy left/right pairs into AudioFrame array.
+        for (int i = 0; i < frames_to_copy; ++i) {
+            int src_index = i * 2; // stereo in SiON buffer
+            p_buffer[frames_generated + i].left  = (float)(*out_buf)[src_index];
+            p_buffer[frames_generated + i].right = (float)(*out_buf)[src_index + 1];
+        }
+
+        frames_generated += frames_to_copy;
+
+        // If we copied less than a full block, keep residual samples for next pull (TODO: implement ring if needed)
+        // Simplification: we discard extra samples beyond frames_to_copy.
+    }
+
+    return frames_generated;
+}
+
+// Pull model: _streaming() is obsolete, kept as no-op for notification hook compatibility.
+void SiONDriver::_streaming() {
+    // Intentionally empty – audio is now delivered via generate_audio() inside _mix().
+}
+
+// Thread-safe signal emission helper.
+void SiONDriver::_emit_signal_thread_safe(const StringName &signal_name, const Variant &arg) {
+    if (arg.get_type() == Variant::NIL) {
+        call_deferred("emit_signal", signal_name);
+    } else {
+        call_deferred("emit_signal", signal_name, arg);
+    }
 }

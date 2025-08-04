@@ -16,6 +16,7 @@
 #include <godot_cpp/templates/list.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
+#include <godot_cpp/classes/audio_frame.hpp>
 
 #include "sion_voice.h"
 #include "chip/wave/siopm_wave_sampler_data.h"
@@ -24,6 +25,11 @@
 #include "sequencer/base/mml_data.h"
 #include "sequencer/base/mml_system_command.h"
 #include "templates/singly_linked_list.h"
+#include "sion_data.h"
+#include "sion_stream.h"
+#include "sion_stream_playback.h"
+// Forward declarations in correct namespace to avoid ambiguity.
+namespace godot { class SiONStream; class SiONStreamPlayback; }
 
 using namespace godot;
 
@@ -87,8 +93,8 @@ private:
 	// Main playback.
 
 	AudioStreamPlayer *_audio_player = nullptr;
-	Ref<AudioStreamGenerator> _audio_stream;
-	Ref<AudioStreamGeneratorPlayback> _audio_playback;
+	Ref<SiONStream> _audio_stream;
+	Ref<SiONStreamPlayback> _audio_playback;
 
 	FaderUtil *_fader = nullptr;
 
@@ -152,7 +158,7 @@ private:
 	void _prepare_render(const Variant &p_data, int p_buffer_size, int p_buffer_channel_num, bool p_reset_effector);
 	void _prepare_stream(const Variant &p_data, bool p_reset_effector);
 	bool _rendering();
-	void _streaming();
+	void _streaming(); // no-op in pull model
 
 	// Playback.
 
@@ -271,6 +277,8 @@ private:
 
 	void _update_node_processing();
 
+	void _emit_signal_thread_safe(const StringName &p_signal, const Variant &p_arg = Variant());
+
 protected:
 	static void _bind_methods();
 
@@ -317,8 +325,8 @@ public:
 	// Main sound.
 
 	AudioStreamPlayer *get_audio_player() const { return _audio_player; }
-	Ref<AudioStreamGenerator> get_audio_stream() const { return _audio_stream; }
-	Ref<AudioStreamGeneratorPlayback> get_audio_playback() const { return _audio_playback; }
+	Ref<SiONStream> get_audio_stream() const { return _audio_stream; }
+	Ref<SiONStreamPlayback> get_audio_playback() const { return _audio_playback; }
 	FaderUtil *get_fader() const { return _fader; }
 
 	// Background sound.
@@ -437,6 +445,10 @@ public:
 
 	SiONDriver(int p_buffer_length = 2048, int p_channel_num = 2, int p_sample_rate = 44100, int p_bitrate = 0);
 	~SiONDriver();
+
+	/* Pull-model helper – fills a buffer of AudioFrame with freshly generated audio.
+	   Returns the number of frames written (always p_frames on success). */
+	int32_t generate_audio(godot::AudioFrame *p_buffer, int32_t p_frames);
 };
 
 #endif // SION_DRIVER_H
