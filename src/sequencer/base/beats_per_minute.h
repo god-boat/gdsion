@@ -41,7 +41,7 @@ public:
 
 	bool update(double p_bpm, int p_sample_rate);
 
-	BeatsPerMinute(double p_bpm = 120, int p_sample_rate = 44100, int p_resolution = 1920);
+	BeatsPerMinute(double p_bpm = 120, int p_sample_rate = 48000, int p_resolution = 1920);
 	~BeatsPerMinute() {}
 };
 

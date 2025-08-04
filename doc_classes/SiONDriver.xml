@@ -37,10 +37,16 @@
 			<param index="2" name="sample_rate" type="int" default="44100" />
 			<param index="3" name="bitrate" type="int" default="0" />
 			<description>
-				Creates a new instance of [SiONDriver]. Prefer using this method instead of the class constructor.
-				Use [param buffer_size] to control the size of the generated buffer. Bigger size is more demanding on your hardware. Supported values are [code]2048[/code], [code]4096[/code], [code]8192[/code].
+				Creates a new instance of a GDSiON synth driver. Only one driver can exist at the same time in the scene tree, unless [method set_allow_multiple_drivers] has been called with [code]true[/code]. Use this as a static factory method.
+
+				Use [param buffer_size] to control the size of the generated buffer. Bigger size is more demanding on your hardware. Buffer size must be a power of 2 between 32 and 8192. Supported values include [code]32[/code], [code]64[/code], [code]128[/code], [code]256[/code], [code]512[/code], [code]1024[/code], [code]2048[/code], [code]4096[/code], [code]8192[/code].
+
+				Default value of 2048 is a good balance between performance and memory usage.
+
 				Use [param channel_num] to configure the number of output channels. Can only be [code]1[/code] for mono and [code]2[/code] for stereo.
-				Use [param sample_rate] to control the sampling rate. Only [code]44100[/code] is supported at this time.
+
+				Use [param sample_rate] to control the sampling rate. Supported values are [code]44100[/code] and [code]48000[/code] Hz.
+
 				Use [param bitrate] to enable quantization.
 			</description>
 		</method>
@@ -71,7 +77,7 @@
 		<method name="get_buffer_length" qualifiers="const">
 			<return type="int" />
 			<description>
-				Returns the target size of the generated buffer. See also [method create].
+				Returns the current buffer size. Buffer sizes must be powers of 2 between 32 and 8192. See also [method create].
 			</description>
 		</method>
 		<method name="get_channel_num" qualifiers="const">
@@ -131,7 +137,7 @@
 		<method name="get_sample_rate" qualifiers="const">
 			<return type="float" />
 			<description>
-				Returns the sampling rate. See also [method create].
+				Returns the sampling rate (44100 or 48000 Hz). See also [method create].
 			</description>
 		</method>
 		<method name="get_sequencer" qualifiers="const">
@@ -265,6 +271,8 @@
 			<description>
 				Adds a render task to the execution queue instead of rendering immediately. See also [method render] and [method start_queue].
 				Rendered buffer can be retrieved via the [signal render_finished] signal.
+
+				The [param buffer_size] determines the size of the rendered audio buffer. For optimal performance, use a power of 2 value (32, 64, 128, 256, 512, 1024, 2048, 4096, or 8192).
 			</description>
 		</method>
 		<method name="render">
@@ -275,6 +283,8 @@
 			<param index="3" name="reset_effector" type="bool" default="true" />
 			<description>
 				Renders the given data into an audio buffer. The buffer can be converted into a stereo [PackedVector2Array] buffer and passed to [AudioStreamGeneratorPlayback] or saved as a wave file.
+				
+				The [param buffer_size] determines the size of the rendered audio buffer. For optimal performance, use a power of 2 value (32, 64, 128, 256, 512, 1024, 2048, 4096, or 8192).
 			</description>
 		</method>
 		<method name="reset">

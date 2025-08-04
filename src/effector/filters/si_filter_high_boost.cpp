@@ -11,7 +11,7 @@ void SiFilterHighBoost::set_params(double p_frequency, double p_slope, double p_
 	double slope = MAX(p_slope, 1);
 
 	double A   = Math::pow(10, p_gain * 0.025);
-	double omg = p_frequency * 0.00014247585730565955; // 2*pi/44100
+	double omg = p_frequency * 0.0001308996938995747; // 2*pi/48000
 	double cos = Math::cos(omg);
 	double sin = Math::sin(omg);
 

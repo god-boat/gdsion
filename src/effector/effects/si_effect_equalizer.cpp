@@ -11,8 +11,8 @@ void SiEffectEqualizer::set_params(double p_low_gain, double p_mid_gain, double 
 	_mid_gain = p_mid_gain;
 	_high_gain = p_high_gain;
 
-	_low_frequency = 2.0 * Math::sin(p_low_frequency * 0.00007123792865282977); // 3.141592653589793 / 44100
-	_high_frequency = 2.0 * Math::sin(p_high_frequency * 0.00007123792865282977);
+	_low_frequency = 2.0 * Math::sin(p_low_frequency * 0.00006544984694978735); // PI / 48000
+	_high_frequency = 2.0 * Math::sin(p_high_frequency * 0.00006544984694978735);
 }
 
 int SiEffectEqualizer::prepare_process() {

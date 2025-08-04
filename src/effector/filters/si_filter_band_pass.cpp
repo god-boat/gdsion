@@ -9,7 +9,7 @@
 void SiFilterBandPass::set_params(double p_frequency, double p_band) {
 	// TODO: Pick better names for these variables.
 
-	double omg = p_frequency * 0.00014247585730565955; // 2*pi/44100
+	double omg = p_frequency * 0.0001308996938995747; // 2*pi/48000
 	double cos = Math::cos(omg);
 	double sin = Math::sin(omg);
 

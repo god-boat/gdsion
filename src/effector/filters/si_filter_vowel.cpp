@@ -27,7 +27,7 @@ void SiFilterVowel::Formant::initialize() {
 		for (int j = 0; j < FREQ_TABLE_MAX; j++) {
 			// TODO: Pick better names for these variables, maybe?
 
-			double omg  = frequency * 0.00014247585730565955; // 2*pi/44100
+			double omg  = frequency * 0.0001308996938995747; // 2*pi/48000
 			double sin  = Math::sin(omg);
 			double ang = 0.34657359027997264 * band * omg / sin; // log(2)*0.5
 
@@ -41,7 +41,7 @@ void SiFilterVowel::Formant::initialize() {
 	{
 		double frequency = 50.0;
 		for (int j = 0; j < FREQ_TABLE_MAX; j++) {
-			_cos_table[j] = Math::cos(frequency * 0.00014247585730565955);
+			_cos_table[j] = Math::cos(frequency * 0.0001308996938995747);
 
 			frequency *= 1.0218971486541166; // 2^(1/32)
 		}

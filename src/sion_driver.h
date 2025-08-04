@@ -121,12 +121,12 @@ private:
 
 	// Sound and output properties.
 
-	// Module and streaming buffer size (8192, 4096 or 2048).
-	int _buffer_length = 2048;
+	// Module and streaming buffer size (must be a power of 2 between 32 and 8192, e.g., 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192).
+	int _buffer_length = 512;
 	// Output channels (1 or 2).
 	int _channel_num = 2;
-	// Output frequency ratio (44100 or 22050).
-	double _sample_rate = 44100;
+	// Output sample rate (48000 or 44100).
+	double _sample_rate = 48000;
 	// Output bitrate. Value of 0 means that the wave is represented by a float in [-1,+1].
 	int _bitrate = 0;
 
@@ -290,8 +290,14 @@ public:
 
 	// The singleton instance.
 	static SiONDriver *get_mutex() { return _mutex; }
-	// NOTE: Godot doesn't support exposing constructors to the API, so we make do with a static factory method. Hopefully this can be fixed at some point.
-	static SiONDriver *create(int p_buffer_length = 2048, int p_channel_num = 2, int p_sample_rate = 44100, int p_bitrate = 0);
+	// These are the factory methods that provide creation of SiONDriver instances. You can either create the driver with the constructor
+	// (new SiONDriver()) or use static factory method (SiONDriver.create()) in your client code. Subsequent call of these methods in the
+	// same client code causes errors by the default.
+	// @param   buffer_length : (default=2048) Size of streaming buffer. Must be a power of 2 between 32 and 8192.
+	// @param   channel_num   : (default=2) Output channel. 1 is monaural and 2 is stereo.
+	// @param   sample_rate   : (default=48000) Output sample rate. Can be 48000Hz or 44100Hz.
+	// @param   bitrate       : (default=0) Output bitrate.
+	static SiONDriver *create(int p_buffer_length = 2048, int p_channel_num = 2, int p_sample_rate = 48000, int p_bitrate = 0);
 
 	// Original code marks this as experimental and notes that each driver has a large memory footprint.
 	// Some static classes can also be stateful, leading to conflicts if multiple drivers exist at the same time.
@@ -443,7 +449,7 @@ public:
 
 	//
 
-	SiONDriver(int p_buffer_length = 2048, int p_channel_num = 2, int p_sample_rate = 44100, int p_bitrate = 0);
+	SiONDriver(int p_buffer_length = 2048, int p_channel_num = 2, int p_sample_rate = 48000, int p_bitrate = 0);
 	~SiONDriver();
 
 	/* Pull-model helper – fills a buffer of AudioFrame with freshly generated audio.

@@ -7,7 +7,7 @@
 #include "si_effect_autopan.h"
 
 void SiEffectAutopan::set_params(double p_frequency, double p_stereo_width) {
-	_lfo_step = (int)(172.265625 / (p_frequency * 0.5)); // 44100/256
+	_lfo_step = (int)(187.5 / (p_frequency * 0.5)); // 48000/256
 	if (_lfo_step <= 4) {
 		_lfo_step = 4;
 	}

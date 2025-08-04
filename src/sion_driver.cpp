@@ -168,7 +168,7 @@ void SiONDriver::_start_background_sample() {
 	if (_background_sample_data.is_valid()) {
 		_background_voice->set_wave_data(_background_sample_data);
 		if (_background_loop_point != -1) {
-			_background_sample_data->slice(-1, -1, _background_loop_point * 44100);
+			_background_sample_data->slice(-1, -1, _background_loop_point * _sample_rate);
 		}
 
 		_background_track = sequencer->create_controllable_track(SiMMLTrack::DRIVER_BACKGROUND, false);
@@ -1222,7 +1222,7 @@ void SiONDriver::_bind_methods() {
 
 	// Factory.
 
-	ClassDB::bind_static_method("SiONDriver", D_METHOD("create", "buffer_size", "channel_num", "sample_rate", "bitrate"), &SiONDriver::create, DEFVAL(2048), DEFVAL(2), DEFVAL(44100), DEFVAL(0));
+	ClassDB::bind_static_method("SiONDriver", D_METHOD("create", "buffer_size", "channel_num", "sample_rate", "bitrate"), &SiONDriver::create, DEFVAL(512), DEFVAL(2), DEFVAL(48000), DEFVAL(0));
 
 	// Internal components.
 
@@ -1443,9 +1443,11 @@ SiONDriver::SiONDriver(int p_buffer_length, int p_channel_num, int p_sample_rate
 	ERR_FAIL_COND_MSG(!_allow_multiple_drivers && _mutex, "SiONDriver: Only one driver instance is allowed.");
 	_mutex = this;
 
-	ERR_FAIL_COND_MSG((p_buffer_length != 2048 && p_buffer_length != 4096 && p_buffer_length != 8192), "SiONDriver: Buffer length can only be 2048, 4096, or 8192.");
+	// Check if buffer length is a power of 2 and between 32 and 8192
+	bool is_valid_buffer_length = p_buffer_length >= 2 && p_buffer_length <= 8192 && (p_buffer_length & (p_buffer_length - 1)) == 0;
+	ERR_FAIL_COND_MSG(!is_valid_buffer_length, "SiONDriver: Buffer length must be a power of 2 between 32 and 8192 (e.g., 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192).");
 	ERR_FAIL_COND_MSG((p_channel_num != 1 && p_channel_num != 2), "SiONDriver: Channel number can only be 1 (mono) or 2 (stereo).");
-	ERR_FAIL_COND_MSG((p_sample_rate != 44100), "SiONDriver: Sampling rate can only be 44100.");
+	ERR_FAIL_COND_MSG((p_sample_rate != 44100 && p_sample_rate != 48000), "SiONDriver: Sampling rate can only be 44100 or 48000.");
 
 	sound_chip = memnew(SiOPMSoundChip);
 	effector = memnew(SiEffector(sound_chip));

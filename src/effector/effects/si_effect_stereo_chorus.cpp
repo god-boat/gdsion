@@ -11,7 +11,7 @@ void SiEffectStereoChorus::set_params(double p_delay_time, double p_feedback, do
 	ERR_FAIL_COND_MSG(p_frequency == 0, "SiEffectStereoChorus: Frequency cannot be zero.");
 	ERR_FAIL_COND_MSG(p_depth == 0, "SiEffectStereoChorus: Depth cannot be zero.");
 
-	int offset = (int)(p_delay_time * 44.1);
+	int offset = (int)(p_delay_time * 48.0);
 	if (offset > DELAY_BUFFER_FILTER) {
 		offset = DELAY_BUFFER_FILTER;
 	}
@@ -27,8 +27,8 @@ void SiEffectStereoChorus::set_params(double p_delay_time, double p_feedback, do
 	}
 
 	int table_size = (int)(_depth * 6.283185307179586);
-	if ((table_size * p_frequency) > 11025) {
-		table_size = 11025 / p_frequency;
+	if ((table_size * p_frequency) > 12000) {
+		table_size = 12000 / p_frequency;
 	}
 	_phase_table.resize_zeroed(table_size);
 
@@ -43,7 +43,7 @@ void SiEffectStereoChorus::set_params(double p_delay_time, double p_feedback, do
 		depth_value += depth_step;
 	}
 
-	_lfo_step = (int)(44100 / (table_size * p_frequency));
+	_lfo_step = (int)(48000 / (table_size * p_frequency));
 	if (_lfo_step < 4) {
 		_lfo_step = 4;
 	}

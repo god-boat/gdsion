@@ -360,7 +360,7 @@ void MMLSequencer::_extract_global_sequence() {
 	}
 
 	if (initial_bpm > 0) {
-		Ref<BeatsPerMinute> bpm_obj = memnew(BeatsPerMinute(initial_bpm, 44100, _parser_settings->resolution));
+		Ref<BeatsPerMinute> bpm_obj = memnew(BeatsPerMinute(initial_bpm, 48000, _parser_settings->resolution));
 		mml_data->set_bpm_settings(bpm_obj);
 	}
 }
@@ -411,7 +411,7 @@ double MMLSequencer::compile(int p_interval) {
 }
 
 void MMLSequencer::prepare_process(const Ref<MMLData> &p_data, int p_sample_rate, int p_buffer_length) {
-	ERR_FAIL_COND_MSG((p_sample_rate != 22050 && p_sample_rate != 44100), "MMLSequencer: Sampling rate can only be 22050 or 44100.");
+	ERR_FAIL_COND_MSG((p_sample_rate != 22050 && p_sample_rate != 44100 && p_sample_rate != 48000), "MMLSequencer: Sampling rate can only be 22050, 44100 or 48000.");
 
 	mml_data = p_data;
 	_sample_rate = p_sample_rate;
@@ -600,7 +600,7 @@ MMLSequencer::MMLSequencer() {
 	_set_mml_event_listener(MMLEvent::INTERNAL_CALL, Callable(this, "_default_on_internal_call"), false);
 	_set_mml_event_listener(MMLEvent::TABLE_EVENT,   Callable(this, "_no_process"),               true);
 
-	Ref<BeatsPerMinute> base_bpm = memnew(BeatsPerMinute(120, 44100));
+	Ref<BeatsPerMinute> base_bpm = memnew(BeatsPerMinute(120, 48000));
 	_adjustible_bpm = base_bpm;
 	_bpm = base_bpm;
 

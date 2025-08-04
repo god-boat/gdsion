@@ -93,7 +93,7 @@ class MMLSequencer : public Object {
 
 protected:
 	MMLParserSettings *_parser_settings = nullptr;
-	int _sample_rate = 44100;
+	int _sample_rate = 48000;
 
 	MMLExecutor *_global_executor = nullptr;
 	MMLExecutor *_current_executor = nullptr;

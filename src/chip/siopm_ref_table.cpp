@@ -164,12 +164,14 @@ void SiOPMRefTable::clear_sampler_table_stencil(int p_index) {
 //
 
 void SiOPMRefTable::_set_constants(int p_fm_clock, double p_psg_clock, int p_sampling_rate) {
-	ERR_FAIL_COND_MSG((p_sampling_rate != 44100 && p_sampling_rate != 22050), vformat("SiOPMRefTable: Invalid sampling rate '%d', only 44100 and 22050 are allowed.", p_sampling_rate));
+	// Allow 48000 Hz in addition to 44100 and 22050
+	ERR_FAIL_COND_MSG((p_sampling_rate != 44100 && p_sampling_rate != 22050 && p_sampling_rate != 48000),
+						vformat("SiOPMRefTable: Invalid sampling rate '%d', only 44100, 48000, and 22050 are allowed.", p_sampling_rate));
 
 	fm_clock = p_fm_clock;
 	psg_clock = p_psg_clock;
 	sampling_rate  = p_sampling_rate;
-	sample_rate_pitch_shift = (sampling_rate == 44100 ? 0 : 1);
+	sample_rate_pitch_shift = (sampling_rate == 48000 ? 0 : 1);
 	clock_ratio = ((fm_clock / 64) << CLOCK_RATIO_BITS) / sampling_rate;
 }
 
