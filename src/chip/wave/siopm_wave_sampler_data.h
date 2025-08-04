@@ -36,8 +36,13 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
 	int _seek_end_gap();
 	void _slice();
 
+	// Apply short linear fades at the slice boundaries to avoid clicks when the
+	// sampler starts or ends playback away from a zero-crossing. This is a very
+	// small operation (<<1 ms) and is done once per slice change.
+	void _apply_fade();
+
 protected:
-	static void _bind_methods() {};
+	static void _bind_methods();
 
 public:
 	Vector<double> get_wave_data() const { return _wave_data; }
@@ -55,7 +60,10 @@ public:
 	int get_loop_point() const { return _loop_point; }
 	int get_initial_sample_index(double p_phase = 0) const;
 
-	void slice(int p_start_point = -1, int p_end_point = -1, int p_loop_point = -1);
+	void set_start_point(int p_start);
+	void set_end_point(int p_end);
+	void set_loop_point(int p_loop);
+	void slice(int p_start_point, int p_end_point, int p_loop_point);
 
 	//
 

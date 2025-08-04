@@ -65,6 +65,9 @@ public:
 	Ref<SiOPMWaveSamplerData> set_sampler_voice(const Variant &p_data, bool p_ignore_note_off = false, int p_channel_count = 2);
 	Ref<SiOPMWaveSamplerData> set_sampler_wave(int p_index, const Variant &p_data, bool p_ignore_note_off = false, int p_pan = 0, int p_src_channel_count = 2, int p_channel_count = 0);
 
+	// NEW: Access sampler data for a given MIDI note (0-127).
+	Ref<SiOPMWaveSamplerData> get_sampler_data(int p_note_number) const;
+
 	void set_sampler_table(const Ref<SiOPMWaveSamplerTable> &p_table);
 
 	void set_pms_guitar(int p_attack_rate = 48, int p_decay_rate = 48, int p_total_level = 0, int p_fixed_pitch = 69, int p_wave_shape = 20, int p_tension = 8);
@@ -75,11 +78,19 @@ public:
 	void set_amplitude_modulation(int p_depth = 0, int p_end_depth = 0, int p_delay = 0, int p_term = 0);
 	void set_pitch_modulation(int p_depth = 0, int p_end_depth = 0, int p_delay = 0, int p_term = 0);
 
+	// --- NEW: pitch_shift accessor ------------------------------------------------
+	int get_pitch_shift() const { return pitch_shift; }
+	void set_pitch_shift(int p_shift) { pitch_shift = p_shift; }
+	// -----------------------------------------------------------------------------
+
 	Ref<SiONVoice> clone();
 	virtual void reset() override;
 
 	SiONVoice(SiONModuleType p_module_type = (SiONModuleType)5, int p_channel_num = 0, int p_attack_rate = 63, int p_release_rate = 63, int p_pitch_shift = 0, int p_connection_type = -1, int p_wave_shape2 = 0, int p_pitch_shift2 = 0);
 	~SiONVoice() {}
+
+	// Access the internal wave_data (sampler table / data). Primarily for scripting utilities.
+	Variant get_wave_data() const { return wave_data; }
 };
 
 #endif // SION_VOICE_H

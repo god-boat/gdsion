@@ -50,3 +50,9 @@ SiOPMWaveSamplerTable::SiOPMWaveSamplerTable() :
 SiOPMWaveSamplerTable::~SiOPMWaveSamplerTable() {
 	_table.clear();
 }
+
+void SiOPMWaveSamplerTable::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_sample", "sample_data", "key_range_from", "key_range_to"), &SiOPMWaveSamplerTable::set_sample, DEFVAL(0), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("get_sample", "sample_number"), &SiOPMWaveSamplerTable::get_sample);
+	ClassDB::bind_method(D_METHOD("clear"), &SiOPMWaveSamplerTable::clear);
+}

@@ -402,6 +402,16 @@ void SiONVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_amplitude_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_amplitude_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_pitch_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_pitch_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
 
+	ClassDB::bind_method(D_METHOD("set_sampler_wave", "index", "data", "ignore_note_off", "pan", "src_channel_count", "channel_count"), &SiONVoice::set_sampler_wave, DEFVAL(false), DEFVAL(0), DEFVAL(2), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("set_sampler_voice", "data", "ignore_note_off", "channel_count"), &SiONVoice::set_sampler_voice, DEFVAL(false), DEFVAL(2));
+	ClassDB::bind_method(D_METHOD("set_sampler_table", "table"), &SiONVoice::set_sampler_table);
+	ClassDB::bind_method(D_METHOD("get_sampler_data", "note_number"), &SiONVoice::get_sampler_data);
+
+	ClassDB::bind_method(D_METHOD("set_pitch_shift", "shift"), &SiONVoice::set_pitch_shift);
+	ClassDB::bind_method(D_METHOD("get_pitch_shift"), &SiONVoice::get_pitch_shift);
+	ClassDB::bind_method(D_METHOD("get_wave_data"), &SiONVoice::get_wave_data);
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "pitch_shift"), "set_pitch_shift", "get_pitch_shift");
+
 	ClassDB::add_property("SiONVoice", PropertyInfo(Variant::STRING, "name"), "set_name", "get_name");
 }
 
@@ -422,4 +432,29 @@ SiONVoice::SiONVoice(SiONModuleType p_module_type, int p_channel_num, int p_atta
 		channel_params->get_operator_params(1)->set_pulse_generator_type(p_wave_shape2);
 		channel_params->get_operator_params(1)->set_detune2(p_pitch_shift2);
 	}
+}
+
+Ref<SiOPMWaveSamplerData> SiONVoice::get_sampler_data(int p_note_number) const {
+	if (module_type != SiONModuleType::MODULE_SAMPLE) {
+		return Ref<SiOPMWaveSamplerData>();
+	}
+
+	if (wave_data.is_null()) {
+		return Ref<SiOPMWaveSamplerData>();
+	}
+
+	// Case 1: wave_data is a direct sampler data object
+	Ref<SiOPMWaveSamplerData> sd = wave_data;
+	if (sd.is_valid()) {
+		return sd;
+	}
+
+	// Case 2: wave_data is a sampler table
+	Ref<SiOPMWaveSamplerTable> tbl = wave_data;
+	if (tbl.is_valid()) {
+		int idx = p_note_number & (SiOPMRefTable::NOTE_TABLE_SIZE - 1);
+		return tbl->get_sample(idx);
+	}
+
+	return Ref<SiOPMWaveSamplerData>();
 }

@@ -21,7 +21,7 @@ class SiOPMWaveSamplerTable : public SiOPMWaveBase {
 	Vector<Ref<SiOPMWaveSamplerData>> _table;
 
 protected:
-	static void _bind_methods() {}
+	static void _bind_methods();
 
 public:
 	Ref<SiOPMWaveSamplerTable> get_stencil() const { return _stencil; }

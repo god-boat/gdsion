@@ -30,6 +30,17 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 	// Pan of the current note.
 	int _sample_pan = 0;
 
+	// Pitching support.
+	int _fine_pitch = 0; // Fine pitch (0-63).
+	double _pitch_step = 1.0; // Playback rate step per output sample.
+	double _sample_index_fp = 0.0; // Fractional sample position.
+
+	// Simple ADSR envelope (currently only release stage used to avoid clicks).
+	bool _is_releasing = false;
+	int _release_samples_left = 0;
+	static const int RELEASE_SAMPLES = 512; // ~11ms at 44.1 kHz.
+	double _envelope_level = 1.0;
+
 protected:
 	static void _bind_methods() {}
 

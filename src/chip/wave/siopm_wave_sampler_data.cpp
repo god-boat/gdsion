@@ -179,6 +179,9 @@ void SiOPMWaveSamplerData::_slice() {
 	if (_end_point < _start_point) {
 		_end_point = get_length() - 1;
 	}
+
+	// Finally, apply a tiny fade-in/out at the new boundaries to reduce clicks.
+	_apply_fade();
 }
 
 void SiOPMWaveSamplerData::slice(int p_start_point, int p_end_point, int p_loop_point) {
@@ -197,4 +200,116 @@ SiOPMWaveSamplerData::SiOPMWaveSamplerData(const Variant &p_data, bool p_ignore_
 	_prepare_wave_data(p_data, p_src_channel_count, p_channel_count);
 	set_ignore_note_off(p_ignore_note_off);
 	_pan = p_pan;
+}
+
+// --- New setters ------------------------------------------------------------
+
+void SiOPMWaveSamplerData::set_pan(int p_pan) {
+	_pan = CLAMP(p_pan, -64, 63);
+}
+
+void SiOPMWaveSamplerData::set_start_point(int p_start) {
+	_start_point = p_start;
+	_slice();
+}
+
+void SiOPMWaveSamplerData::set_end_point(int p_end) {
+	_end_point = p_end;
+	_slice();
+}
+
+void SiOPMWaveSamplerData::set_loop_point(int p_loop) {
+	_loop_point = p_loop;
+	_slice();
+}
+
+// ---------------------------------------------------------------------------
+
+void SiOPMWaveSamplerData::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_pan", "pan"), &SiOPMWaveSamplerData::set_pan);
+	ClassDB::bind_method(D_METHOD("get_pan"), &SiOPMWaveSamplerData::get_pan);
+	ClassDB::bind_method(D_METHOD("set_start_point", "start"), &SiOPMWaveSamplerData::set_start_point);
+	ClassDB::bind_method(D_METHOD("get_start_point"), &SiOPMWaveSamplerData::get_start_point);
+	ClassDB::bind_method(D_METHOD("set_end_point", "end"), &SiOPMWaveSamplerData::set_end_point);
+	ClassDB::bind_method(D_METHOD("get_end_point"), &SiOPMWaveSamplerData::get_end_point);
+	ClassDB::bind_method(D_METHOD("set_loop_point", "loop"), &SiOPMWaveSamplerData::set_loop_point);
+	ClassDB::bind_method(D_METHOD("get_loop_point"), &SiOPMWaveSamplerData::get_loop_point);
+	ClassDB::bind_method(D_METHOD("slice", "start", "end", "loop"), &SiOPMWaveSamplerData::slice, DEFVAL(-1), DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("get_length"), &SiOPMWaveSamplerData::get_length);
+
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "pan"), "set_pan", "get_pan");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "start_point"), "set_start_point", "get_start_point");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "end_point"), "set_end_point", "get_end_point");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "loop_point"), "set_loop_point", "get_loop_point");
+}
+
+// ---------------------------------------------------------------------------
+
+// NOTE: This operation is intentionally simple – it linearly ramps the first and
+// last FADE_SAMPLES samples of the active region to and from 0. The fade length
+// is kept short (about 128 samples ≈ 3 ms @ 44.1 kHz) so that it is inaudible
+// but still prevents hard discontinuities.
+
+void SiOPMWaveSamplerData::_apply_fade() {
+	const int FADE_SAMPLES = 128; // Must be even smaller than typical slice.
+
+	if (_wave_data.is_empty() || _channel_count == 0) {
+		return;
+	}
+
+	int fade_len = MIN(FADE_SAMPLES, _end_point - _start_point);
+	if (fade_len <= 0) {
+		return;
+	}
+
+	// Helper lambda to compute index for given mono sample index and channel.
+	auto _get_sample_index = [this](int p_sample_idx, int p_channel) {
+		return p_sample_idx * _channel_count + p_channel;
+	};
+
+	// 1. Restore the samples that were faded previously so we can re-apply with new
+	//    boundaries. This touches at most FADE_SAMPLES * channel_count * 2 values
+	//    and avoids copying the whole buffer.
+	if (_prev_fade_len > 0) {
+		for (int i = 0; i < _prev_fade_len; i++) {
+			for (int ch = 0; ch < _channel_count; ch++) {
+				int idx_start = _get_sample_index(_prev_fade_start + i, ch);
+				int idx_end   = _get_sample_index(_prev_fade_end - _prev_fade_len + 1 + i, ch);
+
+				if (idx_start >= 0 && idx_start < _wave_data.size()) {
+					_wave_data.write[idx_start] = _original_wave_data[idx_start];
+				}
+				if (idx_end >= 0 && idx_end < _wave_data.size()) {
+					_wave_data.write[idx_end] = _original_wave_data[idx_end];
+				}
+			}
+		}
+	}
+
+	// Fade-in.
+	for (int i = 0; i < fade_len; i++) {
+		double factor = (double)i / (double)fade_len;
+		for (int ch = 0; ch < _channel_count; ch++) {
+			int idx = _get_sample_index(_start_point + i, ch);
+			if (idx >= 0 && idx < _wave_data.size()) {
+				_wave_data.write[idx] *= factor;
+			}
+		}
+	}
+
+	// Fade-out.
+	for (int i = 0; i < fade_len; i++) {
+		double factor = 1.0 - ((double)i / (double)fade_len);
+		for (int ch = 0; ch < _channel_count; ch++) {
+			int idx = _get_sample_index(_end_point - fade_len + i, ch);
+			if (idx >= 0 && idx < _wave_data.size()) {
+				_wave_data.write[idx] *= factor;
+			}
+		}
+	}
+
+	// Store current fade region for next invocation.
+	_prev_fade_start = _start_point;
+	_prev_fade_end   = _end_point;
+	_prev_fade_len   = fade_len;
 }
