@@ -476,6 +476,15 @@ String SiOPMChannelBase::_to_string() const {
 void SiOPMChannelBase::_bind_methods() {
 	// To be used as callables.
 	ClassDB::bind_method(D_METHOD("_no_process", "length"), &SiOPMChannelBase::_no_process);
+	ClassDB::bind_method(D_METHOD("set_sv_filter", "cutoff", "resonance", "attack_rate", "decay_rate1", "decay_rate2", "release_rate", "decay_cutoff1", "decay_cutoff2", "sustain_cutoff", "release_cutoff"), &SiOPMChannelBase::set_sv_filter, DEFVAL(128), DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(128), DEFVAL(128), DEFVAL(128), DEFVAL(128));
+	ClassDB::bind_method(D_METHOD("activate_filter", "active"), &SiOPMChannelBase::activate_filter);
+	ClassDB::bind_method(D_METHOD("offset_filter", "offset"), &SiOPMChannelBase::offset_filter);
+	ClassDB::bind_method(D_METHOD("set_filter_type", "type"), &SiOPMChannelBase::set_filter_type);
+	ClassDB::bind_method(D_METHOD("is_filter_active"), &SiOPMChannelBase::is_filter_active);
+	ClassDB::bind_method(D_METHOD("set_filter_cutoff_now", "cutoff"), &SiOPMChannelBase::set_filter_cutoff_now);
+	// Volume getters/setters
+	ClassDB::bind_method(D_METHOD("get_master_volume"), &SiOPMChannelBase::get_master_volume);
+	ClassDB::bind_method(D_METHOD("set_master_volume", "value"), &SiOPMChannelBase::set_master_volume);
 }
 
 SiOPMChannelBase::SiOPMChannelBase(SiOPMSoundChip *p_chip) {

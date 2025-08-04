@@ -1041,6 +1041,8 @@ void SiMMLTrack::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("get_track_id"), &SiMMLTrack::get_track_id);
 	ClassDB::bind_method(D_METHOD("get_track_type_id"), &SiMMLTrack::get_track_type_id);
+	ClassDB::bind_method(D_METHOD("get_channel"), &SiMMLTrack::get_channel);
+	ClassDB::bind_method(D_METHOD("get_program_number"), &SiMMLTrack::get_program_number);
 }
 
 SiMMLTrack::SiMMLTrack() {

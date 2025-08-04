@@ -229,6 +229,8 @@ public:
 
 	SiOPMChannelBase(SiOPMSoundChip *p_chip = nullptr);
 	~SiOPMChannelBase() {}
+
+	virtual void set_filter_cutoff_now(int p_cutoff) { _cutoff_frequency = CLAMP(p_cutoff, 0, 128); }
 };
 
 #endif // SIOPM_CHANNEL_BASE_H

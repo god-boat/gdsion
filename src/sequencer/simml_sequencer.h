@@ -9,6 +9,7 @@
 
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/callable.hpp>
+#include <godot_cpp/variant/typed_array.hpp>
 #include "sequencer/base/mml_sequencer.h"
 
 using namespace godot;
@@ -183,6 +184,9 @@ class SiMMLSequencer : public MMLSequencer {
 	void _register_event_listeners();
 	void _reset_initial_operator_params();
 	void _reset_parser_settings();
+
+	// NEW: expose tracks to GDScript.
+	TypedArray<SiMMLTrack> get_tracks_array() const;
 
 protected:
 	static void _bind_methods();

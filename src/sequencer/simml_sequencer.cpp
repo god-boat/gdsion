@@ -437,7 +437,10 @@ void SiMMLSequencer::prepare_process(const Ref<MMLData> &p_data, int p_sample_ra
 void SiMMLSequencer::process() {
 	// Prepare for buffering.
 	for (SiMMLTrack *track : _tracks) {
-		track->get_channel()->reset_channel_buffer_status();
+		SiOPMChannelBase *channel = track->get_channel();
+		if (channel) {
+			channel->reset_channel_buffer_status();
+		}
 	}
 
 	// Buffering.
@@ -1804,6 +1807,9 @@ void SiMMLSequencer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_on_mml_portament", "event"),                  &SiMMLSequencer::_on_mml_portament);
 	ClassDB::bind_method(D_METHOD("_on_mml_driver_note_on", "event"),             &SiMMLSequencer::_on_mml_driver_note_on);
 	ClassDB::bind_method(D_METHOD("_on_mml_register_update", "event"),            &SiMMLSequencer::_on_mml_register_update);
+
+	// To be used as callables.
+	ClassDB::bind_method(D_METHOD("get_tracks_array"), &SiMMLSequencer::get_tracks_array);
 }
 
 SiMMLSequencer::SiMMLSequencer(SiOPMSoundChip *p_chip) :
@@ -1834,4 +1840,14 @@ SiMMLSequencer::~SiMMLSequencer() {
 		memdelete(track);
 	}
 	_tracks.clear();
+}
+
+TypedArray<SiMMLTrack> SiMMLSequencer::get_tracks_array() const {
+	TypedArray<SiMMLTrack> arr;
+	for (SiMMLTrack *t : _tracks) {
+		if (t) {
+			arr.push_back(t);
+		}
+	}
+	return arr;
 }
