@@ -23,7 +23,11 @@ SinglyLinkedList<int> *SiOPMSoundChip::get_pipe(int p_pipe_num, int p_index) {
 	ERR_FAIL_INDEX_V(p_pipe_num, _pipe_buffers.size(), nullptr);
 
 	SinglyLinkedList<int> *pipe = _pipe_buffers[p_pipe_num];
-	ERR_FAIL_INDEX_V(p_index, pipe->size(), nullptr);
+	if (p_index < 0) {
+		p_index = 0;
+	} else if (p_index >= pipe->size()) {
+		p_index = pipe->size() - 1; // clamp to last valid element
+	}
 
 	pipe->front();
 	pipe->advance(p_index);

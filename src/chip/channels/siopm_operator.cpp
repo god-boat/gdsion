@@ -195,8 +195,22 @@ void SiOPMOperator::set_pitch_table_type(SiONPitchTableType p_type) {
 }
 
 int SiOPMOperator::get_wave_value(int p_index) const {
-	ERR_FAIL_INDEX_V(p_index, _wave_table.size(), -1);
-	return _wave_table[p_index];
+	// Some wave tables (e.g. noise waves) can be very small (2 samples) while the
+	// phase accumulator can easily exceed that length. Instead of triggering a
+	// fatal bounds error we wrap the index so it always stays inside the vector.
+	int table_len = _wave_table.size();
+	if (table_len == 0) {
+		return 0; // silent safeguard – should not happen in normal operation
+	}
+	// Fast wrap: if length is power-of-two use bitmask, otherwise modulo.
+	int idx;
+	if ((table_len & (table_len - 1)) == 0) {
+		idx = p_index & (table_len - 1);
+	} else {
+		idx = p_index % table_len;
+		if (idx < 0) idx += table_len; // ensure positive
+	}
+	return _wave_table[idx];
 }
 
 void SiOPMOperator::set_fixed_pitch_index(int p_value) {
@@ -424,7 +438,28 @@ void SiOPMOperator::tick_eg(int p_timer_initial) {
 }
 
 void SiOPMOperator::update_eg_output() {
-	_eg_output = (_eg_level_table[_eg_level] + _eg_total_level) << 3;
+	// Guard against the envelope level table being unexpectedly empty. This can
+	// happen if initialization failed or a malformed SSG envelope was selected.
+	int table_size = _eg_level_table.size();
+	if (unlikely(table_size == 0)) {
+		// A zero-length table makes no sense; output silence and keep the internal
+		// level within a safe range to avoid undefined behaviour.
+		_eg_level = 0;
+		_eg_output = _eg_total_level << 3;
+		return;
+	}
+	// Guard against envelope generator level going out of the table bounds which
+	// can happen under extreme modulation/voice-overflow situations. Using
+	// CLAMP keeps the original behaviour for valid ranges while preventing a
+	// fatal CRASH_BAD_INDEX when the synth is overloaded.
+	int safe_index = _eg_level;
+	if (unlikely(safe_index < 0)) {
+		safe_index = 0;
+	} else if (unlikely(safe_index >= table_size)) {
+		safe_index = table_size - 1;
+	}
+	_eg_level = safe_index; // keep internal state consistent
+	_eg_output = (_eg_level_table[safe_index] + _eg_total_level) << 3;
 }
 
 void SiOPMOperator::update_eg_output_from(SiOPMOperator *p_other) {

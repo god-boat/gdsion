@@ -278,7 +278,23 @@ void SiOPMChannelBase::_no_process(int p_length) {
 }
 
 void SiOPMChannelBase::reset_channel_buffer_status() {
+	// Reset the per-buffer state so the channel can start writing
+	// into the output pipes from the beginning of the next audio frame.
 	_buffer_index = 0;
+
+	// Reset read/write cursors for all pipes that the channel may use.
+	if (_in_pipe) {
+		_in_pipe->front();
+	}
+	if (_ring_pipe) {
+		_ring_pipe->front();
+	}
+	if (_base_pipe) {
+		_base_pipe->front();
+	}
+	if (_out_pipe) {
+		_out_pipe->front();
+	}
 }
 
 void SiOPMChannelBase::_apply_ring_modulation(SinglyLinkedList<int>::Element *p_buffer_start, int p_length) {

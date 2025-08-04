@@ -620,6 +620,11 @@ int SiMMLTrack::_buffer_envelope(int p_length, int p_step) {
 }
 
 void SiMMLTrack::_process_buffer(int p_length) {
+	// Guard: channel allocation can fail (e.g. voice limit). In that case skip processing to avoid null-dereference.
+	if (unlikely(_channel == nullptr)) {
+		return; // nothing to render for this track this frame
+	}
+
 	switch (_process_mode) {
 		case ProcessMode::NORMAL: {
 			_channel->buffer(p_length);
@@ -694,6 +699,14 @@ void SiMMLTrack::buffer(int p_length) {
 }
 
 void SiMMLTrack::_toggle_key() {
+	// The channel can be reclaimed by the voice manager when we run out of
+	// voices. In that case the track stays around but has nothing to render
+	// this frame, so we safely bail out instead of dereferencing a null
+	// pointer.
+	if (unlikely(_channel == nullptr)) {
+		return;
+	}
+
 	if (_channel->is_note_on()) {
 		_key_off();
 	} else {
@@ -702,6 +715,10 @@ void SiMMLTrack::_toggle_key() {
 }
 
 void SiMMLTrack::_key_on() {
+	if (unlikely(_channel == nullptr)) {
+		return;
+	}
+
 	if (_callback_before_note_on.is_valid()) {
 		_callback_before_note_on.call(this);
 	}
@@ -749,6 +766,10 @@ void SiMMLTrack::_key_on() {
 }
 
 void SiMMLTrack::_key_off() {
+	if (unlikely(_channel == nullptr)) {
+		return;
+	}
+
 	if (_callback_before_note_off.is_valid()) {
 		_callback_before_note_off.call(this);
 	}

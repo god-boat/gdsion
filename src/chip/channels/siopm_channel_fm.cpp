@@ -13,8 +13,12 @@
 #include "chip/wave/siopm_wave_pcm_data.h"
 #include "chip/wave/siopm_wave_pcm_table.h"
 #include "chip/wave/siopm_wave_table.h"
+#include <algorithm>
 
 List<SiOPMOperator *> SiOPMChannelFM::_operator_pool;
+
+// Forward declaration of helper (definition further below).
+static _FORCE_INLINE_ int _safe_log_lookup(class SiOPMRefTable *p_table, int p_index);
 
 void SiOPMChannelFM::finalize_pool() {
 	for (SiOPMOperator *op : _operator_pool) {
@@ -24,17 +28,30 @@ void SiOPMChannelFM::finalize_pool() {
 }
 
 SiOPMOperator *SiOPMChannelFM::_alloc_operator() {
-	if (_operator_pool.size() > 0) {
+	// Try to reuse an operator from the pool, but skip over any null pointers
+	// that might have slipped in due to previous erroneous releases. This
+	// prevents the caller from receiving a nullptr which would later crash when
+	// methods are invoked on it.
+	while (_operator_pool.size() > 0) {
 		SiOPMOperator *op = _operator_pool.back()->get();
 		_operator_pool.pop_back();
-
-		return op;
-	} else {
-		return memnew(SiOPMOperator(_sound_chip));
+		if (op != nullptr) {
+			return op;
+		}
+		// If the stored pointer was null just continue the loop to fetch the next
+		// available element.
 	}
+	// Pool exhausted – create a fresh operator instance.
+	return memnew(SiOPMOperator(_sound_chip));
 }
 
 void SiOPMChannelFM::_release_operator(SiOPMOperator *p_operator) {
+	// Safeguard against accidental null pushes that could later be popped and
+	// dereferenced, leading to crashes such as the null-`this` access seen in
+	// SiOPMOperator::note_on().
+	if (unlikely(p_operator == nullptr)) {
+		return; // Nothing to release.
+	}
 	_operator_pool.push_back(p_operator);
 }
 
@@ -802,7 +819,7 @@ void SiOPMChannelFM::_process_operator1_lfo_off(int p_length) {
 
 			int log_idx = ope0->get_wave_value(t);
 			log_idx += ope0->get_eg_output();
-			output = _table->log_table[log_idx];
+			output = _safe_log_lookup(_table, log_idx);
 
 			ope0->get_feed_pipe()->get()->value = output;
 		}
@@ -845,7 +862,7 @@ void SiOPMChannelFM::_process_operator1_lfo_on(int p_length) {
 
 			int log_idx = ope0->get_wave_value(t);
 			log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-			output = _table->log_table[log_idx];
+			output = _safe_log_lookup(_table, log_idx);
 
 			ope0->get_feed_pipe()->get()->value = output;
 		}
@@ -891,7 +908,7 @@ void SiOPMChannelFM::_process_operator2(int p_length) {
 
 				int log_idx = ope0->get_wave_value(t);
 				log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				int output = _table->log_table[log_idx];
+				int output = _safe_log_lookup(_table, log_idx);
 
 				ope0->get_feed_pipe()->get()->value = output;
 				ope0->get_out_pipe()->get()->value  = output + ope0->get_base_pipe()->get()->value;
@@ -910,7 +927,7 @@ void SiOPMChannelFM::_process_operator2(int p_length) {
 
 				int log_idx = ope1->get_wave_value(t);
 				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope1->get_amplitude_modulation_shift());
-				int output = _table->log_table[log_idx];
+				int output = _safe_log_lookup(_table, log_idx);
 
 				ope1->get_feed_pipe()->get()->value = output;
 				ope1->get_out_pipe()->get()->value  = output + ope1->get_base_pipe()->get()->value;
@@ -960,7 +977,7 @@ void SiOPMChannelFM::_process_operator3(int p_length) {
 
 				int log_idx = ope0->get_wave_value(t);
 				log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				int output = _table->log_table[log_idx];
+				int output = _safe_log_lookup(_table, log_idx);
 
 				ope0->get_feed_pipe()->get()->value = output;
 				ope0->get_out_pipe()->get()->value  = output + ope0->get_base_pipe()->get()->value;
@@ -979,7 +996,7 @@ void SiOPMChannelFM::_process_operator3(int p_length) {
 
 				int log_idx = ope1->get_wave_value(t);
 				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope1->get_amplitude_modulation_shift());
-				int output = _table->log_table[log_idx];
+				int output = _safe_log_lookup(_table, log_idx);
 
 				ope1->get_feed_pipe()->get()->value = output;
 				ope1->get_out_pipe()->get()->value  = output + ope1->get_base_pipe()->get()->value;
@@ -998,7 +1015,7 @@ void SiOPMChannelFM::_process_operator3(int p_length) {
 
 				int log_idx = ope2->get_wave_value(t);
 				log_idx += ope2->get_eg_output() + (_amplitude_modulation_output_level >> ope2->get_amplitude_modulation_shift());
-				int output = _table->log_table[log_idx];
+				int output = _safe_log_lookup(_table, log_idx);
 
 				ope2->get_feed_pipe()->get()->value = output;
 				ope2->get_out_pipe()->get()->value  = output + ope2->get_base_pipe()->get()->value;
@@ -1050,7 +1067,7 @@ void SiOPMChannelFM::_process_operator4(int p_length) {
 
 				int log_idx = ope0->get_wave_value(t);
 				log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				int output = _table->log_table[log_idx];
+				int output = _safe_log_lookup(_table, log_idx);
 
 				ope0->get_feed_pipe()->get()->value = output;
 				ope0->get_out_pipe()->get()->value  = output + ope0->get_base_pipe()->get()->value;
@@ -1069,11 +1086,12 @@ void SiOPMChannelFM::_process_operator4(int p_length) {
 
 				int log_idx = ope1->get_wave_value(t);
 				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope1->get_amplitude_modulation_shift());
-				int output = _table->log_table[log_idx];
+				int output = _safe_log_lookup(_table, log_idx);
 
 				ope1->get_feed_pipe()->get()->value = output;
 				ope1->get_out_pipe()->get()->value  = output + ope1->get_base_pipe()->get()->value;
 			}
+
 		}
 
 		// Operator 2.
@@ -1088,7 +1106,7 @@ void SiOPMChannelFM::_process_operator4(int p_length) {
 
 				int log_idx = ope2->get_wave_value(t);
 				log_idx += ope2->get_eg_output() + (_amplitude_modulation_output_level >> ope2->get_amplitude_modulation_shift());
-				int output = _table->log_table[log_idx];
+				int output = _safe_log_lookup(_table, log_idx);
 
 				ope2->get_feed_pipe()->get()->value = output;
 				ope2->get_out_pipe()->get()->value  = output + ope2->get_base_pipe()->get()->value;
@@ -1107,7 +1125,7 @@ void SiOPMChannelFM::_process_operator4(int p_length) {
 
 				int log_idx = ope3->get_wave_value(t);
 				log_idx += ope3->get_eg_output() + (_amplitude_modulation_output_level >> ope3->get_amplitude_modulation_shift());
-				int output = _table->log_table[log_idx];
+				int output = _safe_log_lookup(_table, log_idx);
 
 				ope3->get_feed_pipe()->get()->value = output;
 				ope3->get_out_pipe()->get()->value  = output + ope3->get_base_pipe()->get()->value;
@@ -1169,7 +1187,7 @@ void SiOPMChannelFM::_process_pcm_lfo_off(int p_length) {
 
 			int log_idx = ope0->get_wave_value(t);
 			log_idx += ope0->get_eg_output();
-			output = _table->log_table[log_idx];
+			output = _safe_log_lookup(_table, log_idx);
 
 			ope0->get_feed_pipe()->get()->value = output;
 		}
@@ -1231,7 +1249,7 @@ void SiOPMChannelFM::_process_pcm_lfo_on(int p_length) {
 
 			int log_idx = ope0->get_wave_value(t);
 			log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level>>ope0->get_amplitude_modulation_shift());
-			output = _table->log_table[log_idx];
+			output = _safe_log_lookup(_table, log_idx);
 
 			ope0->get_feed_pipe()->get()->value = output;
 		}
@@ -1278,7 +1296,7 @@ void SiOPMChannelFM::_process_analog_like(int p_length) {
 
 				int log_idx = ope0->get_wave_value(t);
 				log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				output0 = _table->log_table[log_idx];
+				output0 = _safe_log_lookup(_table, log_idx);
 			}
 
 			// Operator 1 (w/ operator0's envelope and AMS).
@@ -1288,7 +1306,7 @@ void SiOPMChannelFM::_process_analog_like(int p_length) {
 
 				int log_idx = ope1->get_wave_value(t);
 				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				output1 = _table->log_table[log_idx];
+				output1 = _safe_log_lookup(_table, log_idx);
 			}
 
 			ope0->get_feed_pipe()->get()->value = output0;
@@ -1344,7 +1362,7 @@ void SiOPMChannelFM::_process_ring(int p_length) {
 
 				log_idx += ope1->get_wave_value(t);
 				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				output = _table->log_table[log_idx];
+				output = _safe_log_lookup(_table, log_idx);
 			}
 
 			ope0->get_feed_pipe()->get()->value = output;
@@ -1401,7 +1419,7 @@ void SiOPMChannelFM::_process_sync(int p_length) {
 
 				int log_idx = ope1->get_wave_value(t);
 				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				output = _table->log_table[log_idx];
+				output = _safe_log_lookup(_table, log_idx);
 			}
 
 			ope0->get_feed_pipe()->get()->value = output;
@@ -1550,4 +1568,22 @@ SiOPMChannelFM::~SiOPMChannelFM() {
 
 	memdelete(_pipe0);
 	memdelete(_pipe1);
+}
+
+// --- Internal helper ---------------------------------------------------------
+// Safely fetch a value from the global logarithmic volume table. The raw
+// synthesis code can produce negative or over-sized indices when the engine is
+// heavily modulated which would otherwise index outside the array and crash.
+static _FORCE_INLINE_ int _safe_log_lookup(class SiOPMRefTable *p_table, int p_index) {
+	// Clamp instead of wrapping – matches behaviour of original SiON driver
+	// which relied on ActionScript's automatic array bounds saturation.
+	if (unlikely(p_index < 0)) {
+		p_index = 0;
+	} else {
+		const int max_idx = SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1;
+		if (unlikely(p_index > max_idx)) {
+			p_index = max_idx;
+		}
+	}
+	return p_table->log_table[p_index];
 }

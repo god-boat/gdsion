@@ -604,8 +604,8 @@ void SiOPMRefTable::_create_wave_samples() {
 		for (int i = 0; i < table_step; i++) {
 			int value = calculate_log_table_index(Math::sin(value_base));
 
-			table.write[i] = value;                  // positive
-			table.write[i + table_step] = value + 1; // negative
+			table.write[i]                  = value;                  // positive
+			table.write[i + table_step]     = value + 1;                // negative
 
 			value_base += value_delta;
 		}
