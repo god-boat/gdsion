@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import glob
+from SCons.Script import ARGUMENTS
 
 env = SConscript("godot-cpp/SConstruct")
 
@@ -11,7 +12,7 @@ env = SConscript("godot-cpp/SConstruct")
 # - CPPDEFINES are for pre-processor defines
 # - LINKFLAGS are for linking flags
 
-outpath = "bin"
+outpath = ARGUMENTS.get("outpath", "../bin")  # Defaults to root bin; override via "outpath=..." on the SCons command line
 
 
 def add_source_files(self, sources, files, allow_gen=False):
@@ -83,6 +84,6 @@ Export("env")
 
 library_gdsion = _register_library("libgdsion", "src")
 
-# Copy the build results into example and tests projects.
-_install_artifacts("example", "bin", library_gdsion)
-_install_artifacts("tests", "bin", library_gdsion)
+# # Copy the build results into example and tests projects.
+# _install_artifacts("example", outpath, library_gdsion)
+# _install_artifacts("tests", outpath, library_gdsion)
