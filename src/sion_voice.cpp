@@ -24,80 +24,80 @@
 
 void SiONVoice::set_params(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
-	TranslatorUtil::set_siopm_params(channel_params, data);
+	::TranslatorUtil::set_siopm_params(channel_params, data);
 	chip_type = SiONChipType::CHIP_SIOPM;
 }
 
 void SiONVoice::set_params_opl(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
-	TranslatorUtil::set_opl_params(channel_params, data);
+	::TranslatorUtil::set_opl_params(channel_params, data);
 	chip_type = SiONChipType::CHIP_OPL;
 }
 
 void SiONVoice::set_params_opm(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
-	TranslatorUtil::set_opm_params(channel_params, data);
+	::TranslatorUtil::set_opm_params(channel_params, data);
 	chip_type = SiONChipType::CHIP_OPM;
 }
 
 void SiONVoice::set_params_opn(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
-	TranslatorUtil::set_opn_params(channel_params, data);
+	::TranslatorUtil::set_opn_params(channel_params, data);
 	chip_type = SiONChipType::CHIP_OPN;
 }
 
 void SiONVoice::set_params_opx(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
-	TranslatorUtil::set_opx_params(channel_params, data);
+	::TranslatorUtil::set_opx_params(channel_params, data);
 	chip_type = SiONChipType::CHIP_OPX;
 }
 
 void SiONVoice::set_params_ma3(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
-	TranslatorUtil::set_ma3_params(channel_params, data);
+	::TranslatorUtil::set_ma3_params(channel_params, data);
 	chip_type = SiONChipType::CHIP_MA3;
 
 }
 
 void SiONVoice::set_params_al(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
-	TranslatorUtil::set_al_params(channel_params, data);
+	::TranslatorUtil::set_al_params(channel_params, data);
 	chip_type = SiONChipType::CHIP_ANALOG_LIKE;
 
 }
 
 TypedArray<int> SiONVoice::get_params() const {
-	Vector<int> data = TranslatorUtil::get_siopm_params(channel_params);
+	Vector<int> data = ::TranslatorUtil::get_siopm_params(channel_params);
 	return make_typed_array_from_vector<int>(data);
 }
 
 TypedArray<int> SiONVoice::get_params_opl() const {
-	Vector<int> data = TranslatorUtil::get_opl_params(channel_params);
+	Vector<int> data = ::TranslatorUtil::get_opl_params(channel_params);
 	return make_typed_array_from_vector<int>(data);
 }
 
 TypedArray<int> SiONVoice::get_params_opm() const {
-	Vector<int> data = TranslatorUtil::get_opm_params(channel_params);
+	Vector<int> data = ::TranslatorUtil::get_opm_params(channel_params);
 	return make_typed_array_from_vector<int>(data);
 }
 
 TypedArray<int> SiONVoice::get_params_opn() const {
-	Vector<int> data = TranslatorUtil::get_opn_params(channel_params);
+	Vector<int> data = ::TranslatorUtil::get_opn_params(channel_params);
 	return make_typed_array_from_vector<int>(data);
 }
 
 TypedArray<int> SiONVoice::get_params_opx() const {
-	Vector<int> data = TranslatorUtil::get_opx_params(channel_params);
+	Vector<int> data = ::TranslatorUtil::get_opx_params(channel_params);
 	return make_typed_array_from_vector<int>(data);
 }
 
 TypedArray<int> SiONVoice::get_params_ma3() const {
-	Vector<int> data = TranslatorUtil::get_ma3_params(channel_params);
+	Vector<int> data = ::TranslatorUtil::get_ma3_params(channel_params);
 	return make_typed_array_from_vector<int>(data);
 }
 
 TypedArray<int> SiONVoice::get_params_al() const {
-	Vector<int> data = TranslatorUtil::get_ma3_params(channel_params);
+	Vector<int> data = ::TranslatorUtil::get_ma3_params(channel_params);
 	return make_typed_array_from_vector<int>(data);
 }
 
@@ -110,25 +110,25 @@ String SiONVoice::get_mml(int p_index, SiONChipType p_chip_type, bool p_append_p
 	String mml;
 	switch (type) {
 		case SiONChipType::CHIP_SIOPM:
-			mml = "#@"    + itos(p_index) + TranslatorUtil::get_siopm_params_as_mml(channel_params, " ", "\n", _name);
+			mml = "#@"    + itos(p_index) + ::TranslatorUtil::get_siopm_params_as_mml(channel_params, " ", "\n", _name);
 			break;
 		case SiONChipType::CHIP_OPL:
-			mml = "#OPL@" + itos(p_index) + TranslatorUtil::get_opl_params_as_mml(channel_params, " ", "\n", _name);
+			mml = "#OPL@" + itos(p_index) + ::TranslatorUtil::get_opl_params_as_mml(channel_params, " ", "\n", _name);
 			break;
 		case SiONChipType::CHIP_OPM:
-			mml = "#OPM@" + itos(p_index) + TranslatorUtil::get_opm_params_as_mml(channel_params, " ", "\n", _name);
+			mml = "#OPM@" + itos(p_index) + ::TranslatorUtil::get_opm_params_as_mml(channel_params, " ", "\n", _name);
 			break;
 		case SiONChipType::CHIP_OPN:
-			mml = "#OPN@" + itos(p_index) + TranslatorUtil::get_opn_params_as_mml(channel_params, " ", "\n", _name);
+			mml = "#OPN@" + itos(p_index) + ::TranslatorUtil::get_opn_params_as_mml(channel_params, " ", "\n", _name);
 			break;
 		case SiONChipType::CHIP_OPX:
-			mml = "#OPX@" + itos(p_index) + TranslatorUtil::get_opx_params_as_mml(channel_params, " ", "\n", _name);
+			mml = "#OPX@" + itos(p_index) + ::TranslatorUtil::get_opx_params_as_mml(channel_params, " ", "\n", _name);
 			break;
 		case SiONChipType::CHIP_MA3:
-			mml = "#MA@"  + itos(p_index) + TranslatorUtil::get_ma3_params_as_mml(channel_params, " ", "\n", _name);
+			mml = "#MA@"  + itos(p_index) + ::TranslatorUtil::get_ma3_params_as_mml(channel_params, " ", "\n", _name);
 			break;
 		case SiONChipType::CHIP_ANALOG_LIKE:
-			mml = "#AL@"  + itos(p_index) + TranslatorUtil::get_al_params_as_mml(channel_params, " ", "\n", _name);
+			mml = "#AL@"  + itos(p_index) + ::TranslatorUtil::get_al_params_as_mml(channel_params, " ", "\n", _name);
 			break;
 		default:
 			ERR_FAIL_V_MSG("", vformat("SiONVoice: Chip type %d is unsupported for MML strings.", type));
@@ -136,7 +136,7 @@ String SiONVoice::get_mml(int p_index, SiONChipType p_chip_type, bool p_append_p
 
 	if (p_append_postfix) {
 		Ref<SiONVoice> this_voice = const_cast<SiONVoice *>(this);
-		String postfix = TranslatorUtil::get_voice_setting_as_mml(this_voice);
+		String postfix = ::TranslatorUtil::get_voice_setting_as_mml(this_voice);
 		if (!postfix.is_empty()) {
 			mml += "\n" + postfix;
 		}
@@ -160,25 +160,25 @@ int SiONVoice::set_by_mml(String p_mml) {
 	String data = res->get_string(3);
 
 	if (command == "#@") {
-		TranslatorUtil::parse_siopm_params(channel_params, data);
+		::TranslatorUtil::parse_siopm_params(channel_params, data);
 		chip_type = SiONChipType::CHIP_SIOPM;
 	} else if (command == "#OPL@") {
-		TranslatorUtil::parse_opl_params(channel_params, data);
+		::TranslatorUtil::parse_opl_params(channel_params, data);
 		chip_type = SiONChipType::CHIP_OPL;
 	} else if (command == "#OPM@") {
-		TranslatorUtil::parse_opm_params(channel_params, data);
+		::TranslatorUtil::parse_opm_params(channel_params, data);
 		chip_type = SiONChipType::CHIP_OPM;
 	} else if (command == "#OPN@") {
-		TranslatorUtil::parse_opn_params(channel_params, data);
+		::TranslatorUtil::parse_opn_params(channel_params, data);
 		chip_type = SiONChipType::CHIP_OPN;
 	} else if (command == "#OPX@") {
-		TranslatorUtil::parse_opx_params(channel_params, data);
+		::TranslatorUtil::parse_opx_params(channel_params, data);
 		chip_type = SiONChipType::CHIP_OPX;
 	} else if (command == "#MA@") {
-		TranslatorUtil::parse_ma3_params(channel_params, data);
+		::TranslatorUtil::parse_ma3_params(channel_params, data);
 		chip_type = SiONChipType::CHIP_MA3;
 	} else if (command == "#AL@") {
-		TranslatorUtil::parse_al_params(channel_params, data);
+		::TranslatorUtil::parse_al_params(channel_params, data);
 		chip_type = SiONChipType::CHIP_ANALOG_LIKE;
 	} else {
 		return -1;
@@ -186,7 +186,7 @@ int SiONVoice::set_by_mml(String p_mml) {
 
 	String postfix = res->get_string(4);
 	int voice_index = res->get_string(2).to_int();
-	TranslatorUtil::parse_voice_setting(this, postfix);
+	::TranslatorUtil::parse_voice_setting(this, postfix);
 
 	Ref<RegEx> re_name = RegEx::create_from_string("^.*?(//\\s*(.+?))?[\\n\\r]");
 	res = re_name->search(data);
