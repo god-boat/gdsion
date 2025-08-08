@@ -318,6 +318,15 @@ void SiMMLVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("should_update_volumes"), &SiMMLVoice::should_update_volumes);
 	ClassDB::bind_method(D_METHOD("set_update_volumes", "enabled"), &SiMMLVoice::set_update_volumes);
 	ClassDB::add_property("SiMMLVoice", PropertyInfo(Variant::BOOL, "update_volumes"), "set_update_volumes", "should_update_volumes");
+
+	ClassDB::bind_method(D_METHOD("get_amplitude_modulation_depth"), &SiMMLVoice::get_amplitude_modulation_depth);
+	ClassDB::bind_method(D_METHOD("get_amplitude_modulation_depth_end"), &SiMMLVoice::get_amplitude_modulation_depth_end);
+	ClassDB::bind_method(D_METHOD("get_amplitude_modulation_delay"), &SiMMLVoice::get_amplitude_modulation_delay);
+	ClassDB::bind_method(D_METHOD("get_amplitude_modulation_term"), &SiMMLVoice::get_amplitude_modulation_term);
+	ClassDB::bind_method(D_METHOD("get_pitch_modulation_depth"), &SiMMLVoice::get_pitch_modulation_depth);
+	ClassDB::bind_method(D_METHOD("get_pitch_modulation_depth_end"), &SiMMLVoice::get_pitch_modulation_depth_end);
+	ClassDB::bind_method(D_METHOD("get_pitch_modulation_delay"), &SiMMLVoice::get_pitch_modulation_delay);
+	ClassDB::bind_method(D_METHOD("get_pitch_modulation_term"), &SiMMLVoice::get_pitch_modulation_term);
 }
 
 SiMMLVoice::SiMMLVoice() {

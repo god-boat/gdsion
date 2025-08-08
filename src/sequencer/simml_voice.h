@@ -135,6 +135,15 @@ public:
 	int get_expression_mode() const { return expression_mode; }
 	void set_expression_mode(int p_value) { expression_mode = p_value; }
 
+	int get_amplitude_modulation_depth() const { return amplitude_modulation_depth; }
+	int get_amplitude_modulation_depth_end() const { return amplitude_modulation_depth_end; }
+	int get_amplitude_modulation_delay() const { return amplitude_modulation_delay; }
+	int get_amplitude_modulation_term() const { return amplitude_modulation_term; }
+	int get_pitch_modulation_depth() const { return pitch_modulation_depth; }
+	int get_pitch_modulation_depth_end() const { return pitch_modulation_depth_end; }
+	int get_pitch_modulation_delay() const { return pitch_modulation_delay; }
+	int get_pitch_modulation_term() const { return pitch_modulation_term; }
+ 
 	bool has_amplitude_modulation() const;
 	bool has_pitch_modulation() const;
 
