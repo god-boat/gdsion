@@ -1234,6 +1234,9 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_audio_stream"), &SiONDriver::get_audio_stream);
 	ClassDB::bind_method(D_METHOD("get_audio_playback"), &SiONDriver::get_audio_playback);
 
+	// User-controllable track API
+	ClassDB::bind_method(D_METHOD("create_user_controllable_track", "track_id"), &SiONDriver::create_user_controllable_track, DEFVAL(0));
+
 	// Configuration.
 
 	ClassDB::bind_method(D_METHOD("get_track_count"), &SiONDriver::get_track_count);

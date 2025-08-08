@@ -38,7 +38,7 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 	// Simple ADSR envelope (currently only release stage used to avoid clicks).
 	bool _is_releasing = false;
 	int _release_samples_left = 0;
-	static const int RELEASE_SAMPLES = 512; // ~11ms at 44.1 kHz.
+	static const int RELEASE_SAMPLES = 512; // ≈ 512 / 48 000 Hz ≈ 10.7 ms at 48 kHz.
 	double _envelope_level = 1.0;
 
 protected:

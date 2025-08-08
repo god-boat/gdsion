@@ -21,6 +21,7 @@
 #include "chip/wave/siopm_wave_table.h"
 #include "utils/godot_util.h"
 #include "utils/translator_util.h"
+#include "sequencer/simml_track.h"
 
 void SiONVoice::set_params(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
@@ -371,6 +372,9 @@ void SiONVoice::_bind_methods() {
 	ClassDB::bind_static_method("SiONVoice", D_METHOD("create", "module_type", "channel_num", "attack_rate", "release_rate", "pitch_shift", "connection_type", "wave_shape2", "pitch_shift2"), &SiONVoice::create, DEFVAL(SiONModuleType::MODULE_GENERIC_PG), DEFVAL(0), DEFVAL(63), DEFVAL(63), DEFVAL(0), DEFVAL(-1), DEFVAL(0), DEFVAL(0));
 
 	// Public API.
+
+	// Apply voice parameters to an existing SiMMLTrack (real-time).
+	ClassDB::bind_method(D_METHOD("update_track_voice", "track"), &SiONVoice::update_track_voice);
 
 	ClassDB::bind_method(D_METHOD("get_name"), &SiONVoice::get_name);
 	ClassDB::bind_method(D_METHOD("set_name", "value"), &SiONVoice::set_name);

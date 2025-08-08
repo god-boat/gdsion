@@ -1043,6 +1043,14 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_track_type_id"), &SiMMLTrack::get_track_type_id);
 	ClassDB::bind_method(D_METHOD("get_channel"), &SiMMLTrack::get_channel);
 	ClassDB::bind_method(D_METHOD("get_program_number"), &SiMMLTrack::get_program_number);
+
+	// Track lifetime
+	ClassDB::bind_method(D_METHOD("set_disposable"), &SiMMLTrack::set_disposable);
+	ClassDB::bind_method(D_METHOD("is_disposable"), &SiMMLTrack::is_disposable);
+
+	// Real-time note control
+	ClassDB::bind_method(D_METHOD("key_on", "note", "tick_length", "sample_delay"), &SiMMLTrack::key_on, DEFVAL(0), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("key_off", "sample_delay", "with_reset"), &SiMMLTrack::key_off, DEFVAL(0), DEFVAL(false));
 }
 
 SiMMLTrack::SiMMLTrack() {
