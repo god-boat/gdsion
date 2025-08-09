@@ -1207,7 +1207,14 @@ void TranslatorUtil::parse_voice_setting(const Ref<SiMMLVoice> &p_voice, String 
 			params->filter_release_offset = EXTRACT_ARGUMENT(9, 128);
 
 		} else if (command == "@lfo") {
-			params->set_lfo_frame(EXTRACT_ARGUMENT(0, 30));
+			int lfo_arg0 = EXTRACT_ARGUMENT(0, 30);
+			if (lfo_arg0 < 0) {
+				// Negative values encode the raw lfo_frequency_step directly to preserve the full range.
+				params->set_lfo_frequency_step(-lfo_arg0);
+			} else {
+				// Legacy behaviour – argument expresses the LFO frame rate.
+				params->set_lfo_frame(lfo_arg0);
+			}
 			params->lfo_wave_shape = EXTRACT_ARGUMENT(1, SiOPMRefTable::LFO_WAVE_TRIANGLE);
 
 		} else if (command == "ma") {
@@ -1389,12 +1396,24 @@ String TranslatorUtil::get_voice_setting_as_mml(const Ref<SiMMLVoice> &p_voice) 
 		}
 	}
 
-	if (p_voice->has_amplitude_modulation() || params->has_amplitude_modulation() || p_voice->has_pitch_modulation() || params->has_pitch_modulation()) {
-		if (params->get_lfo_frame() != 30 || params->lfo_wave_shape != SiOPMRefTable::LFO_WAVE_TRIANGLE) {
-			mml += "@lfo" + itos(params->get_lfo_frame());
-
-			if (params->lfo_wave_shape != SiOPMRefTable::LFO_WAVE_TRIANGLE) {
-				mml += "," + itos(params->lfo_wave_shape);
+	int lfo_frame_tmp = params->get_lfo_frame();
+	if (p_voice->has_amplitude_modulation() || params->has_amplitude_modulation() || p_voice->has_pitch_modulation() || params->has_pitch_modulation() || lfo_frame_tmp != 30 || lfo_frame_tmp == 0 || params->lfo_wave_shape != SiOPMRefTable::LFO_WAVE_TRIANGLE) {
+		{
+			// Encode LFO frequency. For large lfo_frequency_step values the computed lfo_frame may
+			// round down to 0. In that case we store the raw step value as a negative number to
+			// preserve the full numeric range when the voice is serialized and restored.
+			int lfo_frame = params->get_lfo_frame();
+			bool include_lfo = (lfo_frame != 30) || (lfo_frame == 0) || (params->lfo_wave_shape != SiOPMRefTable::LFO_WAVE_TRIANGLE);
+			if (include_lfo) {
+				mml += "@lfo";
+				if (lfo_frame > 0) {
+					mml += itos(lfo_frame);
+				} else {
+					mml += "-" + itos(params->get_lfo_frequency_step());
+				}
+				if (params->lfo_wave_shape != SiOPMRefTable::LFO_WAVE_TRIANGLE) {
+					mml += "," + itos(params->lfo_wave_shape);
+				}
 			}
 		}
 
