@@ -1443,6 +1443,15 @@ void SiONDriver::_bind_methods() {
 }
 
 SiONDriver::SiONDriver(int p_buffer_length, int p_channel_num, int p_sample_rate, int p_bitrate) {
+	// Ensure reference tables use the correct sampling rate before any chip initialization. Or else the synthesizer will be out of tune!
+	{
+		SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
+		if (!ref_table || ref_table->sampling_rate != p_sample_rate) {
+			// Recreate the reference table with the requested rate.
+			SiOPMRefTable::finalize();
+			memnew(SiOPMRefTable(3580000, 1789772.5, p_sample_rate));
+		}
+	}
 	ERR_FAIL_COND_MSG(!_allow_multiple_drivers && _mutex, "SiONDriver: Only one driver instance is allowed.");
 	_mutex = this;
 
