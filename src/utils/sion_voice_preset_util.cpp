@@ -829,9 +829,14 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 
 	_begin_category("KS");
 	_create_ks_voice("extra.ks", "Bright KS",
-					/*feedback*/3, /*delay*/40,
-					/*wave*/1, /*AR*/48, /*DR*/24,
-					/*SL*/4,  /*RR*/24, /*TL*/115);
+		/*feedback*/0,  /*tension*/8,
+		/*wave*/SiONPulseGeneratorType::PULSE_NOISE_PINK,  /*AR*/63, /*DR*/44,
+		/*SL*/0,  /*RR*/28,  /*TL*/4);
+
+	_create_ks_voice("extra.ks.soft_pluck", "Soft Pluck KS",
+		/*feedback*/2,  /*tension*/4,
+		/*wave*/SiONPulseGeneratorType::PULSE_NOISE_WHITE,
+		/*AR*/55, /*DR*/36, /*SL*/4, /*RR*/22, /*TL*/6);
 
 	_begin_category("FM (OPL)");
 	// AL, FB,
@@ -842,6 +847,14 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 		0,15, 7, 7, 0, 0,  0,0,0,1,0    // operator-2
 	});
 
+	_create_opl_voice("extra.opl.brass", "Brass OPL", {
+        // AL  FB
+         1,   3,
+        //      WS AR DR RR ET SL TL KR KL ML AM
+         0,   15, 6,  4, 0, 4, 32, 0, 0, 2, 0,    // mod
+         1,   15, 8,  4, 0, 0,  0, 0, 0, 1, 0     // car
+   });
+
 	_begin_category("FM (OPM)");
 	// AL, FB,
 	// (DT,ML,TL,KS,AR,DR,SR,RR,SL,AM,DT2) × 4
@@ -851,7 +864,18 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 		0,0,  0,0,15,8,0,2,0,0,0,   // op-2
 		0,0,  0,0,15,8,0,2,0,0,0,   // op-3
 		0,0,  0,0,15,8,0,2,0,0,0    // op-4
-	});                                // 2 + 11×4 = 46 ints
+	});  // 2 + 11×4 = 46 ints
+	
+	// ------------------ FM (OPM) ------------------
+	_create_opm_voice("extra.opm.epiano", "E.Piano OPM", {
+		// AL FB
+		3, 4,
+		//        DT ML TL KS AR DR SR RR SL AM DT2
+		0,  2, 50, 0, 20,  8,  0, 4, 6, 0, 0,   // op-1 – bell modulator
+		0,  3, 40, 0, 18,  8,  0, 4, 6, 0, 0,   // op-2 – bell modulator 2
+		0,  1,  0, 0, 25, 10,  0, 5, 6, 0, 0,   // op-3 – carrier
+		0,  1,  0, 0, 25, 10,  0, 5, 6, 0, 0    // op-4 – carrier
+	});
 
 	_begin_category("FM (OPX)");
 	// AL, FB,
@@ -863,21 +887,53 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 		0,15,8,0,8,0,0,0,1,0,0,0,   // op-3
 		0,15,8,0,8,0,0,0,1,0,0,0    // op-4
 	});                                // 2 + 12×4 = 50 ints
+
+	// ------------------ FM (OPX) ------------------
+	_create_opx_voice("extra.opx.pad", "Warm Pad OPX", {
+		// AL FB
+		5, 3,
+		//        WS AR DR SR RR SL TL KR ML D1 D2 AM
+		0, 12,  8,  8, 4, 5, 40, 0, 2, 0, 0, 0,   // op-1
+		1, 12,  8,  8, 4, 5, 48, 0, 1, 0, 0, 0,   // op-2
+		0, 14,  9,  8, 4, 5, 44, 0, 2, 0, 0, 0,   // op-3
+		1, 10,  7,  8, 4, 5, 44, 0, 1, 0, 0, 0    // op-4
+	});
 }
 
-void SiONVoicePresetUtil::_create_ks_voice(const String &p_key, const String &p_name, int p_feedback, int p_delay, int p_wave_shape, int p_attack_rate, int p_decay_rate, int p_sustain_level, int p_release_rate, int p_total_level) {
-	Ref<SiONVoice> voice = memnew(SiONVoice(SiONModuleType::MODULE_KS, p_wave_shape, p_attack_rate, p_release_rate));
-	
-	Ref<SiOPMChannelParams> ch_params = voice->get_channel_params();
-	ch_params->set_feedback(p_feedback);
+void SiONVoicePresetUtil::_create_ks_voice(const String &p_key,
+	const String &p_name,
+	int p_feedback,
+	int p_delay,          // ← will be used as “tension”
+	int p_wave_shape,
+	int p_attack_rate,
+	int p_decay_rate,
+	int p_sustain_level,
+	int p_release_rate,
+	int p_total_level) {
 
-	Ref<SiOPMOperatorParams> op_params = ch_params->get_operator_params(0);
-	op_params->set_decay_rate(p_decay_rate);
-	op_params->set_sustain_level(p_sustain_level);
-	op_params->set_total_level(p_total_level);
+// reinterpret p_delay as Karplus-Strong damping / tension (0-15)
+int tension = p_delay;
 
-	voice->set_name(p_name);
-	_register_voice(p_key, voice);
+// Build a proper KS pluck – noise burst, delay-line, damping, etc.
+Ref<SiONVoice> voice = memnew(SiONVoice);
+voice->set_pms_guitar(
+	/*attack_rate */ p_attack_rate,
+	/*decay_rate  */ p_decay_rate,
+	/*total_level */ p_total_level,
+	/*fixed_pitch */ 69,                        // A4 reference; transposed per-note later
+	/*wave_shape  */ p_wave_shape,
+	/*tension     */ tension);
+
+// Fine-tune feedback, sustain and release.
+Ref<SiOPMChannelParams> ch_params = voice->get_channel_params();
+ch_params->set_feedback(p_feedback);
+
+Ref<SiOPMOperatorParams> op_params = ch_params->get_operator_params(0);
+op_params->set_sustain_level(p_sustain_level);
+op_params->set_release_rate(p_release_rate);
+
+voice->set_name(p_name);
+_register_voice(p_key, voice);
 }
 
 void SiONVoicePresetUtil::_create_opl_voice(const String &p_key, const String &p_name, Vector<int> p_params) {
