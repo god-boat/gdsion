@@ -611,6 +611,7 @@ void SiONVoicePresetUtil::_generate_wave_table_voices() {
 	_register_wave_table({ 1668,834,482,274,142,60,14,0,0,14,60,142,274,482,834,1668,1068,38,806,494,30,293,1049,20,56,18,1845,39,1190,272,1260,11 });               // 0d2943586a767d7f7f7d766a5843290d1e7a2b427baae17d767df5861a591782
 	_register_wave_table({ 1290,134,56,272,956,834,104,60,330,174,2,0,56,994,603,529,2845,700,1186,411,1,25,1,141,185,1,315,1685,1235,307,105,319 });                // 166a765823296f7552657f7f7621c8c2fd311ab7818581979d81adf3e8ac92ad
 	_register_wave_table({ 1028,32,820,197,112,546,80,1775,26,933,46,330,502,97,620,4,1029,33,821,196,113,547,81,1774,27,932,47,331,503,96,621,5 });                 // 207b2a9e6e3d73f47cdc78524190377fe085d66292c38d0c842488aebf70c981
+	
 
 	_begin_category("svmidi");
 	_create_wave_table_voice("svmidi.piano1",  "SV.GrandPno", 13,63,24,14,32,4,2);
@@ -871,10 +872,10 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 		// AL FB
 		3, 4,
 		//        DT ML TL KS AR DR SR RR SL AM DT2
-		0,  2, 50, 0, 20,  8,  0, 4, 6, 0, 0,   // op-1 – bell modulator
-		0,  3, 40, 0, 18,  8,  0, 4, 6, 0, 0,   // op-2 – bell modulator 2
-		0,  1,  0, 0, 25, 10,  0, 5, 6, 0, 0,   // op-3 – carrier
-		0,  1,  0, 0, 25, 10,  0, 5, 6, 0, 0    // op-4 – carrier
+		0,  2, 31, 0, 15,  8,  0, 4, 6, 0, 0,   // op-1 – bell modulator
+		0,  3, 31, 0, 15,  8,  0, 4, 6, 0, 0,   // op-2 – bell modulator 2
+		0,  1,  0, 0, 15, 10,  0, 5, 6, 0, 0,   // op-3 – carrier
+		0,  1,  0, 0, 15, 10,  0, 5, 6, 0, 0    // op-4 – carrier
 	});
 
 	_begin_category("FM (OPX)");
@@ -892,7 +893,7 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 	_create_opx_voice("extra.opx.pad", "Warm Pad OPX", {
 		// AL FB
 		5, 3,
-		//        WS AR DR SR RR SL TL KR ML D1 D2 AM
+		// WS AR DR SR RR SL TL KR ML D1 D2 AM
 		0, 12,  8,  8, 4, 5, 40, 0, 2, 0, 0, 0,   // op-1
 		1, 12,  8,  8, 4, 5, 48, 0, 1, 0, 0, 0,   // op-2
 		0, 14,  9,  8, 4, 5, 44, 0, 2, 0, 0, 0,   // op-3
