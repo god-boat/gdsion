@@ -269,12 +269,13 @@ void SiOPMWaveSamplerData::slice(int p_start_point, int p_end_point, int p_loop_
 
 //
 
-SiOPMWaveSamplerData::SiOPMWaveSamplerData(const Variant &p_data, bool p_ignore_note_off, int p_pan, int p_src_channel_count, int p_channel_count) :
+SiOPMWaveSamplerData::SiOPMWaveSamplerData(const Variant &p_data, bool p_ignore_note_off, int p_pan, int p_src_channel_count, int p_channel_count, bool p_fixed_pitch) :
 		SiOPMWaveBase(SiONModuleType::MODULE_SAMPLE) {
 
 	_prepare_wave_data(p_data, p_src_channel_count, p_channel_count);
 	set_ignore_note_off(p_ignore_note_off);
 	_pan = p_pan;
+	_fixed_pitch = p_fixed_pitch;
 }
 
 // --- New setters ------------------------------------------------------------
@@ -303,6 +304,8 @@ void SiOPMWaveSamplerData::set_loop_point(int p_loop) {
 void SiOPMWaveSamplerData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_pan", "pan"), &SiOPMWaveSamplerData::set_pan);
 	ClassDB::bind_method(D_METHOD("get_pan"), &SiOPMWaveSamplerData::get_pan);
+	ClassDB::bind_method(D_METHOD("set_ignore_note_off", "ignore"), &SiOPMWaveSamplerData::set_ignore_note_off);
+	ClassDB::bind_method(D_METHOD("is_ignoring_note_off"), &SiOPMWaveSamplerData::is_ignoring_note_off);
 	ClassDB::bind_method(D_METHOD("set_start_point", "start"), &SiOPMWaveSamplerData::set_start_point);
 	ClassDB::bind_method(D_METHOD("get_start_point"), &SiOPMWaveSamplerData::get_start_point);
 	ClassDB::bind_method(D_METHOD("set_end_point", "end"), &SiOPMWaveSamplerData::set_end_point);
@@ -311,11 +314,19 @@ void SiOPMWaveSamplerData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_loop_point"), &SiOPMWaveSamplerData::get_loop_point);
 	ClassDB::bind_method(D_METHOD("slice", "start", "end", "loop"), &SiOPMWaveSamplerData::slice, DEFVAL(-1), DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("get_length"), &SiOPMWaveSamplerData::get_length);
+	ClassDB::bind_method(D_METHOD("set_fixed_pitch", "fixed"), &SiOPMWaveSamplerData::set_fixed_pitch);
+	ClassDB::bind_method(D_METHOD("is_fixed_pitch"), &SiOPMWaveSamplerData::is_fixed_pitch);
+	ClassDB::bind_method(D_METHOD("get_pitch_offset"), &SiOPMWaveSamplerData::get_pitch_offset);
+	ClassDB::bind_method(D_METHOD("set_pitch_offset", "offset"), &SiOPMWaveSamplerData::set_pitch_offset);
+	ClassDB::bind_method(D_METHOD("duplicate"), &SiOPMWaveSamplerData::duplicate);
 
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "pan"), "set_pan", "get_pan");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "start_point"), "set_start_point", "get_start_point");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "end_point"), "set_end_point", "get_end_point");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "loop_point"), "set_loop_point", "get_loop_point");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "fixed_pitch"), "set_fixed_pitch", "is_fixed_pitch");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pitch_offset", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_EDITOR), "set_pitch_offset", "get_pitch_offset");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ignore_note_off"), "set_ignore_note_off", "is_ignoring_note_off");
 }
 
 // ---------------------------------------------------------------------------
@@ -387,4 +398,30 @@ void SiOPMWaveSamplerData::_apply_fade() {
 	_prev_fade_start = _start_point;
 	_prev_fade_end   = _end_point;
 	_prev_fade_len   = fade_len;
+}
+
+Ref<SiOPMWaveSamplerData> SiOPMWaveSamplerData::duplicate() const {
+    Ref<SiOPMWaveSamplerData> copy = Ref<SiOPMWaveSamplerData>(memnew(SiOPMWaveSamplerData));
+
+    // Shallow-copy primitive members.
+    copy->_wave_data           = _wave_data;          // Shared buffer (copy-on-write)
+    copy->_original_wave_data  = _original_wave_data; // Shared buffer as well
+    copy->_channel_count       = _channel_count;
+    copy->_pan                 = _pan;
+    copy->_sample_rate         = _sample_rate;
+    copy->_ignore_note_off     = _ignore_note_off;
+    copy->_fixed_pitch         = _fixed_pitch;
+    copy->_pitch_offset        = _pitch_offset;
+
+    copy->_start_point         = _start_point;
+    copy->_end_point           = _end_point;
+    copy->_loop_point          = _loop_point;
+
+    // Fade bookkeeping values; the copy will re-apply fades when its slice
+    // window changes, so we reset these.
+    copy->_prev_fade_start = -1;
+    copy->_prev_fade_end   = -1;
+    copy->_prev_fade_len   = 0;
+
+    return copy;
 }

@@ -63,7 +63,7 @@ public:
 	Ref<SiOPMWavePCMData> set_pcm_voice(const Variant &p_data, int p_sampling_note = 69, int p_src_channel_count = 2, int p_channel_count = 0);
 	Ref<SiOPMWavePCMData> set_pcm_wave(int p_index, const Variant &p_data, int p_sampling_note = 69, int p_key_range_from = 0, int p_key_range_to = 127, int p_src_channel_count = 2, int p_channel_count = 0);
 	Ref<SiOPMWaveSamplerData> set_sampler_voice(const Variant &p_data, bool p_ignore_note_off = false, int p_channel_count = 2);
-	Ref<SiOPMWaveSamplerData> set_sampler_wave(int p_index, const Variant &p_data, bool p_ignore_note_off = false, int p_pan = 0, int p_src_channel_count = 2, int p_channel_count = 0);
+	Ref<SiOPMWaveSamplerData> set_sampler_wave(int p_index, const Variant &p_data, bool p_ignore_note_off = false, int p_pan = 0, int p_src_channel_count = 2, int p_channel_count = 0, bool p_fixed_pitch = false);
 
 	// NEW: Access sampler data for a given MIDI note (0-127).
 	Ref<SiOPMWaveSamplerData> get_sampler_data(int p_note_number) const;

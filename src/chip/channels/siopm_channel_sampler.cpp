@@ -91,6 +91,12 @@ void SiOPMChannelSampler::note_on() {
 		_sample_index = _sample_data->get_initial_sample_index(_sample_start_phase * 0.00390625); // 1/256
 		_sample_index_fp = (double)_sample_index;
 		_sample_pan = CLAMP(_pan + _sample_data->get_pan(), 0, 128);
+		// If the sample is marked as fixed_pitch (slice mode), disable pitch shifting.
+		if (_sample_data->is_fixed_pitch()) {
+			// Apply global pitch offset (in semitones) instead of note-based transposition.
+			double offset_semitones = _sample_data->get_pitch_offset();
+			_pitch_step = std::pow(2.0, offset_semitones / 12.0);
+		}
 	}
 
 	_is_idling = (_sample_data == nullptr);

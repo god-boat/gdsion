@@ -25,6 +25,13 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
     int _sample_rate = 48000;
     // This flag is only available for non-loop samples.
 	bool _ignore_note_off = false;
+	// When true, playback is forced at original pitch regardless of note input.
+	bool _fixed_pitch = false;
+    // Additional per-sample pitch offset (in semitones). Used when _fixed_pitch
+    // is enabled to allow global transposition independent from the incoming
+    // MIDI note number. Positive values raise the pitch, negative values lower
+    // it. A value of 0 preserves the original pitch.
+    double _pitch_offset = 0.0;
 
 	// Track the last applied fade so we can efficiently undo it.
 	int _prev_fade_start = -1;
@@ -63,6 +70,10 @@ public:
 
 	bool is_ignoring_note_off() const { return _ignore_note_off; }
 	void set_ignore_note_off(bool p_ignore);
+	bool is_fixed_pitch() const { return _fixed_pitch; }
+	void set_fixed_pitch(bool p_fixed) { _fixed_pitch = p_fixed; }
+	double get_pitch_offset() const { return _pitch_offset; }
+	void set_pitch_offset(double p_offset) { _pitch_offset = p_offset; }
 
 	//
 
@@ -76,9 +87,12 @@ public:
 	void set_loop_point(int p_loop);
 	void slice(int p_start_point, int p_end_point, int p_loop_point);
 
+	// Create a shallow copy that shares the underlying sample buffer.
+	Ref<SiOPMWaveSamplerData> duplicate() const;
+
 	//
 
-	SiOPMWaveSamplerData(const Variant &p_data = Variant(), bool p_ignore_note_off = false, int p_pan = 0, int p_src_channel_count = 2, int p_channel_count = 0);
+	SiOPMWaveSamplerData(const Variant &p_data = Variant(), bool p_ignore_note_off = false, int p_pan = 0, int p_src_channel_count = 2, int p_channel_count = 0, bool p_fixed_pitch = false);
 	~SiOPMWaveSamplerData() {}
 };
 

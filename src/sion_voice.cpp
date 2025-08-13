@@ -253,7 +253,7 @@ Ref<SiOPMWaveSamplerData> SiONVoice::set_sampler_voice(const Variant &p_data, bo
 	return wave_data;
 }
 
-Ref<SiOPMWaveSamplerData> SiONVoice::set_sampler_wave(int p_index, const Variant &p_data, bool p_ignore_note_off, int p_pan, int p_src_channel_count, int p_channel_count) {
+Ref<SiOPMWaveSamplerData> SiONVoice::set_sampler_wave(int p_index, const Variant &p_data, bool p_ignore_note_off, int p_pan, int p_src_channel_count, int p_channel_count, bool p_fixed_pitch) {
 	module_type = SiONModuleType::MODULE_SAMPLE;
 
 	Ref<SiOPMWaveSamplerTable> sampler_table = wave_data;
@@ -262,7 +262,7 @@ Ref<SiOPMWaveSamplerData> SiONVoice::set_sampler_wave(int p_index, const Variant
 		wave_data = sampler_table;
 	}
 
-	Ref<SiOPMWaveSamplerData> sampler_data = memnew(SiOPMWaveSamplerData(p_data, p_ignore_note_off, p_pan, p_src_channel_count, p_channel_count));
+	Ref<SiOPMWaveSamplerData> sampler_data = memnew(SiOPMWaveSamplerData(p_data, p_ignore_note_off, p_pan, p_src_channel_count, p_channel_count, p_fixed_pitch));
 	sampler_table->set_sample(sampler_data, p_index & (SiOPMRefTable::NOTE_TABLE_SIZE - 1));
 
 	return sampler_data;
@@ -406,7 +406,7 @@ void SiONVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_amplitude_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_amplitude_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_pitch_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_pitch_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
 
-	ClassDB::bind_method(D_METHOD("set_sampler_wave", "index", "data", "ignore_note_off", "pan", "src_channel_count", "channel_count"), &SiONVoice::set_sampler_wave, DEFVAL(false), DEFVAL(0), DEFVAL(2), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("set_sampler_wave", "index", "data", "ignore_note_off", "pan", "src_channel_count", "channel_count", "fixed_pitch"), &SiONVoice::set_sampler_wave, DEFVAL(false), DEFVAL(0), DEFVAL(2), DEFVAL(0), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("set_sampler_voice", "data", "ignore_note_off", "channel_count"), &SiONVoice::set_sampler_voice, DEFVAL(false), DEFVAL(2));
 	ClassDB::bind_method(D_METHOD("set_sampler_table", "table"), &SiONVoice::set_sampler_table);
 	ClassDB::bind_method(D_METHOD("get_sampler_data", "note_number"), &SiONVoice::get_sampler_data);
