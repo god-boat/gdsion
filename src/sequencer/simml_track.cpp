@@ -866,6 +866,17 @@ void SiMMLTrack::key_off(int p_sample_delay, bool p_with_reset) {
 		if (_stop_with_reset) {
 			_channel->reset();
 		}
+
+		// Ensure immediate finishes for UC / driver-note tracks on instant key-off
+		// Only when caller requested reset; prevents unintended early termination on normal releases.
+		if (_stop_with_reset) {
+			int type = get_track_type_id();
+			if (type == USER_CONTROLLED || type == DRIVER_NOTE) {
+				if (_executor) {
+					_executor->stop();
+				}
+			}
+		}
 	}
 }
 
@@ -1051,6 +1062,9 @@ void SiMMLTrack::_bind_methods() {
 	// Real-time note control
 	ClassDB::bind_method(D_METHOD("key_on", "note", "tick_length", "sample_delay"), &SiMMLTrack::key_on, DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("key_off", "sample_delay", "with_reset"), &SiMMLTrack::key_off, DEFVAL(0), DEFVAL(false));
+
+	ClassDB::bind_method(D_METHOD("is_active"), &SiMMLTrack::is_active);
+	ClassDB::bind_method(D_METHOD("is_finished"), &SiMMLTrack::is_finished);
 }
 
 SiMMLTrack::SiMMLTrack() {
