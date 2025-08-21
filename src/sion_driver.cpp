@@ -41,6 +41,7 @@
 #include "sequencer/simml_ref_table.h"
 #include "sequencer/simml_sequencer.h"
 #include "sequencer/simml_track.h"
+#include "chip/channels/siopm_channel_base.h"
 #include "utils/fader_util.h"
 #include "utils/transformer_util.h"
 
@@ -1234,6 +1235,9 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_audio_stream"), &SiONDriver::get_audio_stream);
 	ClassDB::bind_method(D_METHOD("get_audio_playback"), &SiONDriver::get_audio_playback);
 
+	// Metering API
+	ClassDB::bind_method(D_METHOD("track_get_level", "track", "window_length"), &SiONDriver::track_get_level, DEFVAL(0));
+
 	// User-controllable track API
 	ClassDB::bind_method(D_METHOD("create_user_controllable_track", "track_id"), &SiONDriver::create_user_controllable_track, DEFVAL(0));
 
@@ -1571,6 +1575,24 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 // Pull model: _streaming() is obsolete, kept as no-op for notification hook compatibility.
 void SiONDriver::_streaming() {
     // Intentionally empty – audio is now delivered via generate_audio() inside _mix().
+}
+
+Vector2 SiONDriver::track_get_level(Object *p_track_obj, int p_window_length) {
+	SiMMLTrack *track = Object::cast_to<SiMMLTrack>(p_track_obj);
+	if (!track) {
+		return Vector2(0.0, 0.0);
+	}
+	SiOPMChannelBase *ch = track->get_channel();
+	if (!ch) {
+		return Vector2(0.0, 0.0);
+	}
+	// Post-fader approximation: scale channel meter by current master volume.
+	// Pan is constant-power, so we ignore it; future: implement bus-level post-mix meter.
+	Vector2 v = ch->get_recent_level(p_window_length);
+	double vol = ch->get_master_volume() * 0.0078125; // 1/128
+	v.x *= vol;
+	v.y *= vol;
+	return v;
 }
 
 // Thread-safe signal emission helper.
