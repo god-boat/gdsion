@@ -98,7 +98,7 @@ TypedArray<int> SiONVoice::get_params_ma3() const {
 }
 
 TypedArray<int> SiONVoice::get_params_al() const {
-	Vector<int> data = ::TranslatorUtil::get_ma3_params(channel_params);
+	Vector<int> data = ::TranslatorUtil::get_al_params(channel_params);
 	return make_typed_array_from_vector<int>(data);
 }
 
