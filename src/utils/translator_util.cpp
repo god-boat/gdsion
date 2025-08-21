@@ -733,7 +733,7 @@ Vector<int> TranslatorUtil::get_ma3_params(const Ref<SiOPMChannelParams> &p_para
 }
 
 Vector<int> TranslatorUtil::get_al_params(const Ref<SiOPMChannelParams> &p_params) {
-	if (p_params->operator_count != 5) {
+	if (p_params->operator_count != 2) {
 		return Vector<int>();
 	}
 
@@ -1130,7 +1130,7 @@ String TranslatorUtil::get_ma3_params_as_mml(const Ref<SiOPMChannelParams> &p_pa
 }
 
 String TranslatorUtil::get_al_params_as_mml(const Ref<SiOPMChannelParams> &p_params, String p_separator, String p_line_end, String p_comment) {
-	if (p_params->get_operator_count() != 5) {
+	if (p_params->get_operator_count() != 2) {
 		return "";
 	}
 
