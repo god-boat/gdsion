@@ -1059,6 +1059,17 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_disposable"), &SiMMLTrack::set_disposable);
 	ClassDB::bind_method(D_METHOD("is_disposable"), &SiMMLTrack::is_disposable);
 
+	// Envelope and modulation controls exposed to GDScript
+	ClassDB::bind_method(D_METHOD("set_portament", "frame"), &SiMMLTrack::set_portament);
+	ClassDB::bind_method(D_METHOD("set_envelope_fps", "fps"), &SiMMLTrack::set_envelope_fps);
+	ClassDB::bind_method(D_METHOD("set_release_sweep", "sweep"), &SiMMLTrack::set_release_sweep);
+	ClassDB::bind_method(D_METHOD("set_modulation_envelope", "is_pitch_mod", "depth", "end_depth", "delay", "term"), &SiMMLTrack::set_modulation_envelope);
+	ClassDB::bind_method(D_METHOD("set_tone_envelope", "note_on", "table", "step"), &SiMMLTrack::set_tone_envelope);
+	ClassDB::bind_method(D_METHOD("set_amplitude_envelope", "note_on", "table", "step", "offset"), &SiMMLTrack::set_amplitude_envelope, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("set_filter_envelope", "note_on", "table", "step"), &SiMMLTrack::set_filter_envelope);
+	ClassDB::bind_method(D_METHOD("set_pitch_envelope", "note_on", "table", "step"), &SiMMLTrack::set_pitch_envelope);
+	ClassDB::bind_method(D_METHOD("set_note_envelope", "note_on", "table", "step"), &SiMMLTrack::set_note_envelope);
+
 	// Real-time note control
 	ClassDB::bind_method(D_METHOD("key_on", "note", "tick_length", "sample_delay"), &SiMMLTrack::key_on, DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("key_off", "sample_delay", "with_reset"), &SiMMLTrack::key_off, DEFVAL(0), DEFVAL(false));
