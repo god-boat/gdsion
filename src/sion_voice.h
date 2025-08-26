@@ -78,7 +78,7 @@ public:
 	void set_amplitude_modulation(int p_depth = 0, int p_end_depth = 0, int p_delay = 0, int p_term = 0);
 	void set_pitch_modulation(int p_depth = 0, int p_end_depth = 0, int p_delay = 0, int p_term = 0);
 
-	// --- NEW: pitch_shift accessor ------------------------------------------------
+	// --- pitch_shift accessor ------------------------------------------------
 	int get_pitch_shift() const { return pitch_shift; }
 	void set_pitch_shift(int p_shift) { pitch_shift = p_shift; }
 	// -----------------------------------------------------------------------------

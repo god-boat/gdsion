@@ -10,6 +10,9 @@
 #include <godot_cpp/classes/random_number_generator.hpp>
 #include "sequencer/simml_voice.h"
 
+#include <godot_cpp/core/math.hpp>
+#include <cmath>
+
 using namespace godot;
 
 SiOPMRefTable *SiOPMRefTable::_instance = nullptr;
@@ -1231,6 +1234,15 @@ void SiOPMRefTable::_create_lfo_tables() {
 			int value = rng->randi_range(0, 255);
 			lfo_wave_tables[LFO_WAVE_NOISE][i] = value;
 			lfo_wave_tables[LFO_WAVE_NOISE + 4][i] = 255 - value;
+		}
+
+		// Sine wave.
+		for (int i = 0; i < LFO_TABLE_SIZE; i++) {
+			// Map sine (-1..1) to 0..255
+			double radians = (double)i / (double)LFO_TABLE_SIZE * Math_TAU;
+			int value = (int)( (sin(radians) * 0.5 + 0.5) * 255.0 + 0.5 );
+			lfo_wave_tables[LFO_WAVE_SINE][i] = value;
+			lfo_wave_tables[LFO_WAVE_SINE_INV][i] = 255 - value;
 		}
 	}
 

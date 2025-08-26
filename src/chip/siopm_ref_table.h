@@ -119,7 +119,15 @@ public:
 		LFO_WAVE_SQUARE   = 1,
 		LFO_WAVE_TRIANGLE = 2,
 		LFO_WAVE_NOISE    = 3,
-		LFO_WAVE_MAX      = 8 // Values 4-7 are pairs for the first 0-3.
+		// Inverted versions of the first four shapes retain the historical +4 offset.
+		LFO_WAVE_SAW_INV      = 4, // 0 + 4
+		LFO_WAVE_SQUARE_INV   = 5, // 1 + 4
+		LFO_WAVE_TRIANGLE_INV = 6, // 2 + 4
+		LFO_WAVE_NOISE_INV    = 7, // 3 + 4
+		// New sine wave shapes.
+		LFO_WAVE_SINE     = 8,
+		LFO_WAVE_SINE_INV = 9,
+		LFO_WAVE_MAX      = 10 // Total count of LFO wave shapes (0-9)
 	};
 
 	// All reference properties are made public to simplify code.
