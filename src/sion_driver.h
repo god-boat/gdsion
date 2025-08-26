@@ -12,6 +12,7 @@
 #include <godot_cpp/classes/audio_stream_generator_playback.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
 #include <godot_cpp/classes/node.hpp>
+#include <atomic>
 #include <godot_cpp/templates/hash_map.hpp>
 #include <godot_cpp/templates/list.hpp>
 #include <godot_cpp/templates/vector.hpp>
@@ -279,6 +280,45 @@ private:
 
 	void _emit_signal_thread_safe(const StringName &p_signal, const Variant &p_arg = Variant());
 
+	// --- Realtime mailbox (track-scoped SPSC ring, drained on audio thread) ------
+	struct _TrackUpdate {
+		int track_id = -1;
+		bool has_vol = false;
+		double vol_linear = 1.0;
+		bool has_pan = false;
+		int pan = 0;
+		bool has_filter = false;
+		int filter_cutoff = 128;
+		int filter_resonance = 0;
+		// FM operator fields (one flag per message; separate messages for separate params)
+		bool has_fm_op_tl = false;
+		bool has_fm_op_mul = false;
+		bool has_fm_op_fmul = false;
+		bool has_fm_op_dt1 = false;
+		bool has_fm_op_dt2 = false;
+		int op_index = 0;
+		int fm_value = 0;
+		// Channel modulation (FM-only currently)
+		bool has_ch_am = false;
+		int ch_am_depth = 0;
+		bool has_ch_pm = false;
+		int ch_pm_depth = 0;
+		// LFO frequency step
+		bool has_lfo_step = false;
+		int lfo_frequency_step = 0;
+		// LFO wave shape (new)
+		bool has_lfo_wave = false;
+		int lfo_wave_shape = 0;
+	};
+
+	static const int _MB_CAPACITY = 1024; // power of two for cheap wrap
+	_TrackUpdate _mb_ring[_MB_CAPACITY];
+	std::atomic<int> _mb_head { 0 }; // producer (main thread)
+	std::atomic<int> _mb_tail { 0 }; // consumer (audio thread)
+
+	bool _mb_try_push(const _TrackUpdate &p_update);
+	void _drain_track_mailbox();
+
 protected:
 	static void _bind_methods();
 
@@ -459,6 +499,22 @@ public:
 	// Per-track metering helper: returns Vector2(rms, peak) for a given SiMMLTrack
 	// If p_window_length <= 0, the driver's buffer length is used.
 	godot::Vector2 track_get_level(Object *p_track_obj, int p_window_length = 0);
+
+	// --- Mailbox API (call from main thread) -------------------------------------
+	void mailbox_set_track_volume(int p_track_id, double p_linear_volume);
+	void mailbox_set_track_pan(int p_track_id, int p_pan);
+	void mailbox_set_track_filter(int p_track_id, int p_cutoff, int p_resonance);
+	// FM operator params (by operator index)
+	void mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_multiple(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_fine_multiple(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_detune1(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_detune2(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_ch_am_depth(int p_track_id, int p_depth);
+	void mailbox_set_ch_pm_depth(int p_track_id, int p_depth);
+	void mailbox_set_lfo_frequency_step(int p_track_id, int p_step);
+	// New: LFO wave shape realtime update
+	void mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape);
 };
 
 #endif // SION_DRIVER_H

@@ -42,8 +42,10 @@
 #include "sequencer/simml_sequencer.h"
 #include "sequencer/simml_track.h"
 #include "chip/channels/siopm_channel_base.h"
+#include "chip/channels/siopm_channel_fm.h"
 #include "utils/fader_util.h"
 #include "utils/transformer_util.h"
+#include <atomic>
 
 // TODO: Extract somewhere more manageable?
 const char *SiONDriver::VERSION = "0.7.0.0"; // Original code was last versioned as 0.6.6.0.
@@ -388,6 +390,7 @@ void SiONDriver::_prepare_render(const Variant &p_data, int p_buffer_size, int p
 
 bool SiONDriver::_rendering() {
 	// Processing.
+	_drain_track_mailbox();
 	sound_chip->begin_process();
 	effector->begin_process();
 	sequencer->process();
@@ -1238,6 +1241,20 @@ void SiONDriver::_bind_methods() {
 	// Metering API
 	ClassDB::bind_method(D_METHOD("track_get_level", "track", "window_length"), &SiONDriver::track_get_level, DEFVAL(0));
 
+	// Mailbox bindings
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_volume", "track_id", "linear_volume"), &SiONDriver::mailbox_set_track_volume);
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_pan", "track_id", "pan"), &SiONDriver::mailbox_set_track_pan);
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter", "track_id", "cutoff", "resonance"), &SiONDriver::mailbox_set_track_filter);
+	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_total_level", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_total_level);
+	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_multiple", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_multiple);
+	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_fine_multiple", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_fine_multiple);
+	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_detune1", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_detune1);
+	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_detune2", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_detune2);
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_am_depth", "track_id", "depth"), &SiONDriver::mailbox_set_ch_am_depth);
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_pm_depth", "track_id", "depth"), &SiONDriver::mailbox_set_ch_pm_depth);
+	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_frequency_step", "track_id", "step"), &SiONDriver::mailbox_set_lfo_frequency_step);
+	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_wave_shape", "track_id", "wave_shape"), &SiONDriver::mailbox_set_lfo_wave_shape);
+
 	// User-controllable track API
 	ClassDB::bind_method(D_METHOD("create_user_controllable_track", "track_id"), &SiONDriver::create_user_controllable_track, DEFVAL(0));
 
@@ -1547,6 +1564,7 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 
     while (frames_generated < p_frames) {
         // Process one internal block to ensure sound_chip output is ready.
+        _drain_track_mailbox();
         sound_chip->begin_process();
         effector->begin_process();
         sequencer->process(); // generates _buffer_length stereo samples
@@ -1595,6 +1613,109 @@ Vector2 SiONDriver::track_get_level(Object *p_track_obj, int p_window_length) {
 	return v;
 }
 
+// --- Mailbox setters (main thread) --------------------------------------------
+void SiONDriver::mailbox_set_track_volume(int p_track_id, double p_linear_volume) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_vol = true;
+    u.vol_linear = p_linear_volume;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_track_pan(int p_track_id, int p_pan) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_pan = true;
+    u.pan = p_pan;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_track_filter(int p_track_id, int p_cutoff, int p_resonance) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_filter = true;
+    u.filter_cutoff = p_cutoff;
+    u.filter_resonance = p_resonance;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_fm_op_tl = true;
+    u.op_index = p_op_index;
+    u.fm_value = p_value;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_fm_op_multiple(int p_track_id, int p_op_index, int p_value) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_fm_op_mul = true;
+    u.op_index = p_op_index;
+    u.fm_value = p_value;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_fm_op_fine_multiple(int p_track_id, int p_op_index, int p_value) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_fm_op_fmul = true;
+    u.op_index = p_op_index;
+    u.fm_value = p_value;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_fm_op_detune1(int p_track_id, int p_op_index, int p_value) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_fm_op_dt1 = true;
+    u.op_index = p_op_index;
+    u.fm_value = p_value;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_fm_op_detune2(int p_track_id, int p_op_index, int p_value) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_fm_op_dt2 = true;
+    u.op_index = p_op_index;
+    u.fm_value = p_value;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_ch_am_depth(int p_track_id, int p_depth) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_ch_am = true;
+    u.ch_am_depth = p_depth;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_ch_pm_depth(int p_track_id, int p_depth) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_ch_pm = true;
+    u.ch_pm_depth = p_depth;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_lfo_frequency_step(int p_track_id, int p_step) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_lfo_step = true;
+    u.lfo_frequency_step = p_step;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_lfo_wave = true;
+    u.lfo_wave_shape = p_wave_shape;
+    _mb_try_push(u);
+}
+
 // Thread-safe signal emission helper.
 void SiONDriver::_emit_signal_thread_safe(const StringName &signal_name, const Variant &arg) {
     if (arg.get_type() == Variant::NIL) {
@@ -1602,4 +1723,87 @@ void SiONDriver::_emit_signal_thread_safe(const StringName &signal_name, const V
     } else {
         call_deferred("emit_signal", signal_name, arg);
     }
+}
+
+// --- Mailbox ring helpers -----------------------------------------------------
+
+bool SiONDriver::_mb_try_push(const _TrackUpdate &p_update) {
+    int head = _mb_head.load(std::memory_order_relaxed);
+    int tail = _mb_tail.load(std::memory_order_acquire);
+    int next = (head + 1) & (_MB_CAPACITY - 1);
+    if (next == tail) {
+        // Ring full: drop oldest by advancing tail
+        _mb_tail.store((tail + 1) & (_MB_CAPACITY - 1), std::memory_order_release);
+    }
+    _mb_ring[head] = p_update;
+    _mb_head.store(next, std::memory_order_release);
+    return true;
+}
+
+// --- Mailbox drain ------------------------------------------------------------
+void SiONDriver::_drain_track_mailbox() {
+    int tail = _mb_tail.load(std::memory_order_relaxed);
+    int head = _mb_head.load(std::memory_order_acquire);
+    while (tail != head) {
+        const _TrackUpdate &u = _mb_ring[tail];
+        tail = (tail + 1) & (_MB_CAPACITY - 1);
+        // Apply to all live tracks that match this track_id
+        for (SiMMLTrack *trk : sequencer->get_tracks()) {
+            if (!trk) continue;
+            if (trk->get_track_id() != u.track_id) continue;
+            SiOPMChannelBase *ch = trk->get_channel();
+            if (!ch) continue;
+            if (u.has_vol) {
+                int vol128 = (int)Math::round(CLAMP(u.vol_linear, 0.0, 2.0) * 128.0);
+                ch->set_master_volume(vol128);
+            }
+            if (u.has_pan) {
+                ch->set_pan(CLAMP(u.pan, -64, 64));
+            }
+            if (u.has_filter) {
+                ch->activate_filter(true);
+                // Stamp parameters once per message, then apply cutoff now
+                ch->set_sv_filter(u.filter_cutoff, u.filter_resonance);
+                ch->set_filter_cutoff_now(u.filter_cutoff);
+            }
+            if (u.has_ch_am) {
+                ch->set_amplitude_modulation(u.ch_am_depth);
+            }
+            if (u.has_ch_pm) {
+                ch->set_pitch_modulation(u.ch_pm_depth);
+            }
+            if (u.has_lfo_step) {
+                ch->set_lfo_frequency_step(u.lfo_frequency_step);
+            }
+            // FM operator updates
+            SiOPMChannelFM *fm = Object::cast_to<SiOPMChannelFM>(ch);
+            if (fm) {
+                if (u.has_fm_op_tl) {
+                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_total_level(u.fm_value);
+                }
+                if (u.has_fm_op_mul) {
+                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_multiple(u.fm_value);
+                }
+                if (u.has_fm_op_fmul) {
+                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_fine_multiple(u.fm_value);
+                }
+                if (u.has_fm_op_dt1) {
+                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_detune1(u.fm_value);
+                }
+                if (u.has_fm_op_dt2) {
+                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    // Interpret fm_value as PTSS detune index (engine uses ptss_detune)
+                    fm->set_detune(u.fm_value);
+                }
+            }
+            if (u.has_lfo_wave) {
+                ch->initialize_lfo(u.lfo_wave_shape); // resets LFO with new wave shape
+            }
+        }
+    }
+    _mb_tail.store(tail, std::memory_order_release);
 }
