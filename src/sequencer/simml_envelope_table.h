@@ -20,7 +20,7 @@ class SiMMLEnvelopeTable : public RefCounted {
 	SinglyLinkedList<int> *_data = nullptr;
 
 protected:
-	static void _bind_methods() {}
+	static void _bind_methods();
 
 public:
 	SinglyLinkedList<int> *get_data() const { return _data; }

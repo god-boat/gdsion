@@ -8,6 +8,10 @@
 
 #include "utils/translator_util.h"
 
+void SiMMLEnvelopeTable::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("parse_mml", "table_numbers", "postfix", "max_index"), &SiMMLEnvelopeTable::parse_mml, DEFVAL(""), DEFVAL(65536));
+}
+
 void SiMMLEnvelopeTable::set_data(SinglyLinkedList<int> *p_data) {
 	if (_data) {
 		memdelete(_data);
