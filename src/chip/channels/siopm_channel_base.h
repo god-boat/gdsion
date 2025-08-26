@@ -207,6 +207,7 @@ public:
 	virtual void set_frequency_ratio(int p_ratio) { _frequency_ratio = p_ratio; }
 	virtual void initialize_lfo(int p_waveform, Vector<int> p_custom_wave_table = Vector<int>());
 	virtual void set_lfo_cycle_time(double p_ms);
+	virtual void set_lfo_frequency_step(int p_value) { _lfo_timer = (p_value > 0 ? 1 : 0); _lfo_timer_step = p_value; _lfo_timer_step_buffer = p_value; }
 	virtual void set_amplitude_modulation(int p_depth) {}
 	virtual void set_pitch_modulation(int p_depth) {}
 
