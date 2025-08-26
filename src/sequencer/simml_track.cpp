@@ -1073,6 +1073,8 @@ void SiMMLTrack::_bind_methods() {
 	// Real-time note control
 	ClassDB::bind_method(D_METHOD("key_on", "note", "tick_length", "sample_delay"), &SiMMLTrack::key_on, DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("key_off", "sample_delay", "with_reset"), &SiMMLTrack::key_off, DEFVAL(0), DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("set_expression", "value"), &SiMMLTrack::set_expression);
+	ClassDB::bind_method(D_METHOD("set_velocity", "value"), &SiMMLTrack::set_velocity);
 
 	ClassDB::bind_method(D_METHOD("is_active"), &SiMMLTrack::is_active);
 	ClassDB::bind_method(D_METHOD("is_finished"), &SiMMLTrack::is_finished);
