@@ -667,6 +667,14 @@ void SiOPMChannelFM::set_fine_multiple(int p_value) {
 	_active_operator->set_fine_multiple(p_value);
 }
 
+void SiOPMChannelFM::set_multiple(int p_value) {
+	_active_operator->set_multiple(p_value);
+}
+
+void SiOPMChannelFM::set_detune1(int p_value) {
+	_active_operator->set_detune1(p_value);
+}
+
 void SiOPMChannelFM::set_phase(int p_value) {
 	_active_operator->set_key_on_phase(p_value);
 }

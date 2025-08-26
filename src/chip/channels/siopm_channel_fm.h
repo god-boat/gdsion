@@ -144,6 +144,9 @@ public:
 	virtual void set_release_rate(int p_value) override;
 	virtual void set_total_level(int p_value) override;
 	virtual void set_fine_multiple(int p_value) override;
+	// Helpers to set operator params on the active operator
+	void set_multiple(int p_value);
+	void set_detune1(int p_value);
 	virtual void set_phase(int p_value) override;
 	virtual void set_detune(int p_value) override;
 	virtual void set_fixed_pitch(int p_value) override;
