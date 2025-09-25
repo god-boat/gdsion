@@ -20,6 +20,7 @@
 #include "sequencer/simml_envelope_table.h"
 #include "sequencer/simml_ref_table.h"
 #include "sequencer/simml_voice.h"
+#include "utils/godot_util.h"
 
 SinglyLinkedList<int> *SiMMLTrack::_envelope_zero_table = nullptr;
 
@@ -528,95 +529,118 @@ int SiMMLTrack::_buffer_envelope(int p_length, int p_step) {
 	int remaining_length = p_length;
 	int current_step = p_step;
 
-	while (remaining_length >= current_step) {
-		// Process buffer.
-		if (current_step > 0) {
-			_channel->buffer(current_step);
+	// Buffer-size independent envelope processing:
+	// Process audio in chunks, advancing envelope steps proportionally
+	while (remaining_length > 0) {
+		// Determine how much audio to process in this iteration
+		int chunk_size = (current_step > 0) ? MIN(remaining_length, current_step) : remaining_length;
+		
+		// Process audio for this chunk
+		if (chunk_size > 0) {
+			_channel->buffer(chunk_size);
+			remaining_length -= chunk_size;
+			current_step -= chunk_size;
 		}
 
-		// Update expression.
-		if (_envelope_exp && _counter_exp == 1) {
-			_counter_exp--;
-
-			int expression = CLAMP(_envelope_exp_offset + _envelope_exp->value, 0, 128);
-			_channel->offset_volume(expression, _velocity);
-
-			_envelope_exp = _envelope_exp->next();
-			_counter_exp = _max_counter_exp;
-		}
-
-		// Update pitch/note.
-		if (_envelope_pitch_active) {
-			_channel->set_pitch(_envelope_pitch->value + (_envelope_note->value << 6) + (_sweep_pitch >> FIXED_BITS));
-
-			if (_counter_pitch == 1) {
-				_counter_pitch--;
-
-				_envelope_pitch = _envelope_pitch->next();
-				_counter_pitch = _max_counter_pitch;
+		// Check if it's time for an envelope step
+		if (current_step <= 0) {
+			// Advance all envelope counters
+			if (_counter_exp > 0) {
+				_counter_exp--;
 			}
-
-			if (_counter_note == 1) {
+			if (_counter_voice > 0) {
+				_counter_voice--;
+			}
+			if (_counter_note > 0) {
 				_counter_note--;
-
-				_envelope_note = _envelope_note->next();
-				_counter_note = _max_counter_note;
+			}
+			if (_counter_pitch > 0) {
+				_counter_pitch--;
+			}
+			if (_counter_filter > 0) {
+				_counter_filter--;
 			}
 
-			_sweep_pitch += _sweep_step;
-			if (_sweep_step > 0 && _sweep_pitch > _sweep_end) {
-				_sweep_pitch = _sweep_end;
-				_sweep_step = 0;
-			} else if (_sweep_step <= 0 && _sweep_pitch < _sweep_end) {
-				_sweep_pitch = _sweep_end;
-				_sweep_step = 0;
+			// Update expression.
+			if (_envelope_exp && _counter_exp == 0) {
+				int expression = CLAMP(_envelope_exp_offset + _envelope_exp->value, 0, 128);
+				_channel->offset_volume(expression, _velocity);
+
+				_envelope_exp = _envelope_exp->next();
+				_counter_exp = _max_counter_exp;
 			}
+
+			// Update pitch/note.
+			if (_envelope_pitch_active) {
+				// Safely read current envelope values; if either pointer is null the envelope has finished.
+				int pitch_env_val = _envelope_pitch ? _envelope_pitch->value : 0;
+				int note_env_val  = _envelope_note  ? _envelope_note->value  : 0;
+
+				_channel->set_pitch(pitch_env_val + (note_env_val << 6) + (_sweep_pitch >> FIXED_BITS));
+
+				// Advance pitch envelope.
+				if (_counter_pitch == 0 && _envelope_pitch) {
+					_envelope_pitch = _envelope_pitch->next();
+					_counter_pitch = _max_counter_pitch;
+				}
+
+				// Advance note envelope.
+				if (_counter_note == 0 && _envelope_note) {
+					_envelope_note = _envelope_note->next();
+					_counter_note = _max_counter_note;
+				}
+
+				// If either envelope reached the end, deactivate pitch-envelope processing to avoid nullptr deref.
+				if (!_envelope_pitch || !_envelope_note) {
+					_envelope_pitch_active = false;
+				}
+
+				_sweep_pitch += _sweep_step;
+				if (_sweep_step > 0 && _sweep_pitch > _sweep_end) {
+					_sweep_pitch = _sweep_end;
+					_sweep_step = 0;
+				} else if (_sweep_step <= 0 && _sweep_pitch < _sweep_end) {
+					_sweep_pitch = _sweep_end;
+					_sweep_step = 0;
+				}
+			}
+
+			// Update filter.
+			if (_envelope_filter && _counter_filter == 0) {
+				_channel->offset_filter(_envelope_filter->value);
+
+				_envelope_filter = _envelope_filter->next();
+				_counter_filter = _max_counter_filter;
+			}
+
+			// Update tone.
+			if (_envelope_voice && _counter_voice == 0) {
+				_channel_settings->select_tone(this, _envelope_voice->value);
+
+				_envelope_voice = _envelope_voice->next();
+				_counter_voice = _max_counter_voice;
+			}
+
+			// Update modulations.
+			if (_envelope_mod_amp && _envelope_mod_amp->get()) {
+				_channel->set_amplitude_modulation(_envelope_mod_amp->get()->value);
+				_envelope_mod_amp->next();
+			} else {
+				_envelope_mod_amp = nullptr;
+			}
+			if (_envelope_mod_pitch && _envelope_mod_pitch->get()) {
+				_channel->set_pitch_modulation(_envelope_mod_pitch->get()->value);
+				_envelope_mod_pitch->next();
+			} else {
+				_envelope_mod_pitch = nullptr;
+			}
+
+			// Reset step counter for next envelope interval
+			current_step = _envelope_interval;
 		}
-
-		// Update filter.
-		if (_envelope_filter && _counter_filter == 1) {
-			_counter_filter--;
-
-			_channel->offset_filter(_envelope_filter->value);
-
-			_envelope_filter = _envelope_filter->next();
-			_counter_filter = _max_counter_filter;
-		}
-
-		// Update tone.
-		if (_envelope_voice && _counter_voice == 1) {
-			_counter_voice--;
-
-			_channel_settings->select_tone(this, _envelope_voice->value);
-
-			_envelope_voice = _envelope_voice->next();
-			_counter_voice = _max_counter_voice;
-		}
-
-		// Update modulations.
-		if (_envelope_mod_amp && _envelope_mod_amp->get()) {
-			_channel->set_amplitude_modulation(_envelope_mod_amp->get()->value);
-			_envelope_mod_amp->next();
-		} else {
-			_envelope_mod_amp = nullptr;
-		}
-		if (_envelope_mod_pitch && _envelope_mod_pitch->get()) {
-			_channel->set_pitch_modulation(_envelope_mod_pitch->get()->value);
-			_envelope_mod_pitch->next();
-		} else {
-			_envelope_mod_pitch = nullptr;
-		}
-
-		remaining_length -= current_step;
-		current_step = _envelope_interval;
 	}
 
-	// Process the remainder.
-	if (remaining_length > 0) {
-		_channel->buffer(remaining_length);
-	}
-
-	return _envelope_interval - remaining_length;
+	return current_step;
 }
 
 void SiMMLTrack::_process_buffer(int p_length) {
@@ -802,11 +826,11 @@ void SiMMLTrack::_update_process(int p_key_on) {
 	_max_counter_pitch  = _setting_counter_pitch[p_key_on];
 	_max_counter_filter = _setting_counter_filter[p_key_on];
 
-	_counter_exp    = 1;
-	_counter_voice  = 1;
-	_counter_note   = 1;
-	_counter_pitch  = 1;
-	_counter_filter = 1;
+	_counter_exp    = _max_counter_exp;
+	_counter_voice  = _max_counter_voice;
+	_counter_note   = _max_counter_note;
+	_counter_pitch  = _max_counter_pitch;
+	_counter_filter = _max_counter_filter;
 
 	// Set modulation envelopes.
 	// The cursor reset matches the original behavior, but maybe it's unnecessary.
