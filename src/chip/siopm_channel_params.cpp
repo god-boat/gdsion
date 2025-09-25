@@ -183,6 +183,11 @@ void SiOPMChannelParams::initialize() {
 void SiOPMChannelParams::copy_from(const Ref<SiOPMChannelParams> &p_params) {
 	operator_count = p_params->operator_count;
 
+	// Preserve Analog-Like mode flag when cloning/copying voices.
+	// Without this, AL presets cloned via SiONVoice::clone() lose their
+	// special processing path and sound different.
+	set_analog_like(p_params->is_analog_like());
+
 	algorithm = p_params->algorithm;
 	feedback = p_params->feedback;
 	feedback_connection = p_params->feedback_connection;
