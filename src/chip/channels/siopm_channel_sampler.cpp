@@ -214,6 +214,36 @@ void SiOPMChannelSampler::buffer(int p_length) {
 			double volume = _volumes[0] * _expression * _sound_chip->get_sampler_volume();
 			stream->write_from_vector(&temp_buffer, 0, _buffer_index, samples_written, volume, _sample_pan, channels);
 		}
+
+		// ------------------------------------------------------------------
+		// Metering: copy channel output into the private meter ring so that
+		// higher-level code (ParamManager → MixerTrackUnit) can read recent
+		// peak/RMS levels.  We piggy-back on SiOPMChannelBase's internal
+		// ring-buffer helpers.  The ring stores 13-bit signed ints, so we
+		// convert the normalised double samples accordingly (~-1.0..1.0).
+		// ------------------------------------------------------------------
+		if (!_meter_pipe) {
+			_meter_pipe = memnew(SinglyLinkedList<int>(_sound_chip->get_buffer_length(), 0, true));
+			_meter_write_index = 0;
+			_meter_write_elem = _meter_pipe->get();
+		}
+		SinglyLinkedList<int>::Element *dst = _meter_write_elem;
+		for (int i = 0; i < samples_written; i++) {
+			// Use first channel sample for metering (mono) – adequate for peak/RMS.
+			double s = temp_buffer[i * channels];
+			int v = CLAMP((int)(s * 8192.0), -8192, 8191);
+			if (!dst) {
+				_meter_pipe->front();
+				dst = _meter_pipe->get();
+			}
+			dst->value = v;
+			dst = dst->next();
+			_meter_write_index++;
+			if (_meter_write_index >= _sound_chip->get_buffer_length()) {
+				_meter_write_index = 0;
+			}
+		}
+		_meter_write_elem = dst;
 	}
 
 	_buffer_index += p_length;
