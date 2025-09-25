@@ -21,6 +21,7 @@
 #include "sequencer/simml_envelope_table.h"
 #include "sequencer/simml_ref_table.h"
 #include "sequencer/simml_track.h"
+#include "utils/godot_util.h"
 
 using namespace godot;
 
