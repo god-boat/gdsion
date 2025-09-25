@@ -1254,6 +1254,12 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_pm_depth", "track_id", "depth"), &SiONDriver::mailbox_set_ch_pm_depth);
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_frequency_step", "track_id", "step"), &SiONDriver::mailbox_set_lfo_frequency_step);
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_wave_shape", "track_id", "wave_shape"), &SiONDriver::mailbox_set_lfo_wave_shape);
+	ClassDB::bind_method(D_METHOD("mailbox_set_envelope_freq_ratio", "track_id", "ratio"), &SiONDriver::mailbox_set_envelope_freq_ratio);
+	// Analog-Like (AL)
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws1", "track_id", "wave_shape"), &SiONDriver::mailbox_set_ch_al_ws1);
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws2", "track_id", "wave_shape"), &SiONDriver::mailbox_set_ch_al_ws2);
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_balance", "track_id", "balance"), &SiONDriver::mailbox_set_ch_al_balance);
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_detune2", "track_id", "detune2"), &SiONDriver::mailbox_set_ch_al_detune2);
 
 	// User-controllable track API
 	ClassDB::bind_method(D_METHOD("create_user_controllable_track", "track_id"), &SiONDriver::create_user_controllable_track, DEFVAL(0));
@@ -1716,6 +1722,46 @@ void SiONDriver::mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape) {
     _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_env_freq_ratio = true;
+    u.env_freq_ratio = p_ratio;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_al_ws1 = true;
+    u.al_ws1 = p_wave_shape;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_ch_al_ws2(int p_track_id, int p_wave_shape) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_al_ws2 = true;
+    u.al_ws2 = p_wave_shape;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_ch_al_balance(int p_track_id, int p_balance) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_al_balance = true;
+    u.al_balance = p_balance;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_ch_al_detune2(int p_track_id, int p_detune2) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.has_al_detune2 = true;
+    u.al_detune2 = p_detune2;
+    _mb_try_push(u);
+}
+
 // Thread-safe signal emission helper.
 void SiONDriver::_emit_signal_thread_safe(const StringName &signal_name, const Variant &arg) {
     if (arg.get_type() == Variant::NIL) {
@@ -1775,7 +1821,10 @@ void SiONDriver::_drain_track_mailbox() {
             if (u.has_lfo_step) {
                 ch->set_lfo_frequency_step(u.lfo_frequency_step);
             }
-            // FM operator updates
+            if (u.has_env_freq_ratio) {
+                ch->set_frequency_ratio(u.env_freq_ratio);
+            }
+            // FM operator updates and Analog-Like live params
             SiOPMChannelFM *fm = Object::cast_to<SiOPMChannelFM>(ch);
             if (fm) {
                 if (u.has_fm_op_tl) {
@@ -1798,6 +1847,33 @@ void SiONDriver::_drain_track_mailbox() {
                     fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
                     // Interpret fm_value as PTSS detune index (engine uses ptss_detune)
                     fm->set_detune(u.fm_value);
+                }
+                // Apply Analog-Like live params if present. These map to AL operator/channel fields.
+                if (u.has_al_ws1) {
+                    fm->set_active_operator_index(0);
+                    Ref<SiOPMWaveTable> wt = SiOPMRefTable::get_instance()->get_wave_table(u.al_ws1);
+                    SiONPitchTableType pt = wt.is_valid() ? wt->get_default_pitch_table_type() : (SiONPitchTableType)0;
+                    fm->set_types(u.al_ws1, pt);
+                }
+                if (u.has_al_ws2) {
+                    fm->set_active_operator_index(1);
+                    Ref<SiOPMWaveTable> wt2 = SiOPMRefTable::get_instance()->get_wave_table(u.al_ws2);
+                    SiONPitchTableType pt2 = wt2.is_valid() ? wt2->get_default_pitch_table_type() : (SiONPitchTableType)0;
+                    fm->set_types(u.al_ws2, pt2);
+                }
+                if (u.has_al_balance) {
+                    int bal = CLAMP(u.al_balance, -64, 64);
+                    int (&level_table)[129] = SiOPMRefTable::get_instance()->eg_linear_to_total_level_table;
+                    // Operator 0 TL = 64 - bal, Operator 1 TL = 64 + bal
+                    fm->set_active_operator_index(0);
+                    fm->set_total_level(level_table[64 - bal]);
+                    fm->set_active_operator_index(1);
+                    fm->set_total_level(level_table[bal + 64]);
+                }
+                if (u.has_al_detune2) {
+                    // Apply as PTSS detune on operator 1 only (op1 is the second operator)
+                    fm->set_active_operator_index(1);
+                    fm->set_detune(u.al_detune2);
                 }
             }
             if (u.has_lfo_wave) {

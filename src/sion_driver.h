@@ -309,6 +309,18 @@ private:
 		// LFO wave shape (new)
 		bool has_lfo_wave = false;
 		int lfo_wave_shape = 0;
+		// Envelope frequency ratio (channel)
+		bool has_env_freq_ratio = false;
+		int env_freq_ratio = 100;
+		// Analog-Like (AL) live params
+		bool has_al_ws1 = false;
+		int al_ws1 = 0;
+		bool has_al_ws2 = false;
+		int al_ws2 = 0;
+		bool has_al_balance = false;
+		int al_balance = 0;
+		bool has_al_detune2 = false;
+		int al_detune2 = 0;
 	};
 
 	static const int _MB_CAPACITY = 1024; // power of two for cheap wrap
@@ -513,8 +525,13 @@ public:
 	void mailbox_set_ch_am_depth(int p_track_id, int p_depth);
 	void mailbox_set_ch_pm_depth(int p_track_id, int p_depth);
 	void mailbox_set_lfo_frequency_step(int p_track_id, int p_step);
-	// New: LFO wave shape realtime update
 	void mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape);
+	void mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio);
+	// Analog-Like (AL) mailboxes
+	void mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape);
+	void mailbox_set_ch_al_ws2(int p_track_id, int p_wave_shape);
+	void mailbox_set_ch_al_balance(int p_track_id, int p_balance);
+	void mailbox_set_ch_al_detune2(int p_track_id, int p_detune2);
 };
 
 #endif // SION_DRIVER_H
