@@ -111,7 +111,8 @@ void SiOPMChannelKS::_set_lfo_state(bool p_enabled) {
 void SiOPMChannelKS::note_on() {
 	_output = 0;
 
-	for (int i = 0; i < KS_BUFFER_SIZE; i++) {
+	int __buf_size = _ks_delay_buffer.size();
+	for (int i = 0; i < __buf_size; i++) {
 		_ks_delay_buffer.write[i] *= 0.3;
 	}
 
@@ -161,6 +162,11 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 			_ks_delay_buffer_index = Math::fmod(_ks_delay_buffer_index, wave_length_max);
 		}
 		int buffer_index = (int)_ks_delay_buffer_index;
+		// Safety clamp in case buffer length exceeds current allocation.
+		int __db_size = _ks_delay_buffer.size();
+		if (__db_size > 0 && buffer_index >= __db_size) {
+			buffer_index %= __db_size;
+		}
 
 		_output *= _decay;
 		_output += (_ks_delay_buffer[buffer_index] - _output) * _decay_lpf + target->value;
@@ -240,6 +246,18 @@ void SiOPMChannelKS::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	set_params_by_value(48, 48, 0, 63, 15, 0, 0, 0, 1, 0, 0, 0, -1, 0);
 	_active_operator->set_pulse_generator_type(SiONPulseGeneratorType::PULSE_NOISE_PINK);
 	_active_operator->set_pitch_table_type(SiONPitchTableType::PITCH_TABLE_PCM);
+
+	// Dynamically size the KS delay buffer based on the current sampling rate.
+	// Use the maximum wave length (lowest pitch) from the reference table.
+	if (_table) {
+		int required = (int)Math::ceil(_table->pitch_wave_length[0]) + 16; // small margin
+		if (required < 1) {
+			required = 1;
+		}
+		if (_ks_delay_buffer.size() != required) {
+			_ks_delay_buffer.resize_zeroed(required);
+		}
+	}
 }
 
 void SiOPMChannelKS::reset() {
