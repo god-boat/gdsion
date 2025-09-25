@@ -261,6 +261,7 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 #define COPY_NOTE_ENVELOPE(m_prop)            \
 	m_prop = Ref<SiMMLEnvelopeTable>();       \
 	if (p_source->m_prop.is_valid()) {        \
+		m_prop.instantiate();                 \
 		m_prop->copy_from(p_source->m_prop);  \
 	}
 
