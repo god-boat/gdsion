@@ -60,8 +60,18 @@ void SiONVoicePresetUtil::_generate_default_voices() {
 	_create_percussive_voice("openedhh",  "Opened Hi-Hat (1 op)", 19, 63, 28, 0);
 	_create_percussive_voice("crash",     "Crash Symbal (1 op)",  16, 48, 24, 0);
 
+	_create_analog_voice("dualsine",     "Dual Sine",   0, 0, 0, 0, 8);
 	_create_analog_voice("dualsaw",      "Dual Saw",      0, 1, 1, 0, 8);
 	_create_analog_voice("dualsquare",   "Dual Square",   0, 5, 5, 0, 8);
+	_create_analog_voice("dualtriangle8", "Dual 8-bit Triangle", 0, 3, 3, 0, 8);
+	_create_analog_voice("dualtriangle", "Dual Triangle", 0, 4, 4, 0, 8);
+	_create_analog_voice("dualnoise",    "Dual Noise",    0, 6, 6, 0, 8);
+	_create_analog_voice("dualsnoise",   "Dual 93-bit Noise", 0, 16, 16, 0, 8);
+	_create_analog_voice("dualramp",     "Dual Ramp",     0, 160, 160, 0, 8);
+	_create_analog_voice("dualbeep",     "Dual Beep",     0, 81, 81, 0, 8);
+	_create_analog_voice("dualma3",      "Dual MA-3",     0, 33, 33, 0, 8);
+	_create_analog_voice("dualkonami",   "Dual Konami",   0, 7, 7, 0, 8);
+
 }
 
 void SiONVoicePresetUtil::_generate_valsound_voices() {
