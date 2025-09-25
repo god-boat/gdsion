@@ -328,6 +328,14 @@ void SiONVoice::set_filter_envelope(int p_filter_type, int p_cutoff, int p_reson
 	channel_params->set_filter_release_offset(p_release_cutoff);
 }
 
+void SiONVoice::set_pitch_envelope(TypedArray<int> p_envelope, int p_loop_point, int p_step) {
+	Vector<int> envelope_vector = make_vector_from_typed_array<int>(p_envelope);
+	UtilityFunctions::print("SiONVoice::set_pitch_envelope - envelope size: ", envelope_vector.size(), " first value: ", (envelope_vector.size() > 0 ? envelope_vector[0] : -999));
+	Ref<SiMMLEnvelopeTable> envelope = memnew(SiMMLEnvelopeTable(envelope_vector, p_loop_point));
+	UtilityFunctions::print("SiONVoice::set_pitch_envelope - envelope table created, is_null: ", envelope.is_null());
+	set_note_on_pitch_envelope(envelope, p_step);
+}
+
 void SiONVoice::set_amplitude_modulation(int p_depth, int p_end_depth, int p_delay, int p_term) {
 	amplitude_modulation_depth = p_depth;
 	channel_params->set_amplitude_modulation_depth(p_depth);
@@ -403,6 +411,7 @@ void SiONVoice::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_envelope", "attack_rate", "decay_rate", "sustain_rate", "release_rate", "sustain_level", "total_level"), &SiONVoice::set_envelope);
 	ClassDB::bind_method(D_METHOD("set_filter_envelope", "filter_type", "cutoff", "resonance", "attack_rate", "decay_rate1", "decay_rate2", "release_rate", "decay_cutoff1", "decay_cutoff2", "sustain_cutoff", "release_cutoff"), &SiONVoice::set_filter_envelope, DEFVAL(0), DEFVAL(128), DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(128), DEFVAL(64), DEFVAL(32), DEFVAL(128));
+	ClassDB::bind_method(D_METHOD("set_pitch_envelope", "envelope", "loop_point", "step"), &SiONVoice::set_pitch_envelope, DEFVAL(-1), DEFVAL(1));
 	ClassDB::bind_method(D_METHOD("set_amplitude_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_amplitude_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_pitch_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_pitch_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
 

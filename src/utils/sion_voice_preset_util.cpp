@@ -899,6 +899,26 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 		0,15,8,0,8,0,0,0,1,0,0,0    // op-4
 	});                                // 2 + 12×4 = 50 ints
 
+	// --- Custom preset with pitch envelope ---------------------------------
+	{
+		Ref<SiONVoice> voice = memnew(SiONVoice);
+		voice->set_analog_like(0, 0, 0, 0, 0);          // simple dual-saw patch
+		
+		// Create pitch envelope: start at +12 semitones, decay to 0 over 12 steps
+		Vector<int> pitch_env;
+		for (int i = 0; i < 12; i++) {
+			int pitch_value = 768 - (768 * i / 11);   // Linear decay from 768 (12 semitones) to 0
+			pitch_env.append(pitch_value);
+		}
+		pitch_env.append(0);  // Sustain at 0
+		voice->set_pitch_envelope(
+			make_typed_array_from_vector<int>(pitch_env),   // <- wrap here
+			12);                                            // loop index
+		
+		voice->set_name("Swoop Lead (Pitch Env)");
+		_register_voice("extra.opx.swooplead", voice);
+	}
+
 	// ------------------ FM (OPX) ------------------
 	_create_opx_voice("extra.opx.pad", "Warm Pad OPX", {
 		// AL FB

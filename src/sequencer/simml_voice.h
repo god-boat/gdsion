@@ -75,6 +75,15 @@ protected:
 	// PMS guitar tension.
 	int pms_tension = 8;
 
+	void set_note_on_pitch_envelope(const Ref<SiMMLEnvelopeTable> &p_envelope, int p_step = 1) {
+		note_on_pitch_envelope = p_envelope;
+		note_on_pitch_envelope_step = p_step;
+	}
+	
+	Ref<SiMMLEnvelopeTable> get_note_on_pitch_envelope() const {
+		return note_on_pitch_envelope;
+	}
+
 	// Params for the FM sound channel.
 	Ref<SiOPMChannelParams> channel_params;
 	Ref<SiOPMWaveBase> wave_data;

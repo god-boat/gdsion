@@ -75,6 +75,7 @@ public:
 
 	void set_envelope(int p_attack_rate, int p_decay_rate, int p_sustain_rate, int p_release_rate, int p_sustain_level, int p_total_level);
 	void set_filter_envelope(int p_filter_type = 0, int p_cutoff = 128, int p_resonance = 0, int p_attack_rate = 0, int p_decay_rate1 = 0, int p_decay_rate2 = 0, int p_release_rate = 0, int p_decay_cutoff1 = 128, int p_decay_cutoff2 = 64, int p_sustain_cutoff = 32, int p_release_cutoff = 128);
+	void set_pitch_envelope(TypedArray<int> p_envelope, int p_loop_point = -1, int p_step = 1);
 	void set_amplitude_modulation(int p_depth = 0, int p_end_depth = 0, int p_delay = 0, int p_term = 0);
 	void set_pitch_modulation(int p_depth = 0, int p_end_depth = 0, int p_delay = 0, int p_term = 0);
 
