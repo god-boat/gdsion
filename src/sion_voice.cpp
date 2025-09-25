@@ -406,6 +406,8 @@ void SiONVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_amplitude_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_amplitude_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_pitch_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_pitch_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
 
+	ClassDB::bind_method(D_METHOD("clone"), &SiONVoice::clone);
+
 	ClassDB::bind_method(D_METHOD("set_sampler_wave", "index", "data", "ignore_note_off", "pan", "src_channel_count", "channel_count", "fixed_pitch"), &SiONVoice::set_sampler_wave, DEFVAL(false), DEFVAL(0), DEFVAL(2), DEFVAL(0), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("set_sampler_voice", "data", "ignore_note_off", "channel_count"), &SiONVoice::set_sampler_voice, DEFVAL(false), DEFVAL(2));
 	ClassDB::bind_method(D_METHOD("set_sampler_table", "table"), &SiONVoice::set_sampler_table);
