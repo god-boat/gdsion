@@ -63,6 +63,11 @@ public:
 	// Update KS parameters at runtime without touching algorithm/process function.
 	void apply_ks_runtime_params(int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension);
 
+	// Helper: apply channel and optional PCM wave settings from standard params.
+	// This maps the first operator's params (AR, DR, TL, fixed pitch, waveform) and
+	// applies KS-specific runtime updates and tension without altering the algorithm.
+	void apply_voice_params(const Ref<class SiOPMChannelParams> &p_params, const Ref<class SiOPMWaveBase> &p_wave_data, int p_tension);
+
 	virtual void set_parameters(Vector<int> p_params) override;
 	virtual void set_types(int p_pg_type, SiONPitchTableType p_pt_type) override;
 	virtual void set_all_attack_rate(int p_value) override;

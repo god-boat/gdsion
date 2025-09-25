@@ -11,6 +11,7 @@
 #include <godot_cpp/core/object.hpp>
 
 #include "sion_enums.h"
+#include "chip/channels/siopm_channel_ks.h"
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/siopm_operator_params.h"
 #include "chip/wave/siopm_wave_pcm_data.h"
@@ -87,12 +88,21 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 		} break;
 
 		case SiONModuleType::MODULE_KS: { // PMS Guitar (%11)
+		// Fast-path: if the current channel is already KS, update parameters in-place
+		// to avoid replacing the channel object while the audio thread is running.
+		SiOPMChannelBase *base_ch = p_track->get_channel();
+		SiOPMChannelKS *ks_ch = (base_ch ? dynamic_cast<SiOPMChannelKS *>(base_ch) : nullptr);
+		if (ks_ch) {
+			ks_ch->apply_voice_params(channel_params, is_pcm_voice() ? wave_data : Ref<SiOPMWaveBase>(), pms_tension);
+		} else {
+			// Channel type differs – perform a full rebind once, then use the in-place path.
 			p_track->set_channel_module_type(SiONModuleType::MODULE_KS, 1);
-			p_track->get_channel()->set_channel_params(channel_params, false);
-			p_track->get_channel()->set_all_release_rate(pms_tension);
-			if (is_pcm_voice()) {
-				p_track->get_channel()->set_wave_data(wave_data);
+			base_ch = p_track->get_channel();
+			ks_ch = (base_ch ? dynamic_cast<SiOPMChannelKS *>(base_ch) : nullptr);
+			if (ks_ch) {
+				ks_ch->apply_voice_params(channel_params, is_pcm_voice() ? wave_data : Ref<SiOPMWaveBase>(), pms_tension);
 			}
+		}
 		} break;
 
 		default: { // Other sound modules.

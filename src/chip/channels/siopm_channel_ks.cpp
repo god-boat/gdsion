@@ -12,6 +12,7 @@
 #include "chip/siopm_stream.h"
 #include "chip/wave/siopm_wave_pcm_table.h"
 #include "chip/wave/siopm_wave_table.h"
+#include "chip/siopm_channel_params.h"
 #include "sequencer/simml_ref_table.h"
 #include "sequencer/simml_voice.h"
 
@@ -46,6 +47,25 @@ void SiOPMChannelKS::apply_ks_runtime_params(int p_attack_rate, int p_decay_rate
 		_active_operator->set_pitch_table_type(wave_table->get_default_pitch_table_type());
 	}
 	set_all_release_rate(p_tension);
+}
+
+void SiOPMChannelKS::apply_voice_params(const Ref<SiOPMChannelParams> &p_params, const Ref<SiOPMWaveBase> &p_wave_data, int p_tension) {
+	if (p_params.is_null() || p_params->get_operator_count() == 0) {
+		return;
+	}
+
+	Ref<SiOPMOperatorParams> op = p_params->get_operator_params(0);
+	int ar  = op->get_attack_rate();
+	int dr  = op->get_decay_rate();
+	int tl  = op->get_total_level();
+	int fix = op->get_fixed_pitch() >> 6; // engine expects MIDI note number
+	int ws  = op->get_pulse_generator_type();
+
+	apply_ks_runtime_params(ar, dr, tl, fix, ws, p_tension);
+
+	if (p_wave_data.is_valid()) {
+		set_wave_data(p_wave_data);
+	}
 }
 
 void SiOPMChannelKS::set_parameters(Vector<int> p_params) {
