@@ -60,6 +60,8 @@ protected:
 
 public:
 	void set_karplus_strong_params(int p_attack_rate = 48, int p_decay_rate = 48, int p_total_level = 0, int p_fixed_pitch = 0, int p_wave_shape = -1, int p_tension = 8);
+	// Update KS parameters at runtime without touching algorithm/process function.
+	void apply_ks_runtime_params(int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension);
 
 	virtual void set_parameters(Vector<int> p_params) override;
 	virtual void set_types(int p_pg_type, SiONPitchTableType p_pt_type) override;

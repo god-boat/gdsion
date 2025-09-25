@@ -34,6 +34,20 @@ void SiOPMChannelKS::set_karplus_strong_params(int p_attack_rate, int p_decay_ra
 	set_all_release_rate(p_tension);
 }
 
+void SiOPMChannelKS::apply_ks_runtime_params(int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension) {
+	// Apply changes similar to set_karplus_strong_params but without touching algorithm or feedback routing.
+	_active_operator->set_attack_rate(p_attack_rate);
+	_active_operator->set_decay_rate(p_decay_rate > 48 ? 48 : p_decay_rate);
+	_active_operator->set_total_level(p_total_level > 127 ? 127 : p_total_level);
+	_active_operator->set_fixed_pitch_index(p_fixed_pitch << 6);
+	_active_operator->set_pulse_generator_type(p_wave_shape);
+	{
+		Ref<SiOPMWaveTable> wave_table = _table->get_wave_table(_active_operator->get_pulse_generator_type());
+		_active_operator->set_pitch_table_type(wave_table->get_default_pitch_table_type());
+	}
+	set_all_release_rate(p_tension);
+}
+
 void SiOPMChannelKS::set_parameters(Vector<int> p_params) {
 	_ks_seed_type = (p_params[0] == INT32_MIN ? KS_SEED_DEFAULT : (KSSeedType)p_params[0]);
 	_ks_seed_index = (p_params[1] == INT32_MIN ? 0 : p_params[1]);
