@@ -1102,6 +1102,10 @@ void SiMMLTrack::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("is_active"), &SiMMLTrack::is_active);
 	ClassDB::bind_method(D_METHOD("is_finished"), &SiMMLTrack::is_finished);
+
+	// Mute controls
+	ClassDB::bind_method(D_METHOD("is_mute"), &SiMMLTrack::is_mute);
+	ClassDB::bind_method(D_METHOD("set_mute", "value"), &SiMMLTrack::set_mute);
 }
 
 SiMMLTrack::SiMMLTrack() {
