@@ -290,6 +290,25 @@ private:
 		bool has_filter = false;
 		int filter_cutoff = 128;
 		int filter_resonance = 0;
+		// Filter extended params
+		bool has_filter_type = false;
+		int filter_type = 0;
+		bool has_filter_ar = false;
+		int filter_ar = 0;
+		bool has_filter_dr1 = false;
+		int filter_dr1 = 0;
+		bool has_filter_dr2 = false;
+		int filter_dr2 = 0;
+		bool has_filter_rr = false;
+		int filter_rr = 0;
+		bool has_filter_dc1 = false;
+		int filter_dc1 = 128;
+		bool has_filter_dc2 = false;
+		int filter_dc2 = 64;
+		bool has_filter_sc = false;
+		int filter_sc = 32;
+		bool has_filter_rc = false;
+		int filter_rc = 128;
 		// FM operator fields (one flag per message; separate messages for separate params)
 		bool has_fm_op_tl = false;
 		bool has_fm_op_mul = false;
@@ -323,10 +342,30 @@ private:
 		int al_detune2 = 0;
 	};
 
+	// Per-track cached filter state for merging partial updates
+	struct _FilterState {
+		bool initialized = false;
+		int type = 0;
+		int cutoff = 128;
+		int resonance = 0;
+		int ar = 0;
+		int dr1 = 0;
+		int dr2 = 0;
+		int rr = 0;
+		int dc1 = 128;
+		int dc2 = 64;
+		int sc = 32;
+		int rc = 128;
+	};
+
 	static const int _MB_CAPACITY = 1024; // power of two for cheap wrap
 	_TrackUpdate _mb_ring[_MB_CAPACITY];
 	std::atomic<int> _mb_head { 0 }; // producer (main thread)
 	std::atomic<int> _mb_tail { 0 }; // consumer (audio thread)
+
+	// Cache for filter params per track
+	HashMap<int, _FilterState> _filter_state_cache;
+	_FilterState &_ensure_filter_state(int p_track_id);
 
 	bool _mb_try_push(const _TrackUpdate &p_update);
 	void _drain_track_mailbox();
@@ -515,7 +554,18 @@ public:
 	// --- Mailbox API (call from main thread) -------------------------------------
 	void mailbox_set_track_volume(int p_track_id, double p_linear_volume);
 	void mailbox_set_track_pan(int p_track_id, int p_pan);
-	void mailbox_set_track_filter(int p_track_id, int p_cutoff, int p_resonance);
+	void mailbox_set_track_filter(int p_track_id, int p_cutoff, int p_resonance, int p_type = -1, int p_attack_rate = -1, int p_decay_rate1 = -1, int p_decay_rate2 = -1, int p_release_rate = -1, int p_decay_cutoff1 = -1, int p_decay_cutoff2 = -1, int p_sustain_cutoff = -1, int p_release_cutoff = -1);
+	void mailbox_set_track_filter_type(int p_track_id, int p_type);
+	void mailbox_set_track_filter_cutoff(int p_track_id, int p_cutoff);
+	void mailbox_set_track_filter_resonance(int p_track_id, int p_resonance);
+	void mailbox_set_track_filter_attack_rate(int p_track_id, int p_value);
+	void mailbox_set_track_filter_decay_rate1(int p_track_id, int p_value);
+	void mailbox_set_track_filter_decay_rate2(int p_track_id, int p_value);
+	void mailbox_set_track_filter_release_rate(int p_track_id, int p_value);
+	void mailbox_set_track_filter_decay_cutoff1(int p_track_id, int p_value);
+	void mailbox_set_track_filter_decay_cutoff2(int p_track_id, int p_value);
+	void mailbox_set_track_filter_sustain_cutoff(int p_track_id, int p_value);
+	void mailbox_set_track_filter_release_cutoff(int p_track_id, int p_value);
 	// FM operator params (by operator index)
 	void mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value);
 	void mailbox_set_fm_op_multiple(int p_track_id, int p_op_index, int p_value);
