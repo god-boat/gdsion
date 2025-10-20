@@ -117,6 +117,14 @@ void SiOPMChannelFM::get_channel_params(const Ref<SiOPMChannelParams> &p_params)
 	for (int i = 0; i < _operator_count; i++) {
 		_operators[i]->get_operator_params(p_params->get_operator_params(i));
 	}
+
+	// Build carrier mask reflecting current routing
+	PackedInt32Array mask;
+	mask.resize(_operator_count);
+	for (int i = 0; i < _operator_count; i++) {
+		mask.set(i, _operators[i]->is_final() ? 1 : 0);
+	}
+	p_params->set_carrier_mask(mask);
 }
 
 void SiOPMChannelFM::set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation) {

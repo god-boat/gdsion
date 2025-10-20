@@ -11,6 +11,7 @@
 #include <godot_cpp/templates/list.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/string.hpp>
+#include <godot_cpp/variant/packed_int32_array.hpp>
 
 using namespace godot;
 
@@ -48,6 +49,8 @@ private:
 	int pitch_modulation_depth = 0;
 	Vector<double> master_volumes;
 	int pan = 0;
+	// 1 = carrier, 0 = modulator; sized to operator_count
+	PackedInt32Array carrier_mask;
 
 	int filter_type = 0;
 	int filter_cutoff = 0;
@@ -101,6 +104,10 @@ public:
 
 	int get_pan() const { return pan; }
 	void set_pan(int p_value) { pan = p_value; }
+
+	// Carriers vs modulators mask accessor
+	PackedInt32Array get_carrier_mask() const { return carrier_mask; }
+	void set_carrier_mask(const PackedInt32Array &p_mask) { carrier_mask = p_mask; }
 
 	int get_filter_type() const { return filter_type; }
 	void set_filter_type(int p_value) { filter_type = p_value; }

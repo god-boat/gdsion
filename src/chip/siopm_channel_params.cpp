@@ -161,6 +161,10 @@ void SiOPMChannelParams::initialize() {
 	master_volumes.write[0] = 0.5;
 	pan = 64;
 
+	carrier_mask.clear();
+	carrier_mask.resize(1);
+	carrier_mask.set(0, 1);
+
 	filter_type = 0;
 	filter_cutoff = 128;
 	filter_resonance = 0;
@@ -203,6 +207,8 @@ void SiOPMChannelParams::copy_from(const Ref<SiOPMChannelParams> &p_params) {
 		master_volumes.write[i] = p_params->master_volumes[i];
 	}
 	pan = p_params->pan;
+
+	carrier_mask = p_params->carrier_mask;
 
 	filter_type = p_params->filter_type;
 	filter_cutoff = p_params->filter_cutoff;
@@ -320,6 +326,10 @@ void SiOPMChannelParams::_bind_methods() {
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "pitch_modulation_depth"), "set_pitch_modulation_depth", "get_pitch_modulation_depth");
 
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "pan"), "set_pan", "get_pan");
+
+	ClassDB::bind_method(D_METHOD("get_carrier_mask"), &SiOPMChannelParams::get_carrier_mask);
+	ClassDB::bind_method(D_METHOD("set_carrier_mask", "mask"), &SiOPMChannelParams::set_carrier_mask);
+	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::PACKED_INT32_ARRAY, "carrier_mask"), "set_carrier_mask", "get_carrier_mask");
 
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "filter_type"), "set_filter_type", "get_filter_type");
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "filter_cutoff"), "set_filter_cutoff", "get_filter_cutoff");
