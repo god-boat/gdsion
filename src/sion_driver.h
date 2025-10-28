@@ -288,6 +288,8 @@ private:
 		bool has_pan = false;
 		int pan = 0;
 		bool has_filter = false;
+		bool has_filter_cutoff = false;
+		bool has_filter_resonance = false;
 		int filter_cutoff = 128;
 		int filter_resonance = 0;
 		// Filter extended params

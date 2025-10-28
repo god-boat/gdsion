@@ -1669,10 +1669,10 @@ void SiONDriver::mailbox_set_track_filter_type(int p_track_id, int p_type) {
     _TrackUpdate u; u.track_id = p_track_id; u.has_filter_type = true; u.filter_type = p_type; _mb_try_push(u);
 }
 void SiONDriver::mailbox_set_track_filter_cutoff(int p_track_id, int p_cutoff) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter = true; u.filter_cutoff = p_cutoff; _mb_try_push(u);
+    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_cutoff = true; u.filter_cutoff = p_cutoff; _mb_try_push(u);
 }
 void SiONDriver::mailbox_set_track_filter_resonance(int p_track_id, int p_resonance) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter = true; u.filter_resonance = p_resonance; _mb_try_push(u);
+    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_resonance = true; u.filter_resonance = p_resonance; _mb_try_push(u);
 }
 void SiONDriver::mailbox_set_track_filter_attack_rate(int p_track_id, int p_value) {
     _TrackUpdate u; u.track_id = p_track_id; u.has_filter_ar = true; u.filter_ar = p_value; _mb_try_push(u);
@@ -1861,13 +1861,15 @@ void SiONDriver::_drain_track_mailbox() {
                 ch->set_pan(CLAMP(u.pan, -64, 64));
             }
             // Merge and apply filter state
-            if (u.has_filter || u.has_filter_type || u.has_filter_ar || u.has_filter_dr1 || u.has_filter_dr2 || u.has_filter_rr || u.has_filter_dc1 || u.has_filter_dc2 || u.has_filter_sc || u.has_filter_rc) {
+            if (u.has_filter || u.has_filter_type || u.has_filter_ar || u.has_filter_dr1 || u.has_filter_dr2 || u.has_filter_rr || u.has_filter_dc1 || u.has_filter_dc2 || u.has_filter_sc || u.has_filter_rc || u.has_filter_cutoff || u.has_filter_resonance) {
                 _FilterState &fs = _ensure_filter_state(u.track_id);
                 if (u.has_filter_type) fs.type = CLAMP(u.filter_type, 0, 2);
                 if (u.has_filter) {
                     fs.cutoff = CLAMP(u.filter_cutoff, 0, 128);
                     fs.resonance = CLAMP(u.filter_resonance, 0, 9);
                 }
+                if (u.has_filter_cutoff) fs.cutoff = CLAMP(u.filter_cutoff, 0, 128);
+                if (u.has_filter_resonance) fs.resonance = CLAMP(u.filter_resonance, 0, 9);
                 if (u.has_filter_ar) fs.ar = CLAMP(u.filter_ar, 0, 255);
                 if (u.has_filter_dr1) fs.dr1 = CLAMP(u.filter_dr1, 0, 255);
                 if (u.has_filter_dr2) fs.dr2 = CLAMP(u.filter_dr2, 0, 255);
@@ -1876,12 +1878,40 @@ void SiONDriver::_drain_track_mailbox() {
                 if (u.has_filter_dc2) fs.dc2 = CLAMP(u.filter_dc2, 0, 128);
                 if (u.has_filter_sc) fs.sc = CLAMP(u.filter_sc, 0, 128);
                 if (u.has_filter_rc) fs.rc = CLAMP(u.filter_rc, 0, 128);
-                fs.initialized = true;
-
-                ch->activate_filter(true);
-                ch->set_filter_type(fs.type);
-                ch->set_sv_filter(fs.cutoff, fs.resonance, fs.ar, fs.dr1, fs.dr2, fs.rr, fs.dc1, fs.dc2, fs.sc, fs.rc);
-                ch->set_filter_cutoff_now(fs.cutoff);
+                // Decide apply policy: full restamp vs lightweight updates
+                bool need_full_apply = u.has_filter || u.has_filter_type || u.has_filter_ar || u.has_filter_dr1 || u.has_filter_dr2 || u.has_filter_rr || u.has_filter_dc1 || u.has_filter_dc2 || u.has_filter_sc || u.has_filter_rc;
+                auto restamp = [&]() {
+                    fs.initialized = true;
+                    ch->activate_filter(true);
+                    ch->set_filter_type(fs.type);
+                    ch->set_sv_filter(fs.cutoff, fs.resonance, fs.ar, fs.dr1, fs.dr2, fs.rr, fs.dc1, fs.dc2, fs.sc, fs.rc);
+                };
+                auto bootstrap_min = [&]() {
+                    fs.initialized = true;
+                    ch->activate_filter(true);
+                    ch->set_filter_type(fs.type);
+                };
+                if (need_full_apply) {
+                    restamp();
+                    ch->set_filter_cutoff_now(fs.cutoff);
+                } else if (u.has_filter_cutoff) {
+                    // Bootstrap: only restamp if filter is not active yet
+                    if (!fs.initialized || !ch->is_filter_active()) {
+                        bootstrap_min();
+                    } else {
+                        fs.initialized = true;
+                    }
+                    ch->set_filter_cutoff_now(fs.cutoff);
+                } else if (u.has_filter_resonance) {
+                    // Bootstrap: only restamp if filter is not active yet
+                    if (!fs.initialized || !ch->is_filter_active()) {
+                        bootstrap_min();
+                    } else {
+                        fs.initialized = true;
+                    }
+                    // Lightweight: adjust resonance without re-stamp, with smoothing inside the channel
+                    ch->set_filter_resonance_now(fs.resonance);
+                }
             }
             if (u.has_ch_am) {
                 ch->set_amplitude_modulation(u.ch_am_depth);

@@ -494,7 +494,8 @@ void SiOPMChannelBase::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("offset_filter", "offset"), &SiOPMChannelBase::offset_filter);
 	ClassDB::bind_method(D_METHOD("set_filter_type", "type"), &SiOPMChannelBase::set_filter_type);
 	ClassDB::bind_method(D_METHOD("is_filter_active"), &SiOPMChannelBase::is_filter_active);
-	ClassDB::bind_method(D_METHOD("set_filter_cutoff_now", "cutoff"), &SiOPMChannelBase::set_filter_cutoff_now);
+    ClassDB::bind_method(D_METHOD("set_filter_cutoff_now", "cutoff"), &SiOPMChannelBase::set_filter_cutoff_now);
+    ClassDB::bind_method(D_METHOD("set_filter_resonance_now", "resonance"), &SiOPMChannelBase::set_filter_resonance_now);
 	// Volume getters/setters
 	ClassDB::bind_method(D_METHOD("get_master_volume"), &SiOPMChannelBase::get_master_volume);
 	ClassDB::bind_method(D_METHOD("set_master_volume", "value"), &SiOPMChannelBase::set_master_volume);

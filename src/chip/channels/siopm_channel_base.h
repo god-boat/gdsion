@@ -242,6 +242,15 @@ public:
 	~SiOPMChannelBase() {}
 
 	virtual void set_filter_cutoff_now(int p_cutoff) { _cutoff_frequency = CLAMP(p_cutoff, 0, 128); }
+	// Smoothly update current resonance without re-stamping the envelope.
+	// Applies a tiny one-pole smoothing to avoid clicks on large Q jumps.
+	virtual void set_filter_resonance_now(int p_resonance) {
+		int target = CLAMP(p_resonance, 0, 9);
+		// Use the same mapping as set_sv_filter: _resonance = (1 << (9 - res)) * (1/512)
+		double target_q = (double)(1 << (9 - target)) * 0.001953125; // 1/512
+		// Simple smoothing: lerp 25% toward target per immediate update; filter core further smooths per-sample.
+		_resonance = _resonance + (target_q - _resonance) * 0.25;
+	}
 
 	// Returns (rms, peak) for the most recent samples written by this channel.
 	// If p_length <= 0, uses the sound chip's buffer length.
