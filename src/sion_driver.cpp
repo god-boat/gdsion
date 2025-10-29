@@ -1242,35 +1242,35 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("track_get_level", "track", "window_length"), &SiONDriver::track_get_level, DEFVAL(0));
 
 	// Mailbox bindings
-	ClassDB::bind_method(D_METHOD("mailbox_set_track_volume", "track_id", "linear_volume"), &SiONDriver::mailbox_set_track_volume);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_pan", "track_id", "pan"), &SiONDriver::mailbox_set_track_pan);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter", "track_id", "cutoff", "resonance", "type", "attack_rate", "decay_rate1", "decay_rate2", "release_rate", "decay_cutoff1", "decay_cutoff2", "sustain_cutoff", "release_cutoff"), &SiONDriver::mailbox_set_track_filter, DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1));
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_type", "track_id", "type"), &SiONDriver::mailbox_set_track_filter_type);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_cutoff", "track_id", "cutoff"), &SiONDriver::mailbox_set_track_filter_cutoff);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_resonance", "track_id", "resonance"), &SiONDriver::mailbox_set_track_filter_resonance);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_attack_rate", "track_id", "value"), &SiONDriver::mailbox_set_track_filter_attack_rate);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_decay_rate1", "track_id", "value"), &SiONDriver::mailbox_set_track_filter_decay_rate1);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_decay_rate2", "track_id", "value"), &SiONDriver::mailbox_set_track_filter_decay_rate2);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_release_rate", "track_id", "value"), &SiONDriver::mailbox_set_track_filter_release_rate);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_decay_cutoff1", "track_id", "value"), &SiONDriver::mailbox_set_track_filter_decay_cutoff1);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_decay_cutoff2", "track_id", "value"), &SiONDriver::mailbox_set_track_filter_decay_cutoff2);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_sustain_cutoff", "track_id", "value"), &SiONDriver::mailbox_set_track_filter_sustain_cutoff);
-    ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_release_cutoff", "track_id", "value"), &SiONDriver::mailbox_set_track_filter_release_cutoff);
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_volume", "track_id", "linear_volume", "voice_scope_id"), &SiONDriver::mailbox_set_track_volume, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_pan", "track_id", "pan", "voice_scope_id"), &SiONDriver::mailbox_set_track_pan, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter", "track_id", "cutoff", "resonance", "type", "attack_rate", "decay_rate1", "decay_rate2", "release_rate", "decay_cutoff1", "decay_cutoff2", "sustain_cutoff", "release_cutoff", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter, DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_type", "track_id", "type", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_type, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_cutoff", "track_id", "cutoff", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_cutoff, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_resonance", "track_id", "resonance", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_resonance, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_attack_rate", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_attack_rate, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_decay_rate1", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_decay_rate1, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_decay_rate2", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_decay_rate2, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_release_rate", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_release_rate, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_decay_cutoff1", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_decay_cutoff1, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_decay_cutoff2", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_decay_cutoff2, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_sustain_cutoff", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_sustain_cutoff, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_release_cutoff", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_release_cutoff, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_total_level", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_total_level);
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_multiple", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_multiple);
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_fine_multiple", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_fine_multiple);
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_detune1", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_detune1);
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_detune2", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_detune2);
-	ClassDB::bind_method(D_METHOD("mailbox_set_ch_am_depth", "track_id", "depth"), &SiONDriver::mailbox_set_ch_am_depth);
-	ClassDB::bind_method(D_METHOD("mailbox_set_ch_pm_depth", "track_id", "depth"), &SiONDriver::mailbox_set_ch_pm_depth);
-	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_frequency_step", "track_id", "step"), &SiONDriver::mailbox_set_lfo_frequency_step);
-	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_wave_shape", "track_id", "wave_shape"), &SiONDriver::mailbox_set_lfo_wave_shape);
-	ClassDB::bind_method(D_METHOD("mailbox_set_envelope_freq_ratio", "track_id", "ratio"), &SiONDriver::mailbox_set_envelope_freq_ratio);
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_am_depth", "track_id", "depth", "voice_scope_id"), &SiONDriver::mailbox_set_ch_am_depth, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_pm_depth", "track_id", "depth", "voice_scope_id"), &SiONDriver::mailbox_set_ch_pm_depth, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_frequency_step", "track_id", "step", "voice_scope_id"), &SiONDriver::mailbox_set_lfo_frequency_step, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_wave_shape", "track_id", "wave_shape", "voice_scope_id"), &SiONDriver::mailbox_set_lfo_wave_shape, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_envelope_freq_ratio", "track_id", "ratio", "voice_scope_id"), &SiONDriver::mailbox_set_envelope_freq_ratio, DEFVAL(-1));
 	// Analog-Like (AL)
-	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws1", "track_id", "wave_shape"), &SiONDriver::mailbox_set_ch_al_ws1);
-	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws2", "track_id", "wave_shape"), &SiONDriver::mailbox_set_ch_al_ws2);
-	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_balance", "track_id", "balance"), &SiONDriver::mailbox_set_ch_al_balance);
-	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_detune2", "track_id", "detune2"), &SiONDriver::mailbox_set_ch_al_detune2);
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws1", "track_id", "wave_shape", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_ws1, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws2", "track_id", "wave_shape", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_ws2, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_balance", "track_id", "balance", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_balance, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_detune2", "track_id", "detune2", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_detune2, DEFVAL(-1));
 
 	// User-controllable track API
 	ClassDB::bind_method(D_METHOD("create_user_controllable_track", "track_id"), &SiONDriver::create_user_controllable_track, DEFVAL(0));
@@ -1631,25 +1631,28 @@ Vector2 SiONDriver::track_get_level(Object *p_track_obj, int p_window_length) {
 }
 
 // --- Mailbox setters (main thread) --------------------------------------------
-void SiONDriver::mailbox_set_track_volume(int p_track_id, double p_linear_volume) {
+void SiONDriver::mailbox_set_track_volume(int p_track_id, double p_linear_volume, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_vol = true;
     u.vol_linear = p_linear_volume;
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_track_pan(int p_track_id, int p_pan) {
+void SiONDriver::mailbox_set_track_pan(int p_track_id, int p_pan, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_pan = true;
     u.pan = p_pan;
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_track_filter(int p_track_id, int p_cutoff, int p_resonance, int p_type, int p_attack_rate, int p_decay_rate1, int p_decay_rate2, int p_release_rate, int p_decay_cutoff1, int p_decay_cutoff2, int p_sustain_cutoff, int p_release_cutoff) {
+void SiONDriver::mailbox_set_track_filter(int p_track_id, int p_cutoff, int p_resonance, int p_type, int p_attack_rate, int p_decay_rate1, int p_decay_rate2, int p_release_rate, int p_decay_cutoff1, int p_decay_cutoff2, int p_sustain_cutoff, int p_release_cutoff, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_filter = true;
     u.filter_cutoff = p_cutoff;
     u.filter_resonance = p_resonance;
@@ -1665,38 +1668,38 @@ void SiONDriver::mailbox_set_track_filter(int p_track_id, int p_cutoff, int p_re
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_track_filter_type(int p_track_id, int p_type) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_type = true; u.filter_type = p_type; _mb_try_push(u);
+void SiONDriver::mailbox_set_track_filter_type(int p_track_id, int p_type, int64_t p_voice_scope_id) {
+    _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_type = true; u.filter_type = p_type; _mb_try_push(u);
 }
-void SiONDriver::mailbox_set_track_filter_cutoff(int p_track_id, int p_cutoff) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_cutoff = true; u.filter_cutoff = p_cutoff; _mb_try_push(u);
+void SiONDriver::mailbox_set_track_filter_cutoff(int p_track_id, int p_cutoff, int64_t p_voice_scope_id) {
+    _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_cutoff = true; u.filter_cutoff = p_cutoff; _mb_try_push(u);
 }
-void SiONDriver::mailbox_set_track_filter_resonance(int p_track_id, int p_resonance) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_resonance = true; u.filter_resonance = p_resonance; _mb_try_push(u);
+void SiONDriver::mailbox_set_track_filter_resonance(int p_track_id, int p_resonance, int64_t p_voice_scope_id) {
+    _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_resonance = true; u.filter_resonance = p_resonance; _mb_try_push(u);
 }
-void SiONDriver::mailbox_set_track_filter_attack_rate(int p_track_id, int p_value) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_ar = true; u.filter_ar = p_value; _mb_try_push(u);
+void SiONDriver::mailbox_set_track_filter_attack_rate(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+    _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_ar = true; u.filter_ar = p_value; _mb_try_push(u);
 }
-void SiONDriver::mailbox_set_track_filter_decay_rate1(int p_track_id, int p_value) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_dr1 = true; u.filter_dr1 = p_value; _mb_try_push(u);
+void SiONDriver::mailbox_set_track_filter_decay_rate1(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+    _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_dr1 = true; u.filter_dr1 = p_value; _mb_try_push(u);
 }
-void SiONDriver::mailbox_set_track_filter_decay_rate2(int p_track_id, int p_value) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_dr2 = true; u.filter_dr2 = p_value; _mb_try_push(u);
+void SiONDriver::mailbox_set_track_filter_decay_rate2(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+    _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_dr2 = true; u.filter_dr2 = p_value; _mb_try_push(u);
 }
-void SiONDriver::mailbox_set_track_filter_release_rate(int p_track_id, int p_value) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_rr = true; u.filter_rr = p_value; _mb_try_push(u);
+void SiONDriver::mailbox_set_track_filter_release_rate(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+    _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_rr = true; u.filter_rr = p_value; _mb_try_push(u);
 }
-void SiONDriver::mailbox_set_track_filter_decay_cutoff1(int p_track_id, int p_value) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_dc1 = true; u.filter_dc1 = p_value; _mb_try_push(u);
+void SiONDriver::mailbox_set_track_filter_decay_cutoff1(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+    _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_dc1 = true; u.filter_dc1 = p_value; _mb_try_push(u);
 }
-void SiONDriver::mailbox_set_track_filter_decay_cutoff2(int p_track_id, int p_value) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_dc2 = true; u.filter_dc2 = p_value; _mb_try_push(u);
+void SiONDriver::mailbox_set_track_filter_decay_cutoff2(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+    _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_dc2 = true; u.filter_dc2 = p_value; _mb_try_push(u);
 }
-void SiONDriver::mailbox_set_track_filter_sustain_cutoff(int p_track_id, int p_value) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_sc = true; u.filter_sc = p_value; _mb_try_push(u);
+void SiONDriver::mailbox_set_track_filter_sustain_cutoff(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+    _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_sc = true; u.filter_sc = p_value; _mb_try_push(u);
 }
-void SiONDriver::mailbox_set_track_filter_release_cutoff(int p_track_id, int p_value) {
-    _TrackUpdate u; u.track_id = p_track_id; u.has_filter_rc = true; u.filter_rc = p_value; _mb_try_push(u);
+void SiONDriver::mailbox_set_track_filter_release_cutoff(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+    _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_rc = true; u.filter_rc = p_value; _mb_try_push(u);
 }
 
 void SiONDriver::mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value) {
@@ -1744,73 +1747,82 @@ void SiONDriver::mailbox_set_fm_op_detune2(int p_track_id, int p_op_index, int p
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_ch_am_depth(int p_track_id, int p_depth) {
+void SiONDriver::mailbox_set_ch_am_depth(int p_track_id, int p_depth, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_ch_am = true;
     u.ch_am_depth = p_depth;
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_ch_pm_depth(int p_track_id, int p_depth) {
+void SiONDriver::mailbox_set_ch_pm_depth(int p_track_id, int p_depth, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_ch_pm = true;
     u.ch_pm_depth = p_depth;
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_lfo_frequency_step(int p_track_id, int p_step) {
+void SiONDriver::mailbox_set_lfo_frequency_step(int p_track_id, int p_step, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_lfo_step = true;
     u.lfo_frequency_step = p_step;
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape) {
+void SiONDriver::mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_lfo_wave = true;
     u.lfo_wave_shape = p_wave_shape;
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio) {
+void SiONDriver::mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_env_freq_ratio = true;
     u.env_freq_ratio = p_ratio;
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape) {
+void SiONDriver::mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_al_ws1 = true;
     u.al_ws1 = p_wave_shape;
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_ch_al_ws2(int p_track_id, int p_wave_shape) {
+void SiONDriver::mailbox_set_ch_al_ws2(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_al_ws2 = true;
     u.al_ws2 = p_wave_shape;
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_ch_al_balance(int p_track_id, int p_balance) {
+void SiONDriver::mailbox_set_ch_al_balance(int p_track_id, int p_balance, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_al_balance = true;
     u.al_balance = p_balance;
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_ch_al_detune2(int p_track_id, int p_detune2) {
+void SiONDriver::mailbox_set_ch_al_detune2(int p_track_id, int p_detune2, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
     u.has_al_detune2 = true;
     u.al_detune2 = p_detune2;
     _mb_try_push(u);
@@ -1847,10 +1859,15 @@ void SiONDriver::_drain_track_mailbox() {
     while (tail != head) {
         const _TrackUpdate &u = _mb_ring[tail];
         tail = (tail + 1) & (_MB_CAPACITY - 1);
-        // Apply to all live tracks that match this track_id
+        // Apply to all live tracks that match this track_id (and optional voice scope)
         for (SiMMLTrack *trk : sequencer->get_tracks()) {
             if (!trk) continue;
             if (trk->get_track_id() != u.track_id) continue;
+            if (u.voice_scope_id != -1) {
+                // Skip tracks that do not match the voice scope id
+                // (Only channels stamped with this voice should receive the update)
+                if ((int64_t)trk->get_voice_scope_id() != u.voice_scope_id) continue;
+            }
             SiOPMChannelBase *ch = trk->get_channel();
             if (!ch) continue;
             if (u.has_vol) {

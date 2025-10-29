@@ -149,6 +149,9 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 		p_track->set_pitch_envelope(0, note_off_pitch_envelope, note_off_pitch_envelope_step);
 		p_track->set_note_envelope(0, note_off_note_envelope, note_off_note_envelope_step);
 	}
+
+	// Stamp the applied voice's ObjectID to enable scoped realtime updates on the driver side
+	p_track->set_voice_scope_id((int64_t)get_instance_id());
 }
 
 Ref<SiMMLVoice> SiMMLVoice::create_blank_pcm_voice(int p_channel_num) {

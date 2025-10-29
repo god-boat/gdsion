@@ -10,6 +10,7 @@
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/variant/callable.hpp>
 #include <godot_cpp/templates/vector.hpp>
+#include <cstdint>
 #include "sion_enums.h"
 #include "sequencer/base/beats_per_minute.h"
 #include "sequencer/simml_data.h"
@@ -75,6 +76,8 @@ private:
 	// This value is unique and set by system, the lower numbered track processes sound first.
 	int _track_number = 0;
 	int _channel_number = 0;
+	// Stamped with the ObjectID of the last voice applied to this track; used to scope RT updates
+	int64_t _voice_scope_id = -1;
 
 	int _process_mode = ProcessMode::NORMAL;
 	int _track_start_delay = 0;
@@ -239,6 +242,9 @@ public:
 	// Channel number, set by 2nd argument of % command. Usually same as voice index / program number (except for APU).
 	int get_channel_number() const { return _channel_number; }
 	void set_channel_number(int p_number) { _channel_number = p_number; }
+	// Voice scope helper for RT mailbox scoping
+	int64_t get_voice_scope_id() const { return _voice_scope_id; }
+	void set_voice_scope_id(int64_t p_id) { _voice_scope_id = p_id; }
 	// Program number, set by 2nd argument of % command and 1st arg. of &#64; command. Usually same as channel number (except for APU).
 	int get_program_number() const { return _voice_index; }
 
