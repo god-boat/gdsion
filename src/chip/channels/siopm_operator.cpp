@@ -195,10 +195,16 @@ void SiOPMOperator::set_pitch_table_type(SiONPitchTableType p_type) {
 }
 
 int SiOPMOperator::get_wave_value(int p_index) const {
+	// Snapshot the current wave table to avoid torn reads if another thread swaps
+	// the table concurrently. Vector<T> in Godot is copy-on-write, so this is a
+	// cheap refcount bump and guarantees a stable backing store for the duration
+	// of this call.
+	Vector<int> wave = _wave_table;
+
 	// Some wave tables (e.g. noise waves) can be very small (2 samples) while the
 	// phase accumulator can easily exceed that length. Instead of triggering a
 	// fatal bounds error we wrap the index so it always stays inside the vector.
-	int table_len = _wave_table.size();
+	int table_len = wave.size();
 	if (table_len == 0) {
 		return 0; // silent safeguard – should not happen in normal operation
 	}
@@ -210,7 +216,11 @@ int SiOPMOperator::get_wave_value(int p_index) const {
 		idx = p_index % table_len;
 		if (idx < 0) idx += table_len; // ensure positive
 	}
-	return _wave_table[idx];
+	// Belt-and-suspenders: guard against any pathological races.
+	if (unlikely(idx < 0 || idx >= table_len)) {
+		idx = (idx % table_len + table_len) % table_len;
+	}
+	return wave[idx];
 }
 
 void SiOPMOperator::set_fixed_pitch_index(int p_value) {
@@ -416,8 +426,25 @@ void SiOPMOperator::tick_eg(int p_timer_initial) {
 		return;
 	}
 
+	// Snapshot increment table to avoid torn reads and guard indexing.
+	Vector<int> inc = _eg_increment_table;
+	int inc_size = inc.size();
+	int step = 0;
+	if (likely(inc_size > 0)) {
+		int inc_idx = (_eg_counter & 7);
+		if (unlikely(inc_idx >= inc_size)) {
+			// Wrap just in case a non-standard table size slips through.
+			if ((inc_size & (inc_size - 1)) == 0) {
+				inc_idx &= (inc_size - 1);
+			} else {
+				inc_idx %= inc_size;
+			}
+		}
+		step = inc[inc_idx];
+	}
+
 	if (_eg_state == SiOPMOperator::EG_ATTACK) {
-		int offset = _eg_increment_table[_eg_counter];
+		int offset = step;
 		if (offset > 0) {
 			_eg_level -= 1 + (_eg_level >> offset);
 			if (_eg_level <= 0) {
@@ -425,7 +452,7 @@ void SiOPMOperator::tick_eg(int p_timer_initial) {
 			}
 		}
 	} else {
-		_eg_level += _eg_increment_table[_eg_counter];
+		_eg_level += step;
 		if (_eg_level >= _eg_state_shift_level) {
 			_shift_eg_state((EGState)_eg_next_state_table[_eg_state_table_index][_eg_state]);
 		}
@@ -463,7 +490,17 @@ void SiOPMOperator::update_eg_output() {
 }
 
 void SiOPMOperator::update_eg_output_from(SiOPMOperator *p_other) {
-	_eg_output = (p_other->_eg_level_table[p_other->_eg_level] + _eg_total_level) << 3;
+	// Safely read other's EG level table to avoid out-of-bounds in debug.
+	Vector<int> other_tbl = p_other->_eg_level_table;
+	int size = other_tbl.size();
+	int idx = p_other->_eg_level;
+	if (unlikely(size == 0)) {
+		_eg_output = _eg_total_level << 3;
+		return;
+	}
+	if (unlikely(idx < 0)) idx = 0;
+	else if (unlikely(idx >= size)) idx = size - 1;
+	_eg_output = (other_tbl[idx] + _eg_total_level) << 3;
 }
 
 // Pipes.
