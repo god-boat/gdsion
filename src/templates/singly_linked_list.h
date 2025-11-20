@@ -320,7 +320,11 @@ public:
 
 	// Removes all elements from the list and resets its size.
 	void clear() {
-		for (Element *elem = front(); elem; elem = next_safe()) {
+		while (has_any()) {
+			Element *elem = pop_front_element();
+			if (!elem) {
+				break;
+			}
 			_release_element(elem);
 		}
 
