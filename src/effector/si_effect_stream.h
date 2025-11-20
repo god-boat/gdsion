@@ -20,7 +20,7 @@ class SiOPMStream;
 class SiEffectStream {
 
 	SiOPMSoundChip *_sound_chip = nullptr;
-	List<Ref<SiEffectBase>> _chain;
+	Vector<Ref<SiEffectBase>> _chain;
 
 	SiOPMStream *_stream = nullptr;
 	// Deeper streams execute first.
@@ -35,8 +35,8 @@ class SiEffectStream {
 	void _set_postfix_param(int p_slot, String p_cmd, Vector<double> p_args, int p_argc);
 
 public:
-	List<Ref<SiEffectBase>> get_chain() const { return _chain; }
-	void set_chain(const List<Ref<SiEffectBase>> &p_effects) { _chain = p_effects; }
+	Vector<Ref<SiEffectBase>> get_chain() const { return _chain; }
+	void set_chain(const Vector<Ref<SiEffectBase>> &p_effects) { _chain = p_effects; }
 	void add_to_chain(const Ref<SiEffectBase> &p_effect) { _chain.push_back(p_effect); }
 	SiOPMStream *get_stream() const { return _stream; }
 

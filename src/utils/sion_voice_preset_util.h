@@ -42,7 +42,7 @@ private:
 	List<Ref<SiONVoice>> _current_category;
 	HashMap<String, List<Ref<SiONVoice>>> _category_map;
 	HashMap<String, Ref<SiONVoice>> _voice_map;
-	List<Ref<SiOPMWaveTable>> _wave_tables;
+	Vector<Ref<SiOPMWaveTable>> _wave_tables;
 
 	void _generate_voices(uint32_t p_flags);
 	void _generate_default_voices();

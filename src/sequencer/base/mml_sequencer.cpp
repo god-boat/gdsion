@@ -209,7 +209,7 @@ MMLEvent *MMLSequencer::_default_on_internal_wait(MMLEvent *p_event) {
 }
 
 MMLEvent *MMLSequencer::_default_on_internal_call(MMLEvent *p_event) {
-	List<Callable> callbacks = _current_executor->get_sequence()->get_callbacks_for_internal_call();
+	Vector<Callable> callbacks = _current_executor->get_sequence()->get_callbacks_for_internal_call();
 	int callback_idx = p_event->get_data();
 
 	MMLEvent *next = nullptr;

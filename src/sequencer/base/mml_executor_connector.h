@@ -8,6 +8,7 @@
 #define MML_EXECUTOR_CONNECTOR_H
 
 #include <godot_cpp/templates/list.hpp>
+#include <godot_cpp/templates/vector.hpp>
 
 using namespace godot;
 
@@ -49,7 +50,7 @@ class MMLExecutorConnector {
 
 	MMLSequenceGroup *_connecting_sequence_group = nullptr;
 	MMLSequence *_connecting_sequence = nullptr;
-	List<MMLSequence *> _connecting_sequence_list;
+	Vector<MMLSequence *> _connecting_sequence_list;
 
 	void _connect(MECElement *p_element, bool p_first_oscillator, int p_out_pipe);
 

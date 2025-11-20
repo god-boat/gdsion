@@ -735,7 +735,7 @@ void MMLParser::_op_repeat_begin(int p_count) {
 void MMLParser::_op_repeat_break() {
 	ERR_FAIL_COND_MSG(_repeat_stack.size() == 0, "MMLParser: Not enough items in the repeat stack for command '|'.");
 	_add_mml_event(MMLEvent::REPEAT_BREAK);
-	_last_event->set_jump(_repeat_stack[0]);
+	_last_event->set_jump(_repeat_stack.front()->get());
 }
 
 void MMLParser::_op_repeat_end(int p_count) {

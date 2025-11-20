@@ -21,7 +21,7 @@ class SiOPMSoundChip;
 class SiEffector : public Object {
 	GDCLASS(SiEffector, Object)
 
-	static HashMap<String, List<Ref<SiEffectBase>>> _effect_instances;
+	static HashMap<String, Vector<Ref<SiEffectBase>>> _effect_instances;
 
 	SiOPMSoundChip *_sound_chip = nullptr;
 
@@ -56,7 +56,7 @@ public:
 	void set_slot_effects(int p_slot, const TypedArray<SiEffectBase> &p_effects);
 	void clear_slot_effects(int p_slot);
 
-	SiEffectStream *create_local_effect(int p_depth, List<Ref<SiEffectBase>> p_effects);
+	SiEffectStream *create_local_effect(int p_depth, Vector<Ref<SiEffectBase>> p_effects);
 	void delete_local_effect(SiEffectStream *p_effect);
 
 	void parse_global_effect_mml(int p_slot, String p_mml, String p_postfix);

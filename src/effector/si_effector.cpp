@@ -35,7 +35,7 @@
 #include "effector/filters/si_filter_peak.h"
 #include "effector/filters/si_filter_vowel.h"
 
-HashMap<String, List<Ref<SiEffectBase>>> SiEffector::_effect_instances;
+HashMap<String, Vector<Ref<SiEffectBase>>> SiEffector::_effect_instances;
 
 SiEffectStream *SiEffector::_get_global_stream(int p_slot) {
 	ERR_FAIL_INDEX_V(p_slot, SiOPMSoundChip::STREAM_SEND_SIZE, nullptr);
@@ -70,13 +70,13 @@ void SiEffector::register_effect(const String &p_name) {
 	derived_from<T, SiEffectBase>(); // Compile-time check: Only accept SiEffectBase derivatives.
 
 	// We don't actually use the type here, as that would make it incompatible with the collection.
-	_effect_instances[p_name] = List<Ref<SiEffectBase>>();
+	_effect_instances[p_name] = Vector<Ref<SiEffectBase>>();
 }
 
 Ref<SiEffectBase> SiEffector::get_effect_instance(const String &p_name) {
 	ERR_FAIL_COND_V_MSG(!_effect_instances.has(p_name), Ref<SiEffectBase>(), vformat("SiEffector: Effect called '%s' does not exist.", p_name));
 
-	List<Ref<SiEffectBase>> instances = _effect_instances[p_name];
+	Vector<Ref<SiEffectBase>> instances = _effect_instances[p_name];
 
 	// Check if we have free instances to reuse first.
 	for (int i = 0; i < instances.size(); i++) {
@@ -149,10 +149,11 @@ TypedArray<SiEffectBase> SiEffector::get_slot_effects(int p_slot) const {
 		return TypedArray<SiEffectBase>();
 	}
 
-	List<Ref<SiEffectBase>> chained_effects = _global_effects[p_slot]->get_chain();
+	Vector<Ref<SiEffectBase>> chained_effects = _global_effects[p_slot]->get_chain();
 
 	TypedArray<SiEffectBase> effects;
-	for (const Ref<SiEffectBase> &effect : chained_effects) {
+	for (int i = 0; i < chained_effects.size(); i++) {
+		const Ref<SiEffectBase> &effect = chained_effects[i];
 		effects.push_back(effect);
 	}
 
@@ -170,7 +171,7 @@ void SiEffector::add_slot_effect(int p_slot, const Ref<SiEffectBase> &p_effect) 
 void SiEffector::set_slot_effects(int p_slot, const TypedArray<SiEffectBase> &p_effects) {
 	ERR_FAIL_INDEX_MSG(p_slot, SiOPMSoundChip::STREAM_SEND_SIZE, "SiEffector: Invalid effect slot index.");
 
-	List<Ref<SiEffectBase>> chained_effects;
+	Vector<Ref<SiEffectBase>> chained_effects;
 	for (int i = 0; i < p_effects.size(); i++) {
 		Ref<SiEffectBase> effect = p_effects[i];
 		chained_effects.push_back(effect);
@@ -195,7 +196,7 @@ void SiEffector::clear_slot_effects(int p_slot) {
 	}
 }
 
-SiEffectStream *SiEffector::create_local_effect(int p_depth, List<Ref<SiEffectBase>> p_effects) {
+SiEffectStream *SiEffector::create_local_effect(int p_depth, Vector<Ref<SiEffectBase>> p_effects) {
 	SiEffectStream *effect = _alloc_stream(p_depth);
 	effect->set_chain(p_effects);
 	effect->prepare_process();

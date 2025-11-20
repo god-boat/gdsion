@@ -8,7 +8,6 @@
 #define SIOPM_CHANNEL_PARAMS_H
 
 #include <godot_cpp/classes/ref_counted.hpp>
-#include <godot_cpp/templates/list.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
@@ -30,8 +29,8 @@ public:
 private:
 	MMLSequence *init_sequence = nullptr;
 
-	// This list is exactly MAX_OPERATORS at all times, use operator_count to read only valid values.
-	List<Ref<SiOPMOperatorParams>> operator_params;
+	// This array is exactly MAX_OPERATORS at all times, use operator_count to read only valid values.
+	Vector<Ref<SiOPMOperatorParams>> operator_params;
 	int operator_count = 0;
 	bool analog_like = false;
 

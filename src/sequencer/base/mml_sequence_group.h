@@ -8,6 +8,7 @@
 #define MML_SEQUENCE_GROUP_H
 
 #include <godot_cpp/templates/list.hpp>
+#include <godot_cpp/templates/vector.hpp>
 #include "sequencer/base/mml_data.h"
 
 using namespace godot;
@@ -22,7 +23,7 @@ class MMLSequenceGroup : public Object {
 	List<MMLSequence *> _free_list;
 
 	// Terminator.
-	List<MMLSequence *> _sequences;
+	Vector<MMLSequence *> _sequences;
 	MMLSequence *_term = nullptr;
 
 protected:

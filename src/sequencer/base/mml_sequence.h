@@ -8,6 +8,7 @@
 #define MML_SEQUENCE_H
 
 #include <godot_cpp/templates/list.hpp>
+#include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/callable.hpp>
 #include "sequencer/base/mml_data.h"
 
@@ -35,7 +36,7 @@ class MMLSequence : public Object {
 	bool _is_active = true;
 
 	// Callback functions for Event::INTERNAL_CALL.
-	List<Callable> _callbacks_for_internal_call;
+	Vector<Callable> _callbacks_for_internal_call;
 
 	// Length in resolution units (1920 = whole-tone in default).
 	int _event_length = -1;
@@ -91,7 +92,7 @@ public:
 
 	int get_event_length();
 	bool has_repeat_all();
-	List<Callable> get_callbacks_for_internal_call() const { return _callbacks_for_internal_call; }
+	Vector<Callable> get_callbacks_for_internal_call() const { return _callbacks_for_internal_call; }
 
 	// MML string.
 
