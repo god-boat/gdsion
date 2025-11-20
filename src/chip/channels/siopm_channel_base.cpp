@@ -307,6 +307,46 @@ void SiOPMChannelBase::reset_channel_buffer_status() {
 	}
 }
 
+int SiOPMChannelBase::_compute_meter_window_samples() const {
+	int base_len = _sound_chip ? _sound_chip->get_buffer_length() : 0;
+	int desired = base_len;
+	if (_table && _table->sampling_rate > 0) {
+		int sr = _table->sampling_rate;
+		int target = (sr * METER_RMS_WINDOW_MS + 999) / 1000;
+		if (target > desired) {
+			desired = target;
+		}
+	}
+	if (desired <= 0) {
+		desired = METER_FALLBACK_SAMPLES;
+	}
+	return desired;
+}
+
+void SiOPMChannelBase::_ensure_meter_ring(int p_min_size) {
+	int desired = _meter_window_samples;
+	if (desired <= 0) {
+		desired = _compute_meter_window_samples();
+		_meter_window_samples = desired;
+	}
+	if (p_min_size > desired) {
+		desired = p_min_size;
+		_meter_window_samples = desired;
+	}
+	if (desired <= 0) {
+		desired = METER_FALLBACK_SAMPLES;
+	}
+	if (!_meter_pipe || desired != _meter_ring_length) {
+		if (_meter_pipe) {
+			memdelete(_meter_pipe);
+		}
+		_meter_pipe = memnew(SinglyLinkedList<int>(desired, 0, true));
+		_meter_ring_length = desired;
+		_meter_write_index = 0;
+		_meter_write_elem = _meter_pipe->get();
+	}
+}
+
 void SiOPMChannelBase::_apply_ring_modulation(SinglyLinkedList<int>::Element *p_buffer_start, int p_length) {
 	SinglyLinkedList<int>::Element *target = p_buffer_start;
 
@@ -469,6 +509,16 @@ void SiOPMChannelBase::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) 
 	_filter_type = FILTER_LP;
 	set_sv_filter();
 	_shift_sv_filter_state(EG_OFF);
+
+	// Meter ring sizing follows desired RMS window; reallocate on init to pick up new buffer sizes.
+	_meter_window_samples = _compute_meter_window_samples();
+	if (_meter_pipe) {
+		memdelete(_meter_pipe);
+		_meter_pipe = nullptr;
+	}
+	_meter_ring_length = 0;
+	_meter_write_elem = nullptr;
+	_meter_write_index = 0;
 }
 
 void SiOPMChannelBase::reset() {
@@ -514,26 +564,36 @@ SiOPMChannelBase::SiOPMChannelBase(SiOPMSoundChip *p_chip) {
 	_volumes.resize_zeroed(SiOPMSoundChip::STREAM_SEND_SIZE);
 }
 
+SiOPMChannelBase::~SiOPMChannelBase() {
+	if (_meter_pipe) {
+		memdelete(_meter_pipe);
+		_meter_pipe = nullptr;
+	}
+	_meter_ring_length = 0;
+	_meter_write_elem = nullptr;
+}
+
 Vector2 SiOPMChannelBase::get_recent_level(int p_length) {
 	// Only use the per-channel meter ring to ensure independent metering
 	SinglyLinkedList<int> *src_pipe = _meter_pipe;
 	if (src_pipe == nullptr || _sound_chip == nullptr) {
 		return Vector2(0.0, 0.0);
 	}
-	const int buffer_len = _sound_chip->get_buffer_length();
-	int length = p_length <= 0 ? buffer_len : p_length;
+	int buffer_len = _meter_ring_length > 0 ? _meter_ring_length : _sound_chip->get_buffer_length();
+	if (buffer_len <= 0) {
+		return Vector2(0.0, 0.0);
+	}
+	int length = p_length <= 0 ? buffer_len : (p_length > buffer_len ? buffer_len : p_length);
 	if (length <= 0) {
 		return Vector2(0.0, 0.0);
 	}
 
 	// Window ending at current write head.
-	int write_index = _meter_pipe ? _meter_write_index : _buffer_index;
+	int write_index = _meter_write_index;
 	// Determine start index in the ring: (write_index - length) modulo buffer_len
 	int start_index = write_index - length;
 	if (start_index < 0) {
-		// buffer_len is a power of 2; wrap using modulo
-		int mask = buffer_len - 1;
-		start_index = (start_index & mask);
+		start_index += buffer_len;
 	}
 
 	SinglyLinkedList<int>::Element *elem = src_pipe->front();
@@ -544,8 +604,11 @@ Vector2 SiOPMChannelBase::get_recent_level(int p_length) {
 	for (int i = 0; i < start_index; i++) {
 		elem = elem->next();
 		if (!elem) {
-			// If somehow not ringed, bail out safely
-			return Vector2(0.0, 0.0);
+			// If somehow not ringed, restart safely
+			elem = src_pipe->front();
+			if (!elem) {
+				return Vector2(0.0, 0.0);
+			}
 		}
 	}
 
@@ -561,8 +624,9 @@ Vector2 SiOPMChannelBase::get_recent_level(int p_length) {
 		rms_accum += s * s;
 		cur = cur->next();
 		count++;
-		// In case list is not ringed, guard against null and stop
-		if (!cur) break;
+		if (!cur) {
+			cur = src_pipe->front();
+		}
 	}
 	if (count == 0) {
 		return Vector2(0.0, 0.0);
@@ -572,18 +636,14 @@ Vector2 SiOPMChannelBase::get_recent_level(int p_length) {
 }
 
 void SiOPMChannelBase::_meter_write_from(SinglyLinkedList<int>::Element *p_src_start, int p_length) {
-	if (!_meter_pipe) {
-		// Lazy-allocate a private meter ring matching chip buffer length
-		_meter_pipe = memnew(SinglyLinkedList<int>(_sound_chip->get_buffer_length(), 0, true));
-		_meter_write_index = 0;
-		_meter_write_elem = _meter_pipe->get();
-	}
+	_ensure_meter_ring();
 	if (!_meter_write_elem) {
 		_meter_pipe->front();
 		_meter_write_elem = _meter_pipe->get();
 	}
 	SinglyLinkedList<int>::Element *dst = _meter_write_elem;
 	SinglyLinkedList<int>::Element *src = p_src_start;
+	const int ring_len = _meter_ring_length > 0 ? _meter_ring_length : (_sound_chip ? _sound_chip->get_buffer_length() : 0);
 	for (int i = 0; i < p_length; i++) {
 		if (!dst) {
 			_meter_pipe->front();
@@ -596,24 +656,21 @@ void SiOPMChannelBase::_meter_write_from(SinglyLinkedList<int>::Element *p_src_s
 		dst = dst->next();
 		src = src->next();
 		_meter_write_index++;
-		if (_meter_write_index >= _sound_chip->get_buffer_length()) {
-			_meter_write_index = 0;
+		if (ring_len > 0 && _meter_write_index >= ring_len) {
+			_meter_write_index -= ring_len;
 		}
 	}
 	_meter_write_elem = dst;
 }
 
 void SiOPMChannelBase::_meter_write_silence(int p_length) {
-	if (!_meter_pipe) {
-		_meter_pipe = memnew(SinglyLinkedList<int>(_sound_chip->get_buffer_length(), 0, true));
-		_meter_write_index = 0;
-		_meter_write_elem = _meter_pipe->get();
-	}
+	_ensure_meter_ring();
 	if (!_meter_write_elem) {
 		_meter_pipe->front();
 		_meter_write_elem = _meter_pipe->get();
 	}
 	SinglyLinkedList<int>::Element *dst = _meter_write_elem;
+	const int ring_len = _meter_ring_length > 0 ? _meter_ring_length : (_sound_chip ? _sound_chip->get_buffer_length() : 0);
 	for (int i = 0; i < p_length; i++) {
 		if (!dst) {
 			_meter_pipe->front();
@@ -622,8 +679,8 @@ void SiOPMChannelBase::_meter_write_silence(int p_length) {
 		dst->value = 0;
 		dst = dst->next();
 		_meter_write_index++;
-		if (_meter_write_index >= _sound_chip->get_buffer_length()) {
-			_meter_write_index = 0;
+		if (ring_len > 0 && _meter_write_index >= ring_len) {
+			_meter_write_index -= ring_len;
 		}
 	}
 	_meter_write_elem = dst;
