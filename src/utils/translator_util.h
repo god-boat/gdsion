@@ -67,6 +67,8 @@ public:
 	static void parse_opx_params(const Ref<SiOPMChannelParams> &p_params, const String &p_data_string);
 	static void parse_ma3_params(const Ref<SiOPMChannelParams> &p_params, const String &p_data_string);
 	static void parse_al_params(const Ref<SiOPMChannelParams> &p_params, const String &p_data_string);
+	// KS (Karplus-Strong) params: returns parsed values via references and initializes p_params accordingly
+	static void parse_ks_params(const Ref<SiOPMChannelParams> &p_params, const String &p_data_string, int &r_wave_shape, int &r_attack_rate, int &r_decay_rate, int &r_total_level, int &r_fixed_pitch, int &r_tension);
 
 	static void set_siopm_params(const Ref<SiOPMChannelParams> &p_params, Vector<int> p_data);
 	static void set_opl_params(const Ref<SiOPMChannelParams> &p_params, Vector<int> p_data);
@@ -83,6 +85,9 @@ public:
 	static Vector<int> get_opx_params(const Ref<SiOPMChannelParams> &p_params);
 	static Vector<int> get_ma3_params(const Ref<SiOPMChannelParams> &p_params);
 	static Vector<int> get_al_params(const Ref<SiOPMChannelParams> &p_params);
+	// Returns KS params as a flat vector in order: WS, AR, DR, TL, FN, TN
+	// (Convenience if external callers need the numeric tuple)
+	static Vector<int> get_ks_params(const Ref<SiOPMChannelParams> &p_params, int p_tension);
 
 	static String get_siopm_params_as_mml(const Ref<SiOPMChannelParams> &p_params, String p_separator = " ", String p_line_end = "\n", String p_comment = String());
 	static String get_opl_params_as_mml(const Ref<SiOPMChannelParams> &p_params, String p_separator = " ", String p_line_end = "\n", String p_comment = String());
@@ -91,6 +96,7 @@ public:
 	static String get_opx_params_as_mml(const Ref<SiOPMChannelParams> &p_params, String p_separator = " ", String p_line_end = "\n", String p_comment = String());
 	static String get_ma3_params_as_mml(const Ref<SiOPMChannelParams> &p_params, String p_separator = " ", String p_line_end = "\n", String p_comment = String());
 	static String get_al_params_as_mml(const Ref<SiOPMChannelParams> &p_params, String p_separator = " ", String p_line_end = "\n", String p_comment = String());
+	static String get_ks_params_as_mml(const Ref<SiOPMChannelParams> &p_params, int p_tension, String p_separator = " ", String p_line_end = "\n", String p_comment = String());
 
 	static void parse_voice_setting(const Ref<SiMMLVoice> &p_voice, String p_mml, Vector<Ref<SiMMLEnvelopeTable>> p_envelopes = Vector<Ref<SiMMLEnvelopeTable>>());
 	static String get_voice_setting_as_mml(const Ref<SiMMLVoice> &p_voice);

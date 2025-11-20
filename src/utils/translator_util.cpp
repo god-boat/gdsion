@@ -406,6 +406,53 @@ void TranslatorUtil::parse_al_params(const Ref<SiOPMChannelParams> &p_params, co
 	return _set_al_params_by_array(p_params, _split_data_string(p_params, p_data_string, 9, 0, "#AL@"));
 }
 
+void TranslatorUtil::parse_ks_params(const Ref<SiOPMChannelParams> &p_params, const String &p_data_string, int &r_wave_shape, int &r_attack_rate, int &r_decay_rate, int &r_total_level, int &r_fixed_pitch, int &r_tension) {
+	// Expected KS payload inside braces:
+	// { WS, AR, DR, TL, FN, TN }
+	// Defaults mirror SiONVoice::set_pms_guitar DEFVALs
+	r_wave_shape   = 20;
+	r_attack_rate  = 48;
+	r_decay_rate   = 48;
+	r_total_level  = 0;
+	r_fixed_pitch  = 69;
+	r_tension      = 8;
+
+	String data = p_data_string;
+	if (!data.is_empty()) {
+		Ref<RegEx> re_comments = RegEx::create_from_string("(?s)/\\*.*?\\*/|//.*?[\\r\\n]+");
+		Ref<RegEx> re_cleanup  = RegEx::create_from_string("^[^\\d\\-.]+|[^\\d\\-.]+$");
+		String sanitized = re_cleanup->sub(re_comments->sub(data, "", true), "", true);
+		PackedStringArray parts = split_string_by_regex(sanitized, "[^\\d\\-.]+");
+		if (parts.size() >= 1 && !parts[0].is_empty()) r_wave_shape  = _sanitize_param_loop(parts[0].to_int(), 0, 511, "WS");
+		if (parts.size() >= 2 && !parts[1].is_empty()) r_attack_rate = _sanitize_param_loop(parts[1].to_int(), 0, 63,  "AR");
+		if (parts.size() >= 3 && !parts[2].is_empty()) r_decay_rate  = _sanitize_param_loop(parts[2].to_int(), 0, 63,  "DR");
+		if (parts.size() >= 4 && !parts[3].is_empty()) r_total_level = _sanitize_param_loop(parts[3].to_int(), 0, 127, "TL");
+		if (parts.size() >= 5 && !parts[4].is_empty()) r_fixed_pitch = _sanitize_param_loop(parts[4].to_int(), 0, 127, "FN");
+		if (parts.size() >= 6 && !parts[5].is_empty()) r_tension     = _sanitize_param_loop(parts[5].to_int(), 0, 64,  "TN");
+	}
+
+	// Initialize p_params to reflect a 1-operator SiOPM channel with KS-friendly defaults
+	p_params->set_operator_count(1);
+	p_params->algorithm = 1;
+	p_params->feedback = 0;
+	p_params->feedback_connection = 0;
+	Ref<SiOPMOperatorParams> op0 = p_params->get_operator_params(0);
+	op0->set_pulse_generator_type(r_wave_shape);
+	op0->attack_rate   = r_attack_rate;
+	op0->decay_rate    = r_decay_rate;
+	op0->sustain_rate  = 0;
+	op0->release_rate  = 63;
+	op0->sustain_level = 15;
+	op0->total_level   = r_total_level;
+	op0->key_scaling_rate  = 0;
+	op0->key_scaling_level = 0;
+	op0->set_multiple(1);
+	op0->detune1 = 0;
+	op0->detune2 = 0;
+	op0->initial_phase = 0;
+	op0->fixed_pitch = (r_fixed_pitch << 6);
+}
+
 void TranslatorUtil::set_siopm_params(const Ref<SiOPMChannelParams> &p_params, Vector<int> p_data) {
 	_check_operator_count(p_params, p_data.size(), 3, 15, "#@");
 	return _set_siopm_params_by_array(p_params, p_data);
@@ -754,6 +801,22 @@ Vector<int> TranslatorUtil::get_al_params(const Ref<SiOPMChannelParams> &p_param
 		op_params0->release_rate
 	};
 
+	return res;
+}
+
+Vector<int> TranslatorUtil::get_ks_params(const Ref<SiOPMChannelParams> &p_params, int p_tension) {
+	if (p_params->get_operator_count() == 0) {
+		return Vector<int>();
+	}
+	Ref<SiOPMOperatorParams> op0 = p_params->get_operator_params(0);
+	Vector<int> res = {
+		op0->pulse_generator_type,
+		op0->attack_rate,
+		op0->decay_rate,
+		op0->total_level,
+		op0->fixed_pitch >> 6,
+		p_tension
+	};
 	return res;
 }
 
@@ -1166,6 +1229,27 @@ String TranslatorUtil::get_al_params_as_mml(const Ref<SiOPMChannelParams> &p_par
 	// Close MML string.
 	mml += "}";
 
+	return mml;
+}
+
+String TranslatorUtil::get_ks_params_as_mml(const Ref<SiOPMChannelParams> &p_params, int p_tension, String p_separator, String p_line_end, String p_comment) {
+	if (p_params->get_operator_count() == 0) {
+		return "";
+	}
+	Ref<SiOPMOperatorParams> op0 = p_params->get_operator_params(0);
+	// Open
+	String mml = "{";
+	// Flat, compact representation
+	mml += _format_mml_digit(op0->pulse_generator_type) + p_separator;
+	mml += _format_mml_digit(op0->attack_rate)          + p_separator;
+	mml += _format_mml_digit(op0->decay_rate)           + p_separator;
+	mml += _format_mml_digit(op0->total_level)          + p_separator;
+	mml += _format_mml_digit(op0->fixed_pitch >> 6)     + p_separator;
+	mml += _format_mml_digit(p_tension);
+	// Optional comment with voice name
+	mml += _format_mml_comment(p_comment, p_line_end);
+	// Close
+	mml += "}";
 	return mml;
 }
 

@@ -113,6 +113,9 @@ String SiONVoice::get_mml(int p_index, SiONChipType p_chip_type, bool p_append_p
 		case SiONChipType::CHIP_SIOPM:
 			mml = "#@"    + itos(p_index) + ::TranslatorUtil::get_siopm_params_as_mml(channel_params, " ", "\n", _name);
 			break;
+			case SiONChipType::CHIP_PMS_GUITAR:
+				mml = "#KS@"  + itos(p_index) + ::TranslatorUtil::get_ks_params_as_mml(channel_params, pms_tension, " ", "\n", _name);
+				break;
 		case SiONChipType::CHIP_OPL:
 			mml = "#OPL@" + itos(p_index) + ::TranslatorUtil::get_opl_params_as_mml(channel_params, " ", "\n", _name);
 			break;
@@ -181,6 +184,10 @@ int SiONVoice::set_by_mml(String p_mml) {
 	} else if (command == "#AL@") {
 		::TranslatorUtil::parse_al_params(channel_params, data);
 		chip_type = SiONChipType::CHIP_ANALOG_LIKE;
+	} else if (command == "#KS@") {
+		int ws, ar, dr, tl, fn, tn;
+		::TranslatorUtil::parse_ks_params(channel_params, data, ws, ar, dr, tl, fn, tn);
+		set_pms_guitar(ar, dr, tl, fn, ws, tn);
 	} else {
 		return -1;
 	}
