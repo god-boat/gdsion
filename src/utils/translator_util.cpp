@@ -374,7 +374,7 @@ void TranslatorUtil::_set_al_params_by_array(const Ref<SiOPMChannelParams> &p_pa
 	op_params0->attack_rate   = _sanitize_param_loop(p_data[5], 0, 63, "AR");
 	op_params0->decay_rate    = _sanitize_param_loop(p_data[6], 0, 63, "DR");
 	op_params0->sustain_rate  = 0;
-	op_params0->release_rate  = _sanitize_param_loop(p_data[8], 0, 15, "RR");
+	op_params0->release_rate  = _sanitize_param_loop(p_data[8], 0, 63, "RR");
 	op_params0->sustain_level = _sanitize_param_loop(p_data[7], 0, 63, "SL");
 }
 
