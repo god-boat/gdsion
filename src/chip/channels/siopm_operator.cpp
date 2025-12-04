@@ -465,9 +465,14 @@ void SiOPMOperator::tick_eg(int p_timer_initial) {
 }
 
 void SiOPMOperator::update_eg_output() {
+	// Snapshot the level table because another thread can swap it while the audio
+	// thread is in-flight, leaving the internal pointer dangling between the size
+	// check and the indexed read.
+	Vector<int> level_table = _eg_level_table;
+
 	// Guard against the envelope level table being unexpectedly empty. This can
 	// happen if initialization failed or a malformed SSG envelope was selected.
-	int table_size = _eg_level_table.size();
+	int table_size = level_table.size();
 	if (unlikely(table_size == 0)) {
 		// A zero-length table makes no sense; output silence and keep the internal
 		// level within a safe range to avoid undefined behaviour.
@@ -486,7 +491,7 @@ void SiOPMOperator::update_eg_output() {
 		safe_index = table_size - 1;
 	}
 	_eg_level = safe_index; // keep internal state consistent
-	_eg_output = (_eg_level_table[safe_index] + _eg_total_level) << 3;
+	_eg_output = (level_table[safe_index] + _eg_total_level) << 3;
 }
 
 void SiOPMOperator::update_eg_output_from(SiOPMOperator *p_other) {
