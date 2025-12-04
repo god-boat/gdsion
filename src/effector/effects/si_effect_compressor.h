@@ -10,9 +10,12 @@
 #include "effector/si_effect_base.h"
 #include "templates/singly_linked_list.h"
 
+#include <mutex>
+
 class SiEffectCompressor : public SiEffectBase {
 	GDCLASS(SiEffectCompressor, SiEffectBase)
 
+	mutable std::mutex _state_mutex;	// Guards shared state accessed from audio & main threads.
 	SinglyLinkedList<double> *_window_rms_list = nullptr;
 	int _window_samples = 0;
 	double _window_rms_total = 0;

@@ -6,10 +6,23 @@
 
 #include "si_effect_compressor.h"
 
+#include "chip/siopm_ref_table.h"
+
 void SiEffectCompressor::set_params(double p_threshold, double p_window_time, double p_attack_time, double p_release_time, double p_max_gain, double p_mixing_level) {
+	std::lock_guard<std::mutex> guard(_state_mutex);
+
 	_threshold_squared = p_threshold * p_threshold;
 
-	_window_samples = (int)(p_window_time * 44.1);
+	double samples_per_ms = 48.0;
+	SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
+	if (ref_table && ref_table->sampling_rate > 0) {
+		samples_per_ms = ref_table->sampling_rate / 1000.0;
+	}
+
+	_window_samples = (int)(p_window_time * samples_per_ms);
+	if (_window_samples <= 0) {
+		_window_samples = 1;
+	}
 	_window_rms_averaging = 1.0 / _window_samples;
 
 	if (_window_rms_list) {
@@ -19,12 +32,18 @@ void SiEffectCompressor::set_params(double p_threshold, double p_window_time, do
 
 	_attack_rate = 0.5;
 	if (p_attack_time != 0) {
-		_attack_rate = Math::pow(2, -1.0 / (p_attack_time * 44.1));
+		double attack_samples = p_attack_time * samples_per_ms;
+		if (attack_samples > 0) {
+			_attack_rate = Math::pow(2, -1.0 / attack_samples);
+		}
 	}
 
 	_release_rate = 2.0;
 	if (p_release_time != 0) {
-		_release_rate = Math::pow(2, 1.0 / (p_release_time * 44.1));
+		double release_samples = p_release_time * samples_per_ms;
+		if (release_samples > 0) {
+			_release_rate = Math::pow(2, 1.0 / release_samples);
+		}
 	}
 
 	_max_gain = Math::pow(2, -p_max_gain / 6.0);
@@ -32,6 +51,12 @@ void SiEffectCompressor::set_params(double p_threshold, double p_window_time, do
 }
 
 int SiEffectCompressor::prepare_process() {
+	std::lock_guard<std::mutex> guard(_state_mutex);
+
+	if (!_window_rms_list) {
+		return 2;
+	}
+
 	_window_rms_list->reset();
 	_window_rms_total = 0;
 	_gain = 2;
@@ -40,6 +65,12 @@ int SiEffectCompressor::prepare_process() {
 }
 
 int SiEffectCompressor::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+	std::lock_guard<std::mutex> guard(_state_mutex);
+
+	if (!_window_rms_list) {
+		return p_channels;
+	}
+
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
