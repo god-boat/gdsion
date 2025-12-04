@@ -9,6 +9,7 @@
 
 #include <godot_cpp/core/memory.hpp>
 #include <godot_cpp/templates/list.hpp>
+#include <mutex>
 
 using namespace godot;
 
@@ -18,6 +19,7 @@ class SinglyLinkedList {
 
 	// Reusable to reduce the number of allocations.
 	static SinglyLinkedList<T> *_element_pool;
+	static std::mutex _element_pool_mutex;
 
 public:
 	class Element {
@@ -42,11 +44,16 @@ private:
 
 	// Creates or reuses an instance of Element and returns it with the new value assigned.
 	Element *_alloc_element(T p_value) {
-		Element *ret;
+		Element *ret = nullptr;
 
-		if (_element_pool && _element_pool->has_any()) {
-			ret = _element_pool->pop_front_element();
-		} else {
+		if (_element_pool) {
+			std::lock_guard<std::mutex> lock(_element_pool_mutex);
+			if (_element_pool && _element_pool->has_any()) {
+				ret = _element_pool->pop_front_element();
+			}
+		}
+
+		if (!ret) {
 			ret = memnew(Element);
 		}
 
@@ -57,32 +64,52 @@ private:
 
 	// Unlinks the element from the next and adds it to the element pool. Does NOT handle existing references to this element!
 	void _release_element(Element *p_element) {
+		if (!p_element) {
+			return;
+		}
+
 		p_element->_next_ptr = nullptr;
 
 		if (_element_pool) {
-			_element_pool->push_back_element(p_element);
+			std::lock_guard<std::mutex> lock(_element_pool_mutex);
+			if (_element_pool) {
+				_element_pool->push_back_element(p_element);
+				return;
+			}
 		}
+
+		memdelete(p_element);
 	}
 
 public:
 
 	// Initializes the static element pool for this templated type.
 	static void initialize_pool() {
+		std::lock_guard<std::mutex> lock(_element_pool_mutex);
+		if (_element_pool) {
+			return;
+		}
+
 		_element_pool = memnew(SinglyLinkedList<T>);
 	}
 
 	// Frees the static element pool for this templated type.
 	static void finalize_pool() {
+		std::lock_guard<std::mutex> lock(_element_pool_mutex);
 		if (!_element_pool) {
 			return;
 		}
 
 		while (_element_pool->has_any()) {
 			Element *elem = _element_pool->pop_front_element();
+			if (!elem) {
+				break;
+			}
 			memdelete(elem);
 		}
 
 		memdelete(_element_pool);
+		_element_pool = nullptr;
 	}
 
 	//
@@ -360,5 +387,8 @@ public:
 
 template <class T>
 SinglyLinkedList<T> *SinglyLinkedList<T>::_element_pool = nullptr;
+
+template <class T>
+std::mutex SinglyLinkedList<T>::_element_pool_mutex;
 
 #endif // SION_SLL_INT_H
