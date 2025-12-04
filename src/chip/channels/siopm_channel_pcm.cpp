@@ -256,14 +256,14 @@ void SiOPMChannelPCM::set_amplitude_modulation(int p_depth) {
 	_amplitude_modulation_depth = p_depth << 2;
 	_amplitude_modulation_output_level = (_lfo_wave_table[_lfo_phase] * _amplitude_modulation_depth) >> 7 << 3;
 
-	_set_lfo_state(_pitch_modulation_depth != 0 || _amplitude_modulation_depth > 0);
+	_set_lfo_state(_pitch_modulation_depth != 0 || _amplitude_modulation_depth != 0);
 }
 
 void SiOPMChannelPCM::set_pitch_modulation(int p_depth) {
 	_pitch_modulation_depth = p_depth;
 	_pitch_modulation_output_level = (((_lfo_wave_table[_lfo_phase] << 1) - 255) * _pitch_modulation_depth) >> 8;
 
-	_set_lfo_state(_pitch_modulation_depth != 0 || _amplitude_modulation_depth > 0);
+	_set_lfo_state(_pitch_modulation_depth != 0 || _amplitude_modulation_depth != 0);
 
 	if (_pitch_modulation_depth == 0) {
 		_operator->set_pm_detune(0);
