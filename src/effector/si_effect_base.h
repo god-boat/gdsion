@@ -9,6 +9,11 @@
 
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/templates/vector.hpp>
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace godot;
 
@@ -30,6 +35,13 @@ protected:
 
 		const double value = p_args[p_index];
 		return Math::is_nan(value) ? p_default : value;
+	}
+
+	// Helper for constant-power crossfade (equal-power mixing).
+	// Maintains consistent volume across the wet/dry range using trigonometric functions.
+	_FORCE_INLINE_ void _calculate_constant_power_gains(double p_wet, double &r_dry_gain, double &r_wet_gain) const {
+		r_dry_gain = cos(p_wet * M_PI * 0.5);
+		r_wet_gain = sin(p_wet * M_PI * 0.5);
 	}
 
 public:
