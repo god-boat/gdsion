@@ -34,6 +34,8 @@
 #include "effector/filters/si_filter_notch.h"
 #include "effector/filters/si_filter_peak.h"
 #include "effector/filters/si_filter_vowel.h"
+#include "effector/effects/si_effect_mb_compressor.h"
+#include "effector/effects/si_effect_linkwitz_riley_filter.h"
 
 HashMap<String, Vector<Ref<SiEffectBase>>> SiEffector::_effect_instances;
 
@@ -123,6 +125,9 @@ Ref<SiEffectBase> SiEffector::get_effect_instance(const String &p_name) {
 
 	CREATE_EFFECT(SiControllableFilterHighPass, "nhf");
 	CREATE_EFFECT(SiControllableFilterLowPass, "nlf");
+
+	CREATE_EFFECT(SiEffectMultibandCompressor, "mb_comp");
+	CREATE_EFFECT(SiEffectLinkwitzRileyFilter, "lr_filter");
 
 #undef CREATE_EFFECT
 
@@ -371,6 +376,9 @@ SiEffector::SiEffector(SiOPMSoundChip *p_chip) {
 
 	register_effect<SiControllableFilterHighPass>("nhf");
 	register_effect<SiControllableFilterLowPass>("nlf");
+
+	register_effect<SiEffectMultibandCompressor>("mb_comp");
+	register_effect<SiEffectLinkwitzRileyFilter>("lr_filter");
 }
 
 SiEffector::~SiEffector() {

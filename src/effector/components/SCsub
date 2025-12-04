@@ -4,6 +4,3 @@ Import("env")
 
 env.add_source_files(env.library_sources, "*.cpp")
 
-SConscript("components/SCsub")
-SConscript("effects/SCsub")
-SConscript("filters/SCsub")

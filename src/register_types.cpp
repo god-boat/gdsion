@@ -32,6 +32,7 @@
 #include "chip/wave/siopm_wave_sampler_data.h"
 #include "chip/wave/siopm_wave_sampler_table.h"
 #include "chip/wave/siopm_wave_table.h"
+#include "effector/components/si_effect_line_delay.h"
 #include "effector/effects/si_effect_autopan.h"
 #include "effector/effects/si_effect_compressor.h"
 #include "effector/effects/si_effect_distortion.h"
@@ -43,12 +44,15 @@
 #include "effector/effects/si_effect_stereo_expander.h"
 #include "effector/effects/si_effect_stereo_reverb.h"
 #include "effector/effects/si_effect_wave_shaper.h"
+#include "effector/effects/si_effect_mb_compressor.h"
+#include "effector/effects/si_effect_linkwitz_riley_filter.h"
 #include "effector/filters/si_controllable_filter_base.h"
 #include "effector/filters/si_controllable_filter_high_pass.h"
 #include "effector/filters/si_controllable_filter_low_pass.h"
 #include "effector/filters/si_filter_all_pass.h"
 #include "effector/filters/si_filter_band_pass.h"
 #include "effector/filters/si_filter_base.h"
+#include "effector/filters/si_filter_biquad_allpass.h"
 #include "effector/filters/si_filter_high_boost.h"
 #include "effector/filters/si_filter_high_pass.h"
 #include "effector/filters/si_filter_low_boost.h"
@@ -136,6 +140,8 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 		ClassDB::register_class<SiEffectStereoExpander>();
 		ClassDB::register_class<SiEffectStereoReverb>();
 		ClassDB::register_class<SiEffectWaveShaper>();
+		ClassDB::register_class<SiEffectMultibandCompressor>();
+		ClassDB::register_class<SiEffectLinkwitzRileyFilter>();
 		ClassDB::register_class<SiFilterAllPass>();
 		ClassDB::register_class<SiFilterBandPass>();
 		ClassDB::register_class<SiFilterHighBoost>();
