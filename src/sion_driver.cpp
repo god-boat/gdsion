@@ -43,6 +43,7 @@
 #include "sequencer/simml_track.h"
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/channels/siopm_channel_fm.h"
+#include "chip/channels/siopm_channel_sampler.h"
 #include "utils/fader_util.h"
 #include "utils/transformer_util.h"
 #include <atomic>
@@ -1256,6 +1257,10 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_decay_cutoff2", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_decay_cutoff2, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_sustain_cutoff", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_sustain_cutoff, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_release_cutoff", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_release_cutoff, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_amp_attack_rate", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_amp_attack_rate, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_amp_decay_rate", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_amp_decay_rate, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_amp_sustain_level", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_amp_sustain_level, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_amp_release_rate", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_amp_release_rate, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_total_level", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_total_level);
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_multiple", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_multiple);
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_fine_multiple", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_fine_multiple);
@@ -1703,6 +1708,42 @@ void SiONDriver::mailbox_set_track_filter_release_cutoff(int p_track_id, int p_v
     _TrackUpdate u; u.track_id = p_track_id; u.voice_scope_id = p_voice_scope_id; u.has_filter_rc = true; u.filter_rc = p_value; _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_track_amp_attack_rate(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_amp_attack = true;
+	u.amp_attack = p_value;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_track_amp_decay_rate(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_amp_decay = true;
+	u.amp_decay = p_value;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_track_amp_sustain_level(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_amp_sustain = true;
+	u.amp_sustain = p_value;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_track_amp_release_rate(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_amp_release = true;
+	u.amp_release = p_value;
+	_mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -1955,6 +1996,21 @@ void SiONDriver::_drain_track_mailbox() {
             if (u.has_env_freq_ratio) {
                 ch->set_frequency_ratio(u.env_freq_ratio);
             }
+			SiOPMChannelSampler *sampler = Object::cast_to<SiOPMChannelSampler>(ch);
+			if (sampler) {
+				if (u.has_amp_attack) {
+					sampler->set_amp_attack_rate(u.amp_attack);
+				}
+				if (u.has_amp_decay) {
+					sampler->set_amp_decay_rate(u.amp_decay);
+				}
+				if (u.has_amp_sustain) {
+					sampler->set_amp_sustain_level(u.amp_sustain);
+				}
+				if (u.has_amp_release) {
+					sampler->set_amp_release_rate(u.amp_release);
+				}
+			}
             // FM operator updates and Analog-Like live params
             SiOPMChannelFM *fm = Object::cast_to<SiOPMChannelFM>(ch);
             if (fm) {

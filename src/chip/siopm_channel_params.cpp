@@ -177,6 +177,11 @@ void SiOPMChannelParams::initialize() {
 	filter_sustain_offset = 32;
 	filter_release_offset = 128;
 
+	amplitude_attack_rate = 63;
+	amplitude_decay_rate = 63;
+	amplitude_sustain_level = 128;
+	amplitude_release_rate = 63;
+
 	for (int i = 0; i < MAX_OPERATORS; i++) {
 		operator_params[i]->initialize();
 	}
@@ -221,6 +226,11 @@ void SiOPMChannelParams::copy_from(const Ref<SiOPMChannelParams> &p_params) {
 	filter_decay_offset2 = p_params->filter_decay_offset2;
 	filter_sustain_offset = p_params->filter_sustain_offset;
 	filter_release_offset = p_params->filter_release_offset;
+
+	amplitude_attack_rate = p_params->amplitude_attack_rate;
+	amplitude_decay_rate = p_params->amplitude_decay_rate;
+	amplitude_sustain_level = p_params->amplitude_sustain_level;
+	amplitude_release_rate = p_params->amplitude_release_rate;
 
 	for (int i = 0; i < MAX_OPERATORS; i++) {
 		operator_params[i]->copy_from(p_params->operator_params[i]);
@@ -342,6 +352,20 @@ void SiOPMChannelParams::_bind_methods() {
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "filter_decay_offset2"), "set_filter_decay_offset2", "get_filter_decay_offset2");
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "filter_sustain_offset"), "set_filter_sustain_offset", "get_filter_sustain_offset");
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "filter_release_offset"), "set_filter_release_offset", "get_filter_release_offset");
+
+	ClassDB::bind_method(D_METHOD("get_amplitude_attack_rate"), &SiOPMChannelParams::get_amplitude_attack_rate);
+	ClassDB::bind_method(D_METHOD("set_amplitude_attack_rate", "value"), &SiOPMChannelParams::set_amplitude_attack_rate);
+	ClassDB::bind_method(D_METHOD("get_amplitude_decay_rate"), &SiOPMChannelParams::get_amplitude_decay_rate);
+	ClassDB::bind_method(D_METHOD("set_amplitude_decay_rate", "value"), &SiOPMChannelParams::set_amplitude_decay_rate);
+	ClassDB::bind_method(D_METHOD("get_amplitude_sustain_level"), &SiOPMChannelParams::get_amplitude_sustain_level);
+	ClassDB::bind_method(D_METHOD("set_amplitude_sustain_level", "value"), &SiOPMChannelParams::set_amplitude_sustain_level);
+	ClassDB::bind_method(D_METHOD("get_amplitude_release_rate"), &SiOPMChannelParams::get_amplitude_release_rate);
+	ClassDB::bind_method(D_METHOD("set_amplitude_release_rate", "value"), &SiOPMChannelParams::set_amplitude_release_rate);
+
+	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "amplitude_attack_rate"), "set_amplitude_attack_rate", "get_amplitude_attack_rate");
+	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "amplitude_decay_rate"), "set_amplitude_decay_rate", "get_amplitude_decay_rate");
+	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "amplitude_sustain_level"), "set_amplitude_sustain_level", "get_amplitude_sustain_level");
+	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "amplitude_release_rate"), "set_amplitude_release_rate", "get_amplitude_release_rate");
 
 	BIND_CONSTANT(MAX_OPERATORS);
 }

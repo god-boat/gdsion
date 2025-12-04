@@ -13,9 +13,31 @@
 #include "chip/wave/siopm_wave_base.h"
 #include "chip/wave/siopm_wave_sampler_data.h"
 #include "chip/wave/siopm_wave_sampler_table.h"
+#include <godot_cpp/core/math.hpp>
 #include <cmath>
 
+// Convert AM delta (log-table index domain) into a linear gain multiplier.
+// Adding delta to the log index multiplies the linear amplitude by 2^(-delta / 512).
+static _FORCE_INLINE_ double _am_gain_from_log_delta(int p_delta) {
+	return std::pow(2.0, -(double)p_delta / 512.0);
+}
+
 void SiOPMChannelSampler::get_channel_params(const Ref<SiOPMChannelParams> &p_params) const {
+	p_params->set_operator_count(1);
+
+	p_params->set_envelope_frequency_ratio(_frequency_ratio);
+
+	p_params->set_lfo_wave_shape(_lfo_wave_shape);
+	p_params->set_lfo_frequency_step(_lfo_timer_step_buffer);
+
+	p_params->set_amplitude_modulation_depth(_amplitude_modulation_depth);
+	p_params->set_pitch_modulation_depth(_pitch_modulation_depth);
+
+	p_params->set_amplitude_attack_rate(_amp_attack_rate);
+	p_params->set_amplitude_decay_rate(_amp_decay_rate);
+	p_params->set_amplitude_sustain_level(_amp_sustain_level);
+	p_params->set_amplitude_release_rate(_amp_release_rate);
+
 	for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
 		p_params->set_master_volume(i, _volumes[i]);
 	}
@@ -25,6 +47,16 @@ void SiOPMChannelSampler::get_channel_params(const Ref<SiOPMChannelParams> &p_pa
 void SiOPMChannelSampler::set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation) {
 	if (p_params->get_operator_count() == 0) {
 		return;
+	}
+
+	// Frequency/LFO/modulation (parity with PCM).
+	set_frequency_ratio(p_params->get_envelope_frequency_ratio());
+	if (p_with_modulation) {
+		initialize_lfo(p_params->get_lfo_wave_shape());
+		_set_lfo_timer(p_params->get_lfo_frequency_step());
+
+		set_amplitude_modulation(p_params->get_amplitude_modulation_depth());
+		set_pitch_modulation(p_params->get_pitch_modulation_depth());
 	}
 
 	if (p_with_volume) {
@@ -42,6 +74,27 @@ void SiOPMChannelSampler::set_channel_params(const Ref<SiOPMChannelParams> &p_pa
 
 		_pan = p_params->get_pan();
 	}
+
+	// Filter.
+	_filter_type = p_params->get_filter_type();
+	{
+		int filter_cutoff = p_params->get_filter_cutoff();
+		int filter_resonance = p_params->get_filter_resonance();
+		int filter_ar = p_params->get_filter_attack_rate();
+		int filter_dr1 = p_params->get_filter_decay_rate1();
+		int filter_dr2 = p_params->get_filter_decay_rate2();
+		int filter_rr = p_params->get_filter_release_rate();
+		int filter_dc1 = p_params->get_filter_decay_offset1();
+		int filter_dc2 = p_params->get_filter_decay_offset2();
+		int filter_sc = p_params->get_filter_sustain_offset();
+		int filter_rc = p_params->get_filter_release_offset();
+		set_sv_filter(filter_cutoff, filter_resonance, filter_ar, filter_dr1, filter_dr2, filter_rr, filter_dc1, filter_dc2, filter_sc, filter_rc);
+	}
+
+	set_amp_attack_rate(p_params->get_amplitude_attack_rate());
+	set_amp_decay_rate(p_params->get_amplitude_decay_rate());
+	set_amp_sustain_level(p_params->get_amplitude_sustain_level());
+	set_amp_release_rate(p_params->get_amplitude_release_rate());
 }
 
 void SiOPMChannelSampler::set_wave_data(const Ref<SiOPMWaveBase> &p_wave_data) {
@@ -77,6 +130,76 @@ void SiOPMChannelSampler::offset_volume(int p_expression, int p_velocity) {
 	_expression = p_expression * p_velocity * 0.00006103515625; // 1/16384
 }
 
+// LFO control.
+
+void SiOPMChannelSampler::set_frequency_ratio(int p_ratio) {
+	_frequency_ratio = p_ratio;
+
+	double value_coef = (p_ratio != 0) ? (100.0 / p_ratio) : 1.0;
+	_lfo_timer_initial = (int)(SiOPMRefTable::LFO_TIMER_INITIAL * value_coef);
+	_amp_rate_scale = value_coef;
+	_refresh_active_amp_stage();
+}
+
+void SiOPMChannelSampler::initialize_lfo(int p_waveform, Vector<int> p_custom_wave_table) {
+	SiOPMChannelBase::initialize_lfo(p_waveform, p_custom_wave_table);
+
+	_set_lfo_state(false);
+
+	_amplitude_modulation_depth = 0;
+	_pitch_modulation_depth = 0;
+	_amplitude_modulation_output_level = 0;
+	_pitch_modulation_output_level = 0;
+	_amplitude_modulation_gain = 1.0;
+}
+
+void SiOPMChannelSampler::set_amplitude_modulation(int p_depth) {
+	_amplitude_modulation_depth = p_depth << 2;
+	_amplitude_modulation_output_level = (_lfo_wave_table[_lfo_phase] * _amplitude_modulation_depth) >> 7 << 3;
+
+	_set_lfo_state(_pitch_modulation_depth != 0 || _amplitude_modulation_depth != 0);
+	// Recompute linear gain from AM delta for parity with FM's log-domain AM.
+	_amplitude_modulation_gain = _am_gain_from_log_delta(_amplitude_modulation_output_level);
+}
+
+void SiOPMChannelSampler::set_pitch_modulation(int p_depth) {
+	_pitch_modulation_depth = p_depth;
+	_pitch_modulation_output_level = (((_lfo_wave_table[_lfo_phase] << 1) - 255) * _pitch_modulation_depth) >> 8;
+
+	_set_lfo_state(_pitch_modulation_depth != 0 || _amplitude_modulation_depth != 0);
+}
+
+void SiOPMChannelSampler::_set_lfo_state(bool p_enabled) {
+	_lfo_on = (int)p_enabled;
+	_lfo_timer_step = p_enabled ? _lfo_timer_step_buffer : 0;
+}
+
+void SiOPMChannelSampler::_set_lfo_timer(int p_value) {
+	_lfo_timer = (p_value > 0 ? 1 : 0);
+	_lfo_timer_step = p_value;
+	_lfo_timer_step_buffer = p_value;
+}
+
+void SiOPMChannelSampler::_update_lfo() {
+	if (_lfo_on == 0) {
+		return;
+	}
+	_lfo_timer -= _lfo_timer_step;
+	if (_lfo_timer >= 0) {
+		return;
+	}
+
+	_lfo_phase = (_lfo_phase + 1) & 255;
+
+	int value_base = _lfo_wave_table[_lfo_phase];
+	_amplitude_modulation_output_level = (value_base * _amplitude_modulation_depth) >> 7 << 3;
+	_pitch_modulation_output_level = (((value_base << 1) - 255) * _pitch_modulation_depth) >> 8;
+
+	_lfo_timer += _lfo_timer_initial;
+	// Update cached linear AM gain from log delta.
+	_amplitude_modulation_gain = _am_gain_from_log_delta(_amplitude_modulation_output_level);
+}
+
 // Processing.
 
 void SiOPMChannelSampler::note_on() {
@@ -84,13 +207,16 @@ void SiOPMChannelSampler::note_on() {
 		return;
 	}
 
+	_stop_click_guard();
+	_reset_amp_envelope();
+
 	if (_sampler_table.is_valid()) {
 		_sample_data = _sampler_table->get_sample(_wave_number & 127);
 	}
 	if (_sample_data.is_valid() && _sample_start_phase != 255) {
 		_sample_index = _sample_data->get_initial_sample_index(_sample_start_phase * 0.00390625); // 1/256
 		_sample_index_fp = (double)_sample_index;
-		_sample_pan = CLAMP(_pan + _sample_data->get_pan(), 0, 128);
+		_sample_pan = _sample_data->get_pan();
 		// If the sample is marked as fixed_pitch (slice mode), disable pitch shifting.
 		if (_sample_data->is_fixed_pitch()) {
 			// Apply global pitch offset (in semitones) instead of note-based transposition.
@@ -102,9 +228,11 @@ void SiOPMChannelSampler::note_on() {
 	_is_idling = (_sample_data == nullptr);
 	_is_note_on = !_is_idling;
 
-	// Reset envelope.
-	_is_releasing = false;
-	_envelope_level = 1.0;
+	// Start LFO/filter EG like other channels once we know we're active.
+	if (!_is_idling) {
+		SiOPMChannelBase::note_on();
+		_start_amp_envelope();
+	}
 }
 
 void SiOPMChannelSampler::note_off() {
@@ -113,14 +241,14 @@ void SiOPMChannelSampler::note_off() {
 	}
 
 	_is_note_on = false;
+	_begin_amp_release();
 
-	// Start release phase instead of immediate stop to avoid clicks.
-	_is_releasing = true;
-	_release_samples_left = RELEASE_SAMPLES;
+	// Trigger filter EG release like other channels.
+	SiOPMChannelBase::note_off();
 }
 
 void SiOPMChannelSampler::buffer(int p_length) {
-	if (_is_idling || _sample_data == nullptr || _sample_data->get_length() <= 0 || _mute) {
+	if (_is_idling || _sample_data == nullptr || _sample_data->get_length() <= 0) {
 		buffer_no_process(p_length);
 		return;
 	}
@@ -130,126 +258,162 @@ void SiOPMChannelSampler::buffer(int p_length) {
 	int end_point = _sample_data->get_end_point();
 	int loop_point = _sample_data->get_loop_point();
 
-	// Temporary buffer that will hold resampled data for this block.
-	Vector<double> temp_buffer;
-	temp_buffer.resize_zeroed(p_length * channels);
+	// Preserve the start of output pipes.
+	SinglyLinkedList<int>::Element *left_start = _out_pipe->get();
+	SinglyLinkedList<int>::Element *left_write = left_start;
+	SinglyLinkedList<int>::Element *right_start = nullptr;
+	SinglyLinkedList<int>::Element *right_write = nullptr;
+	if (channels == 2) {
+		if (!_out_pipe2) {
+			_out_pipe2 = _sound_chip->get_pipe(3, _buffer_index);
+		}
+		right_start = _out_pipe2->get();
+		right_write = right_start;
+	}
 
-	int samples_written = 0;
-	while (samples_written < p_length) {
+	// Generate into integer pipes.
+	for (int i = 0; i < p_length; i++) {
+		// End/loop handling.
 		if (_sample_index_fp >= end_point) {
 			if (loop_point >= 0) {
-				// Loop back.
 				_sample_index_fp = loop_point + (_sample_index_fp - end_point);
 			} else {
-				// End reached, finish playing.
+				_begin_click_guard();
 				_is_idling = true;
+				// Fill remainder with silence.
+				for (; i < p_length; i++) {
+					left_write->value = 0;
+					left_write = left_write->next();
+					if (channels == 2 && right_write) {
+						right_write->value = 0;
+						right_write = right_write->next();
+					}
+				}
 				break;
 			}
 		}
 
-		int remaining = p_length - samples_written;
-
-		for (int i = 0; i < remaining; i++) {
-			int base_index = (int)_sample_index_fp;
-			double frac = _sample_index_fp - base_index;
-
-			if (base_index >= end_point) {
-				// This would be handled in outer loop.
-				break;
-			}
-
-			for (int ch = 0; ch < channels; ch++) {
-				double s1 = wave_data[(base_index * channels) + ch];
-				double s2;
-				if (base_index + 1 < end_point) {
-					s2 = wave_data[((base_index + 1) * channels) + ch];
-				} else {
-					s2 = s1;
+		// LFO and ADSR updates.
+		_update_lfo();
+		_update_amp_envelope();
+		if (_amp_stage == AMP_STAGE_IDLE) {
+			if (!_click_guard_active) {
+				for (; i < p_length; i++) {
+					left_write->value = 0;
+					left_write = left_write->next();
+					if (channels == 2 && right_write) {
+						right_write->value = 0;
+						right_write = right_write->next();
+					}
 				}
-
-				double sample_value = s1 + (s2 - s1) * frac;
-				sample_value *= _envelope_level;
-
-				temp_buffer.write[(samples_written * channels) + ch] = sample_value;
-			}
-
-			// Advance sample position.
-			_sample_index_fp += _pitch_step;
-
-			// Update envelope during release.
-			if (_is_releasing) {
-				if (_release_samples_left > 0) {
-					_release_samples_left--;
-					_envelope_level = (double)_release_samples_left / RELEASE_SAMPLES;
-				} else {
-					_envelope_level = 0.0;
-					_is_releasing = false;
-					_is_idling = true;
-					// We can break early since envelope is silent.
-					break;
-				}
-			}
-
-			samples_written++;
-			if (samples_written >= p_length) {
 				break;
+			} else {
+				left_write->value = 0;
+				left_write = left_write->next();
+				if (channels == 2 && right_write) {
+					right_write->value = 0;
+					right_write = right_write->next();
+				}
+				continue;
 			}
+		}
+
+		// Interpolation indices.
+		int base_index = (int)_sample_index_fp;
+		double frac = _sample_index_fp - base_index;
+
+		// Gather samples and interpolate.
+		double sL1 = wave_data[(base_index * channels) + 0];
+		double sL2 = (base_index + 1 < end_point) ? wave_data[((base_index + 1) * channels) + 0] : sL1;
+		double sampleL = sL1 + (sL2 - sL1) * frac;
+		double sampleR = sampleL;
+		if (channels == 2) {
+			double sR1 = wave_data[(base_index * channels) + 1];
+			double sR2 = (base_index + 1 < end_point) ? wave_data[((base_index + 1) * channels) + 1] : sR1;
+			sampleR = sR1 + (sR2 - sR1) * frac;
+		}
+
+		// Apply channel ADSR + AM depth.
+		double env = _envelope_level;
+		double outL = sampleL * env * _amplitude_modulation_gain;
+		double outR = sampleR * env * _amplitude_modulation_gain;
+
+		// Convert to engine int domain and write.
+		int vL = CLAMP((int)(outL * 8192.0), -8192, 8191);
+		left_write->value = vL;
+		left_write = left_write->next();
+		if (channels == 2 && right_write) {
+			int vR = CLAMP((int)(outR * 8192.0), -8192, 8191);
+			right_write->value = vR;
+			right_write = right_write->next();
+		}
+
+		// Advance sample position with pitch modulation (vibrato).
+		double pm_semitones = _pitch_modulation_output_level * (1.0 / 64.0);
+		double pitch_factor = std::pow(2.0, pm_semitones / 12.0);
+		double step = _pitch_step * pitch_factor;
+		_sample_index_fp += step;
+	}
+
+	// Apply filter on output pipes.
+	if (_filter_on) {
+		_apply_sv_filter(left_start, p_length, _filter_variables);
+		if (channels == 2 && right_start) {
+			_apply_sv_filter(right_start, p_length, _filter_variables2);
 		}
 	}
 
-	if (samples_written > 0) {
-		// Write to stream(s).
-		if (_has_effect_send) {
-			for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
-				if (_volumes[i] > 0) {
-					SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
-					if (stream) {
-						double volume = _volumes[i] * _expression * _sound_chip->get_sampler_volume();
-						stream->write_from_vector(&temp_buffer, 0, _buffer_index, samples_written, volume, _sample_pan, channels);
-					}
-				}
-			}
-		} else {
-			SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-			double volume = _volumes[0] * _expression * _sound_chip->get_sampler_volume();
-			stream->write_from_vector(&temp_buffer, 0, _buffer_index, samples_written, volume, _sample_pan, channels);
+	// Write to streams.
+	if (!_mute) {
+		if (channels == 1) {
+			_write_stream_mono(left_start, p_length);
+		} else if (right_start) {
+			_write_stream_stereo(left_start, right_start, p_length);
 		}
+	}
 
-		// ------------------------------------------------------------------
-		// Metering: copy channel output into the private meter ring so that
-		// higher-level code (ParamManager → MixerTrackUnit) can read recent
-		// peak/RMS levels.  We piggy-back on SiOPMChannelBase's internal
-		// ring-buffer helpers.  The ring stores 13-bit signed ints, so we
-		// convert the normalised double samples accordingly (~-1.0..1.0).
-		// ------------------------------------------------------------------
-		if (!_meter_pipe) {
-			_meter_pipe = memnew(SinglyLinkedList<int>(_sound_chip->get_buffer_length(), 0, true));
-			_meter_write_index = 0;
-			_meter_write_elem = _meter_pipe->get();
-		}
-		SinglyLinkedList<int>::Element *dst = _meter_write_elem;
-		for (int i = 0; i < samples_written; i++) {
-			// Use first channel sample for metering (mono) – adequate for peak/RMS.
-			double s = temp_buffer[i * channels];
-			int v = CLAMP((int)(s * 8192.0), -8192, 8191);
-			if (!dst) {
-				_meter_pipe->front();
-				dst = _meter_pipe->get();
-			}
-			dst->value = v;
-			dst = dst->next();
-			_meter_write_index++;
-			if (_meter_write_index >= _sound_chip->get_buffer_length()) {
-				_meter_write_index = 0;
-			}
-		}
-		_meter_write_elem = dst;
+	// Metering: copy post-filter mono lane (or left) into meter ring.
+	_meter_write_from(left_start, p_length);
+
+	// Advance pipe cursors for next buffer.
+	_out_pipe->set(left_write);
+	if (channels == 2 && right_write) {
+		_out_pipe2->set(right_write);
 	}
 
 	_buffer_index += p_length;
 }
 
 void SiOPMChannelSampler::buffer_no_process(int p_length) {
+	// Rotate the output buffers similarly to PCM to keep both pipes aligned.
+	int pipe_index = (_buffer_index + p_length) & (_sound_chip->get_buffer_length() - 1);
+	if (_output_mode == OutputMode::OUTPUT_STANDARD) {
+		_out_pipe = _sound_chip->get_pipe(4, pipe_index);
+		_out_pipe2 = _sound_chip->get_pipe(3, pipe_index);
+		_base_pipe = _sound_chip->get_zero_buffer();
+	} else {
+		if (_out_pipe) {
+			_out_pipe->advance(p_length);
+		}
+		if (_out_pipe2) {
+			_out_pipe2->advance(p_length);
+		}
+		_base_pipe = (_output_mode == OutputMode::OUTPUT_ADD ? _out_pipe : _sound_chip->get_zero_buffer());
+	}
+
+	// Rotate the input buffer when connected by @i.
+	if (_input_mode == InputMode::INPUT_PIPE && _in_pipe) {
+		_in_pipe->advance(p_length);
+	}
+
+	// Rotate the ring buffer.
+	if (_ring_pipe) {
+		_ring_pipe->advance(p_length);
+	}
+
+	// Maintain meter ring position even if idling or no processing.
+	_meter_write_silence(p_length);
+
 	_buffer_index += p_length;
 }
 
@@ -258,6 +422,10 @@ void SiOPMChannelSampler::buffer_no_process(int p_length) {
 void SiOPMChannelSampler::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	SiOPMChannelBase::initialize(p_prev, p_buffer_index);
 	reset();
+	_out_pipe2 = _sound_chip->get_pipe(3, p_buffer_index);
+	_filter_variables2[0] = 0;
+	_filter_variables2[1] = 0;
+	_filter_variables2[2] = 0;
 }
 
 void SiOPMChannelSampler::reset() {
@@ -278,9 +446,303 @@ void SiOPMChannelSampler::reset() {
 	_fine_pitch = 0;
 	_pitch_step = 1.0;
 	_sample_index_fp = 0.0;
-	_is_releasing = false;
-	_release_samples_left = 0;
-	_envelope_level = 1.0;
+	_stop_click_guard();
+	_reset_amp_envelope();
+}
+
+void SiOPMChannelSampler::set_amp_attack_rate(int p_value) {
+	int clamped = CLAMP(p_value, 0, 63);
+	if (_amp_attack_rate == clamped) {
+		return;
+	}
+	_amp_attack_rate = clamped;
+	if (_amp_stage == AMP_STAGE_ATTACK) {
+		_configure_amp_stage(1.0, _amp_attack_rate);
+	}
+}
+
+void SiOPMChannelSampler::set_amp_decay_rate(int p_value) {
+	int clamped = CLAMP(p_value, 0, 63);
+	if (_amp_decay_rate == clamped) {
+		return;
+	}
+	_amp_decay_rate = clamped;
+	if (_amp_stage == AMP_STAGE_DECAY) {
+		double sustain = (double)_amp_sustain_level * 0.0078125; // 1/128
+		_configure_amp_stage(sustain, _amp_decay_rate);
+	}
+}
+
+void SiOPMChannelSampler::set_amp_sustain_level(int p_value) {
+	int clamped = CLAMP(p_value, 0, 128);
+	if (_amp_sustain_level == clamped) {
+		return;
+	}
+	_amp_sustain_level = clamped;
+	double sustain = (double)_amp_sustain_level * 0.0078125;
+	if (_amp_stage == AMP_STAGE_DECAY) {
+		_configure_amp_stage(sustain, _amp_decay_rate);
+	} else if (_amp_stage == AMP_STAGE_SUSTAIN) {
+		_amp_level = sustain;
+		_envelope_level = _amp_level;
+	}
+}
+
+void SiOPMChannelSampler::set_amp_release_rate(int p_value) {
+	int clamped = CLAMP(p_value, 0, 63);
+	if (_amp_release_rate == clamped) {
+		return;
+	}
+	_amp_release_rate = clamped;
+	if (_amp_stage == AMP_STAGE_RELEASE) {
+		_configure_amp_stage(0.0, _amp_release_rate);
+	}
+}
+
+void SiOPMChannelSampler::_reset_amp_envelope() {
+	_amp_stage = AMP_STAGE_IDLE;
+	_amp_level = 0.0;
+	_amp_stage_target_level = 0.0;
+	_amp_stage_increment = 0.0;
+	_amp_stage_samples_left = 0;
+	_envelope_level = 0.0;
+	_is_idling = true;
+}
+
+void SiOPMChannelSampler::_start_amp_envelope() {
+	_stop_click_guard();
+	_is_idling = false;
+	_set_amp_stage(AMP_STAGE_ATTACK);
+}
+
+void SiOPMChannelSampler::_begin_amp_release() {
+	if (_amp_stage == AMP_STAGE_IDLE || _amp_stage == AMP_STAGE_RELEASE) {
+		return;
+	}
+	_set_amp_stage(AMP_STAGE_RELEASE);
+}
+
+void SiOPMChannelSampler::_advance_amp_stage() {
+	switch (_amp_stage) {
+		case AMP_STAGE_ATTACK: {
+			// Skip decay if sustain is full scale and decay rate is zero.
+			bool needs_decay = (_amp_sustain_level < 128) || (_amp_decay_rate > 0);
+			if (needs_decay) {
+				_set_amp_stage(AMP_STAGE_DECAY);
+			} else {
+				_set_amp_stage(AMP_STAGE_SUSTAIN);
+			}
+		} break;
+		case AMP_STAGE_DECAY: {
+			_set_amp_stage(AMP_STAGE_SUSTAIN);
+		} break;
+		case AMP_STAGE_RELEASE: {
+			_set_amp_stage(AMP_STAGE_IDLE);
+			_begin_click_guard();
+		} break;
+		default:
+			break;
+	}
+}
+
+void SiOPMChannelSampler::_set_amp_stage(AmplitudeStage p_stage) {
+	_amp_stage = p_stage;
+	switch (p_stage) {
+		case AMP_STAGE_ATTACK: {
+			_is_idling = false;
+			_amp_level = CLAMP(_amp_level, 0.0, 1.0);
+			_configure_amp_stage(1.0, _amp_attack_rate);
+		} break;
+		case AMP_STAGE_DECAY: {
+			_is_idling = false;
+			double sustain = (double)_amp_sustain_level * 0.0078125;
+			_configure_amp_stage(sustain, _amp_decay_rate);
+		} break;
+		case AMP_STAGE_SUSTAIN: {
+			_is_idling = false;
+			_amp_stage_samples_left = 0;
+			_amp_stage_increment = 0.0;
+			_amp_level = (double)_amp_sustain_level * 0.0078125;
+			_envelope_level = _amp_level;
+		} break;
+		case AMP_STAGE_RELEASE: {
+			_is_idling = false;
+			_configure_amp_stage(0.0, _amp_release_rate);
+		} break;
+		case AMP_STAGE_IDLE:
+		default: {
+			_amp_stage_samples_left = 0;
+			_amp_stage_increment = 0.0;
+			_amp_level = 0.0;
+			_envelope_level = 0.0;
+			_is_idling = true;
+		} break;
+	}
+}
+
+void SiOPMChannelSampler::_configure_amp_stage(double p_target_level, int p_rate) {
+	_amp_stage_target_level = CLAMP(p_target_level, 0.0, 1.0);
+	double delta = _amp_stage_target_level - _amp_level;
+	double delta_abs = Math::abs(delta);
+	bool immediate = (p_rate < 0) || Math::is_zero_approx(delta_abs);
+	if (immediate) {
+		_amp_level = _amp_stage_target_level;
+		_amp_stage_samples_left = 0;
+		_amp_stage_increment = 0.0;
+		if (_amp_stage == AMP_STAGE_ATTACK || _amp_stage == AMP_STAGE_DECAY || _amp_stage == AMP_STAGE_RELEASE) {
+			_advance_amp_stage();
+		} else {
+			_envelope_level = _amp_level;
+		}
+		return;
+	}
+
+	int samples_per_unit = _compute_amp_samples_per_unit(p_rate);
+	if (samples_per_unit <= 0) {
+		_amp_level = _amp_stage_target_level;
+		_amp_stage_samples_left = 0;
+		_amp_stage_increment = 0.0;
+		if (_amp_stage == AMP_STAGE_ATTACK || _amp_stage == AMP_STAGE_DECAY || _amp_stage == AMP_STAGE_RELEASE) {
+			_advance_amp_stage();
+		} else {
+			_envelope_level = _amp_level;
+		}
+		return;
+	}
+
+	double units = Math::ceil(delta_abs * 128.0);
+	if (units < 1.0) {
+		units = 1.0;
+	}
+	_amp_stage_samples_left = (int)Math::ceil(samples_per_unit * units);
+	if (_amp_stage_samples_left <= 0) {
+		_amp_stage_samples_left = 1;
+	}
+	_amp_stage_increment = delta / (double)_amp_stage_samples_left;
+}
+
+void SiOPMChannelSampler::_refresh_active_amp_stage() {
+	switch (_amp_stage) {
+		case AMP_STAGE_ATTACK:
+			_configure_amp_stage(1.0, _amp_attack_rate);
+			break;
+		case AMP_STAGE_DECAY: {
+			double sustain = (double)_amp_sustain_level * 0.0078125;
+			_configure_amp_stage(sustain, _amp_decay_rate);
+		} break;
+		case AMP_STAGE_RELEASE:
+			_configure_amp_stage(0.0, _amp_release_rate);
+			break;
+		default:
+			break;
+	}
+}
+
+int SiOPMChannelSampler::_compute_amp_samples_per_unit(int p_rate) const {
+	int rate_index = CLAMP(p_rate, 0, 63);
+	int base = _table->filter_eg_rate[rate_index];
+	if (base <= 0) {
+		int slowest_ref = _table->filter_eg_rate[1];
+		if (slowest_ref <= 0) {
+			slowest_ref = 32768;
+		}
+		base = slowest_ref << 4;
+	}
+	double scaled = base * _amp_rate_scale;
+	if (scaled <= 0.0) {
+		return 0;
+	}
+	int samples = (int)scaled;
+	return samples > 0 ? samples : 1;
+}
+
+void SiOPMChannelSampler::_update_amp_envelope() {
+	switch (_amp_stage) {
+		case AMP_STAGE_ATTACK:
+		case AMP_STAGE_DECAY:
+		case AMP_STAGE_RELEASE: {
+			if (_amp_stage_samples_left > 0) {
+				_amp_level += _amp_stage_increment;
+				_amp_stage_samples_left--;
+				if (_amp_stage_samples_left <= 0) {
+					_amp_level = _amp_stage_target_level;
+					_advance_amp_stage();
+				}
+			} else {
+				_amp_level = _amp_stage_target_level;
+				_advance_amp_stage();
+			}
+		} break;
+		case AMP_STAGE_SUSTAIN: {
+			_amp_level = (double)_amp_sustain_level * 0.0078125;
+		} break;
+		case AMP_STAGE_IDLE:
+		default:
+			_amp_level = 0.0;
+			break;
+	}
+
+	_envelope_level = CLAMP(_amp_level, 0.0, 1.0);
+	if (_click_guard_active) {
+		if (_click_guard_samples_left > 0) {
+			_click_guard_samples_left--;
+			_click_guard_level = (double)_click_guard_samples_left / RELEASE_SAMPLES;
+			_envelope_level *= _click_guard_level;
+		} else {
+			_stop_click_guard();
+			_envelope_level = 0.0;
+		}
+	}
+}
+
+void SiOPMChannelSampler::_begin_click_guard() {
+	_click_guard_active = true;
+	_click_guard_samples_left = RELEASE_SAMPLES;
+	_click_guard_level = 1.0;
+}
+
+void SiOPMChannelSampler::_stop_click_guard() {
+	_click_guard_active = false;
+	_click_guard_samples_left = 0;
+	_click_guard_level = 1.0;
+}
+
+void SiOPMChannelSampler::_write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length) {
+	double volume_coef = _expression * _sound_chip->get_sampler_volume();
+	int pan = CLAMP(_pan + _sample_pan, 0, 128);
+
+	if (_has_effect_send) {
+		for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
+			if (_volumes[i] > 0) {
+				SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
+				if (stream) {
+					stream->write(p_output, _buffer_index, p_length, _volumes[i] * volume_coef, pan);
+				}
+			}
+		}
+	} else {
+		SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
+		stream->write(p_output, _buffer_index, p_length, _volumes[0] * volume_coef, pan);
+	}
+}
+
+void SiOPMChannelSampler::_write_stream_stereo(SinglyLinkedList<int>::Element *p_output_left, SinglyLinkedList<int>::Element *p_output_right, int p_length) {
+	double volume_coef = _expression * _sound_chip->get_sampler_volume();
+	int pan = CLAMP(_pan + _sample_pan, 0, 128);
+
+	if (_has_effect_send) {
+		for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
+			if (_volumes[i] > 0) {
+				SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
+				if (stream) {
+					stream->write_stereo(p_output_left, p_output_right, _buffer_index, p_length, _volumes[i] * volume_coef, pan);
+				}
+			}
+		}
+	} else {
+		SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
+		stream->write_stereo(p_output_left, p_output_right, _buffer_index, p_length, _volumes[0] * volume_coef, pan);
+	}
 }
 
 String SiOPMChannelSampler::_to_string() const {

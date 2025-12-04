@@ -314,6 +314,15 @@ private:
 		int filter_sc = 32;
 		bool has_filter_rc = false;
 		int filter_rc = 128;
+		// Sampler ADSR (channel-level)
+		bool has_amp_attack = false;
+		int amp_attack = 0;
+		bool has_amp_decay = false;
+		int amp_decay = 0;
+		bool has_amp_sustain = false;
+		int amp_sustain = 128;
+		bool has_amp_release = false;
+		int amp_release = 0;
 		// FM operator fields (one flag per message; separate messages for separate params)
 		bool has_fm_op_tl = false;
 		bool has_fm_op_mul = false;
@@ -571,6 +580,10 @@ public:
 	void mailbox_set_track_filter_decay_cutoff2(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
 	void mailbox_set_track_filter_sustain_cutoff(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
 	void mailbox_set_track_filter_release_cutoff(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
+	void mailbox_set_track_amp_attack_rate(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
+	void mailbox_set_track_amp_decay_rate(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
+	void mailbox_set_track_amp_sustain_level(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
+	void mailbox_set_track_amp_release_rate(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
 	// FM operator params (by operator index)
 	void mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value);
 	void mailbox_set_fm_op_multiple(int p_track_id, int p_op_index, int p_value);

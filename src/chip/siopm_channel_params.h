@@ -63,6 +63,11 @@ private:
 	int filter_sustain_offset = 0;
 	int filter_release_offset = 0;
 
+	int amplitude_attack_rate = 0;
+	int amplitude_decay_rate = 0;
+	int amplitude_sustain_level = 128;
+	int amplitude_release_rate = 0;
+
 protected:
 	static void _bind_methods();
 
@@ -130,6 +135,15 @@ public:
 	void set_filter_sustain_offset(int p_value) { filter_sustain_offset = p_value; }
 	int get_filter_release_offset() const { return filter_release_offset; }
 	void set_filter_release_offset(int p_value) { filter_release_offset = p_value; }
+
+	int get_amplitude_attack_rate() const { return amplitude_attack_rate; }
+	void set_amplitude_attack_rate(int p_value) { amplitude_attack_rate = p_value; }
+	int get_amplitude_decay_rate() const { return amplitude_decay_rate; }
+	void set_amplitude_decay_rate(int p_value) { amplitude_decay_rate = p_value; }
+	int get_amplitude_sustain_level() const { return amplitude_sustain_level; }
+	void set_amplitude_sustain_level(int p_value) { amplitude_sustain_level = p_value; }
+	int get_amplitude_release_rate() const { return amplitude_release_rate; }
+	void set_amplitude_release_rate(int p_value) { amplitude_release_rate = p_value; }
 
 	bool has_filter() const;
 	bool has_filter_advanced() const;
