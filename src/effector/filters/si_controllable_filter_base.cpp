@@ -100,11 +100,35 @@ int SiControllableFilterBase::process(int p_channels, Vector<double> *r_buffer, 
 }
 
 void SiControllableFilterBase::set_by_mml(Vector<double> p_args) {
-	int cutoff    = _get_mml_arg(p_args, 0, 255);
-	int resonance = _get_mml_arg(p_args, 1, 255);
-	double fps    = _get_mml_arg(p_args, 2, 20);
+	// Optional 4th argument opts into the legacy envelope-table driven path.
+	bool use_envelopes = false;
+	if (p_args.size() >= 4) {
+		double mode = _get_mml_arg(p_args, 3, 0);
+		use_envelopes = mode >= 0.5;
+	}
 
-	set_params(cutoff, resonance, fps);
+	if (use_envelopes) {
+		int cutoff = _get_mml_arg(p_args, 0, 255);
+		int resonance = _get_mml_arg(p_args, 1, 255);
+		double fps = _get_mml_arg(p_args, 2, 20);
+		set_params(cutoff, resonance, fps);
+		return;
+	}
+
+	double cutoff = _get_mml_arg(p_args, 0, 0.5);
+	double resonance = _get_mml_arg(p_args, 1, 0.0);
+	double fps = _get_mml_arg(p_args, 2, 60.0);
+
+	cutoff = CLAMP(cutoff, 0.0, 1.0);
+	resonance = CLAMP(resonance, 0.0, 1.0);
+	if (fps <= 0.0) {
+		fps = 60.0;
+	}
+
+	// Reuse the standard path to configure update cadence, then pin manual values.
+	set_params(255, 255, fps);
+	set_cutoff(cutoff);
+	set_resonance(resonance);
 }
 
 void SiControllableFilterBase::reset() {
