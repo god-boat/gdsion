@@ -25,6 +25,15 @@ void SiOPMChannelParams::set_operator_count(int p_value) {
 	ERR_FAIL_COND(p_value > MAX_OPERATORS);
 
 	operator_count = p_value;
+
+	// Keep carrier mask in sync with operator count to avoid UI range errors.
+	if (carrier_mask.size() != operator_count) {
+		int old_size = carrier_mask.size();
+		carrier_mask.resize(operator_count);
+		for (int i = old_size; i < operator_count; i++) {
+			carrier_mask.set(i, 0);
+		}
+	}
 }
 
 bool SiOPMChannelParams::has_amplitude_modulation() const {
