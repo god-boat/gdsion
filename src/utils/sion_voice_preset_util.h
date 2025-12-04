@@ -62,6 +62,7 @@ private:
 	void _create_opx_voice(const String &p_key, const String &p_name, Vector<int> p_params);
 	void _create_ma3_voice(const String &p_key, const String &p_name, Vector<int> p_params);
 	void _create_wave_table_voice(const String &p_key, const String &p_name, int p_wave_shape, int p_attack_rate, int p_decay_rate, int p_sustain_rate, int p_release_rate, int p_sustain_level, int p_total_level, int p_multiple = 1);
+	void _create_pcm_voice(const String &p_key, const String &p_name);
 	void _create_ks_voice(const String &p_key, const String &p_name, int p_feedback, int p_delay, int p_wave_shape = 1, int p_attack_rate = 63, int p_decay_rate = 32, int p_sustain_level = 0, int p_release_rate = 32, int p_total_level = 127);
 	void _create_single_drum_voice(const String &p_key, const String &p_name, int p_wave_shape, int p_attack_rate, int p_decay_rate, int p_sustain_rate, int p_release_rate, int p_sustain_level, int p_total_level, int p_release_sweep = 0, double p_fine_multiple = 1);
 

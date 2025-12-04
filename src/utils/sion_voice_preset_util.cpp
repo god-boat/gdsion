@@ -929,6 +929,9 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 		0, 14,  9,  8, 4, 5, 44, 0, 2, 0, 0, 0,   // op-3
 		1, 10,  7,  8, 4, 5, 44, 0, 1, 0, 0, 0    // op-4
 	});
+
+	_begin_category("PCM");
+	_create_pcm_voice("extra.pcm.init", "PCM Init");
 }
 
 void SiONVoicePresetUtil::_create_ks_voice(const String &p_key,
@@ -1054,6 +1057,14 @@ void SiONVoicePresetUtil::_create_wave_table_voice(const String &p_key, const St
 	voice->set_wave_data(_wave_tables[p_wave_shape]);
 	voice->set_envelope(p_attack_rate, p_decay_rate, p_sustain_rate, p_release_rate, p_sustain_level, p_total_level + 4);
 	voice->get_channel_params()->get_operator_params(0)->set_multiple(p_multiple);
+
+	voice->set_name(p_name);
+	_register_voice(p_key, voice);
+}
+
+void SiONVoicePresetUtil::_create_pcm_voice(const String &p_key, const String &p_name) {
+	Ref<SiONVoice> voice = memnew(SiONVoice(SiONModuleType::MODULE_PCM, 0));
+	voice->set_default_gate_time(0);
 
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
