@@ -51,6 +51,8 @@ void SiEffectStereoChorus::set_params(double p_delay_time, double p_feedback, do
 
 	_wet = p_wet;
 	_phase_invert = (p_invert_phase ? -1 : 1);
+
+	_calculate_constant_power_gains(_wet, _dry_gain, _wet_gain);
 }
 
 int SiEffectStereoChorus::prepare_process() {
@@ -70,8 +72,7 @@ void SiEffectStereoChorus::_process_channel(Vector<double> *r_buffer, int p_buff
 	double next_value = (*r_buffer)[p_buffer_index] - value * _feedback;
 
 	r_delay_buffer->write[_pointer_write] = next_value;
-	r_buffer->write[p_buffer_index] *= (1 - _wet);
-	r_buffer->write[p_buffer_index] += value * _wet;
+	r_buffer->write[p_buffer_index] = (*r_buffer)[p_buffer_index] * _dry_gain + value * _wet_gain;
 }
 
 void SiEffectStereoChorus::_process_lfo(Vector<double> *r_buffer, int p_start_index, int p_length) {

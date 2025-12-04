@@ -26,6 +26,8 @@ class SiEffectStereoChorus : public SiEffectBase {
 	double _feedback = 0;
 	double _depth = 0;
 	double _wet = 0;
+	double _dry_gain = 1.0;
+	double _wet_gain = 0.0;
 
 	int _lfo_phase = 0;
 	int _lfo_step = 0;
