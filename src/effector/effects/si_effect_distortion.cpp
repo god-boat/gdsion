@@ -33,11 +33,6 @@ void SiEffectDistortion::set_params(double p_pre_gain, double p_post_gain, doubl
 }
 
 int SiEffectDistortion::prepare_process() {
-	_in1 = 0;
-	_in2 = 0;
-	_out1 = 0;
-	_out2 = 0;
-
 	return 1;
 }
 
@@ -45,16 +40,16 @@ int SiEffectDistortion::process(int p_channels, Vector<double> *r_buffer, int p_
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
-	if (_out1 < THRESHOLD) {
-		_out1 = 0;
-		_out2 = 0;
-	}
-
 	for (int i = start_index; i < (start_index + length); i += 2) {
 		double value = CLAMP((*r_buffer)[i] * _pre_scale, -_limit, _limit);
 
 		double output = value;
 		if (_filter_enabled) {
+			if (Math::abs(_out1) < THRESHOLD) {
+				_out1 = 0;
+				_out2 = 0;
+			}
+
 			output = _b0 * value + _b1 * _in1 + _b2 * _in2 - _a1 * _out1 - _a2 * _out2;
 
 			_in2  = _in1;
@@ -81,6 +76,10 @@ void SiEffectDistortion::set_by_mml(Vector<double> p_args) {
 }
 
 void SiEffectDistortion::reset() {
+	_in1 = 0;
+	_in2 = 0;
+	_out1 = 0;
+	_out2 = 0;
 	set_params();
 }
 
