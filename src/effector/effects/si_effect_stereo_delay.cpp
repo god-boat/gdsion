@@ -6,8 +6,16 @@
 
 #include "si_effect_stereo_delay.h"
 
+#include "chip/siopm_ref_table.h"
+
 void SiEffectStereoDelay::set_params(double p_delay_time, double p_feedback, bool p_cross, double p_wet) {
-	int offset = (int)(p_delay_time * 44.1);
+	double samples_per_ms = 48.0;
+	SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
+	if (ref_table && ref_table->sampling_rate > 0) {
+		samples_per_ms = ref_table->sampling_rate / 1000.0;
+	}
+
+	int offset = (int)(p_delay_time * samples_per_ms);
 	if (offset > DELAY_BUFFER_FILTER) {
 		offset = DELAY_BUFFER_FILTER;
 	}
@@ -23,6 +31,8 @@ void SiEffectStereoDelay::set_params(double p_delay_time, double p_feedback, boo
 
 	_wet = p_wet;
 	_cross = p_cross;
+
+	_calculate_constant_power_gains(_wet, _dry_gain, _wet_gain);
 }
 
 int SiEffectStereoDelay::prepare_process() {
@@ -36,8 +46,7 @@ void SiEffectStereoDelay::_process_channel(Vector<double> *r_buffer, int p_buffe
 	double value = (*p_read_buffer)[_pointer_read];
 	r_write_buffer->write[_pointer_write] = (*r_buffer)[p_buffer_index] - value * _feedback;
 
-	r_buffer->write[p_buffer_index] *= 1 - _wet;
-	r_buffer->write[p_buffer_index] += value * _wet;
+	r_buffer->write[p_buffer_index] = (*r_buffer)[p_buffer_index] * _dry_gain + value * _wet_gain;
 }
 
 int SiEffectStereoDelay::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {

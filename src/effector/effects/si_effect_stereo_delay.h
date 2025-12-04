@@ -25,6 +25,8 @@ class SiEffectStereoDelay : public SiEffectBase {
 	int _pointer_write = 0;
 	double _feedback = 0;
 	double _wet = 0;
+	double _dry_gain = 1.0;
+	double _wet_gain = 0.0;
 	bool _cross = false;
 
 	void _process_channel(Vector<double> *r_buffer, int p_buffer_index, Vector<double> *p_read_buffer, Vector<double> *r_write_buffer);
