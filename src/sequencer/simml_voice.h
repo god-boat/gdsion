@@ -89,6 +89,7 @@ protected:
 	Ref<SiOPMWaveBase> wave_data;
 
 	int pitch_shift = 0;
+	int pitch_bend = 0;
 
 	int amplitude_modulation_depth = 0;
 	int amplitude_modulation_depth_end = 0;

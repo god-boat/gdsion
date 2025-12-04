@@ -123,6 +123,7 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 	}
 
 	p_track->set_pitch_shift(pitch_shift);
+	p_track->set_pitch_bend(pitch_bend);
 	p_track->set_note_shift(note_shift);
 	p_track->set_velocity_shift(velocity_shift);
 
@@ -182,6 +183,7 @@ void SiMMLVoice::reset() {
 	default_gate_ticks = -1;
 	default_key_on_delay_ticks = -1;
 	pitch_shift = 0;
+	pitch_bend = 0;
 	note_shift = 0;
 	portament = 0;
 	release_sweep = 0;
@@ -243,6 +245,7 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	default_gate_ticks = p_source->default_gate_ticks;
 	default_key_on_delay_ticks = p_source->default_key_on_delay_ticks;
 	pitch_shift = p_source->pitch_shift;
+	pitch_bend = p_source->pitch_bend;
 	note_shift = p_source->note_shift;
 	portament = p_source->portament;
 	release_sweep = p_source->release_sweep;

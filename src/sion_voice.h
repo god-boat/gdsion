@@ -82,6 +82,8 @@ public:
 	// --- pitch_shift accessor ------------------------------------------------
 	int get_pitch_shift() const { return pitch_shift; }
 	void set_pitch_shift(int p_shift) { pitch_shift = p_shift; }
+	int get_pitch_bend() const { return pitch_bend; }
+	void set_pitch_bend(int p_bend) { pitch_bend = p_bend; }
 	// -----------------------------------------------------------------------------
 
 	Ref<SiONVoice> clone();

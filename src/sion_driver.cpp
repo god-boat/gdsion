@@ -1263,6 +1263,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_detune2", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_detune2);
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_am_depth", "track_id", "depth", "voice_scope_id"), &SiONDriver::mailbox_set_ch_am_depth, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_pm_depth", "track_id", "depth", "voice_scope_id"), &SiONDriver::mailbox_set_ch_pm_depth, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_pitch_bend", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_pitch_bend, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_frequency_step", "track_id", "step", "voice_scope_id"), &SiONDriver::mailbox_set_lfo_frequency_step, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_wave_shape", "track_id", "wave_shape", "voice_scope_id"), &SiONDriver::mailbox_set_lfo_wave_shape, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_envelope_freq_ratio", "track_id", "ratio", "voice_scope_id"), &SiONDriver::mailbox_set_envelope_freq_ratio, DEFVAL(-1));
@@ -1765,6 +1766,15 @@ void SiONDriver::mailbox_set_ch_pm_depth(int p_track_id, int p_depth, int64_t p_
     _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_pitch_bend(int p_track_id, int p_value, int64_t p_voice_scope_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
+    u.has_pitch_bend = true;
+    u.pitch_bend = CLAMP(p_value, -8192, 8191);
+    _mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_lfo_frequency_step(int p_track_id, int p_step, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -1935,6 +1945,9 @@ void SiONDriver::_drain_track_mailbox() {
             }
             if (u.has_ch_pm) {
                 ch->set_pitch_modulation(u.ch_pm_depth);
+            }
+            if (u.has_pitch_bend) {
+                trk->set_pitch_bend(CLAMP(u.pitch_bend, -8192, 8191));
             }
             if (u.has_lfo_step) {
                 ch->set_lfo_frequency_step(u.lfo_frequency_step);
