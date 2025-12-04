@@ -9,7 +9,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include "chip/siopm_sound_chip.h"
 #include "chip/siopm_stream.h"
-#include "utils/godot_util.h"
+#include <cstring>
 #include <godot_cpp/variant/vector2.hpp>
 
 #define COPY_TL_TABLE(m_target, m_source)                        \
@@ -90,12 +90,21 @@ double SiOPMChannelBase::get_stream_send(int p_stream_num) {
 // LFO control.
 
 void SiOPMChannelBase::initialize_lfo(int p_waveform, Vector<int> p_custom_wave_table) {
-	if (p_waveform == -1 && p_custom_wave_table.size() == SiOPMRefTable::LFO_TABLE_SIZE) {
+	const int table_size = SiOPMRefTable::LFO_TABLE_SIZE;
+	if (_lfo_wave_table.size() != table_size) {
+		_lfo_wave_table.resize_zeroed(table_size);
+	}
+
+	int *dst = _lfo_wave_table.ptrw();
+
+	if (p_waveform == -1 && p_custom_wave_table.size() == table_size) {
 		_lfo_wave_shape = -1;
-		_lfo_wave_table = p_custom_wave_table;
+		const int *src = p_custom_wave_table.ptr();
+		memcpy(dst, src, sizeof(int) * table_size);
 	} else {
-		_lfo_wave_shape = (p_waveform >= 0 && p_waveform <= SiOPMRefTable::LFO_WAVE_MAX) ? p_waveform : SiOPMRefTable::LFO_WAVE_TRIANGLE;
-		_lfo_wave_table = make_vector<int>(_table->lfo_wave_tables[_lfo_wave_shape]);
+		_lfo_wave_shape = (p_waveform >= 0 && p_waveform < SiOPMRefTable::LFO_WAVE_MAX) ? p_waveform : SiOPMRefTable::LFO_WAVE_TRIANGLE;
+		const int *src = _table->lfo_wave_tables[_lfo_wave_shape];
+		memcpy(dst, src, sizeof(int) * table_size);
 	}
 
 	_lfo_timer = 1;
@@ -637,17 +646,26 @@ Vector2 SiOPMChannelBase::get_recent_level(int p_length) {
 
 void SiOPMChannelBase::_meter_write_from(SinglyLinkedList<int>::Element *p_src_start, int p_length) {
 	_ensure_meter_ring();
+	if (!_meter_pipe) {
+		return;
+	}
 	if (!_meter_write_elem) {
-		_meter_pipe->front();
-		_meter_write_elem = _meter_pipe->get();
+		SinglyLinkedList<int>::Element *head = _meter_pipe->front();
+		_meter_write_elem = head ? head : _meter_pipe->get();
+		if (!_meter_write_elem) {
+			return;
+		}
 	}
 	SinglyLinkedList<int>::Element *dst = _meter_write_elem;
 	SinglyLinkedList<int>::Element *src = p_src_start;
 	const int ring_len = _meter_ring_length > 0 ? _meter_ring_length : (_sound_chip ? _sound_chip->get_buffer_length() : 0);
 	for (int i = 0; i < p_length; i++) {
 		if (!dst) {
-			_meter_pipe->front();
-			dst = _meter_pipe->get();
+			SinglyLinkedList<int>::Element *head = _meter_pipe->front();
+			dst = head ? head : _meter_pipe->get();
+			if (!dst) {
+				break;
+			}
 		}
 		if (!src) {
 			break;
@@ -665,16 +683,25 @@ void SiOPMChannelBase::_meter_write_from(SinglyLinkedList<int>::Element *p_src_s
 
 void SiOPMChannelBase::_meter_write_silence(int p_length) {
 	_ensure_meter_ring();
+	if (!_meter_pipe) {
+		return;
+	}
 	if (!_meter_write_elem) {
-		_meter_pipe->front();
-		_meter_write_elem = _meter_pipe->get();
+		SinglyLinkedList<int>::Element *head = _meter_pipe->front();
+		_meter_write_elem = head ? head : _meter_pipe->get();
+		if (!_meter_write_elem) {
+			return;
+		}
 	}
 	SinglyLinkedList<int>::Element *dst = _meter_write_elem;
 	const int ring_len = _meter_ring_length > 0 ? _meter_ring_length : (_sound_chip ? _sound_chip->get_buffer_length() : 0);
 	for (int i = 0; i < p_length; i++) {
 		if (!dst) {
-			_meter_pipe->front();
-			dst = _meter_pipe->get();
+			SinglyLinkedList<int>::Element *head = _meter_pipe->front();
+			dst = head ? head : _meter_pipe->get();
+			if (!dst) {
+				break;
+			}
 		}
 		dst->value = 0;
 		dst = dst->next();
