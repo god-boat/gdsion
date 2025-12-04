@@ -15,7 +15,7 @@ using namespace godot;
 class SiEffectStereoReverb : public SiEffectBase {
 	GDCLASS(SiEffectStereoReverb, SiEffectBase)
 
-	static const int DELAY_BUFFER_BITS = 13;
+	static const int DELAY_BUFFER_BITS = 16;
 	static const int DELAY_BUFFER_FILTER = (1 << DELAY_BUFFER_BITS) - 1;
 
 	Vector<double> _delay_buffer_left;
@@ -25,10 +25,13 @@ class SiEffectStereoReverb : public SiEffectBase {
 	int _pointer_read1 = 0;
 	int _pointer_read2 = 0;
 	int _pointer_write = 0;
-	double _feedback0 = 0;
-	double _feedback1 = 0;
-	double _feedback2 = 0;
+	double _feedback = 0;
+	double _tap_weight0 = 0;
+	double _tap_weight1 = 0;
+	double _tap_weight2 = 0;
 	double _wet = 0;
+	double _dry_gain = 1.0;
+	double _wet_gain = 0.0;
 
 	void _process_channel(Vector<double> *r_buffer, int p_buffer_index, Vector<double> *r_delay_buffer);
 

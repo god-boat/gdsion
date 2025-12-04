@@ -14,12 +14,15 @@ void SiEffectStereoReverb::set_params(double p_delay1, double p_delay2, double p
 	_pointer_read1 = (int)(_pointer_read0 + DELAY_BUFFER_FILTER * (1 - delay1)) & DELAY_BUFFER_FILTER;
 	_pointer_read2 = (int)(_pointer_read0 + DELAY_BUFFER_FILTER * (1 - delay2)) & DELAY_BUFFER_FILTER;
 
-	double feedback = CLAMP(p_feedback, -0.99, 0.99);
-	_feedback0 = feedback * 0.2;
-	_feedback1 = feedback * 0.3;
-	_feedback2 = feedback * 0.5;
+	_feedback = CLAMP(p_feedback, -0.99, 0.99);
+
+	_tap_weight0 = 0.2;
+	_tap_weight1 = 0.3;
+	_tap_weight2 = 0.5;
 
 	_wet = p_wet;
+
+	_calculate_constant_power_gains(_wet, _dry_gain, _wet_gain);
 }
 
 int SiEffectStereoReverb::prepare_process() {
@@ -30,13 +33,16 @@ int SiEffectStereoReverb::prepare_process() {
 }
 
 void SiEffectStereoReverb::_process_channel(Vector<double> *r_buffer, int p_buffer_index, Vector<double> *r_delay_buffer) {
-	double value = (*r_delay_buffer)[_pointer_read0] * _feedback0;
-	value += (*r_delay_buffer)[_pointer_read1] * _feedback1;
-	value += (*r_delay_buffer)[_pointer_read2] * _feedback2;
-	r_delay_buffer->write[_pointer_write] = (*r_buffer)[p_buffer_index] - value;
+	double tap0 = (*r_delay_buffer)[_pointer_read0];
+	double tap1 = (*r_delay_buffer)[_pointer_read1];
+	double tap2 = (*r_delay_buffer)[_pointer_read2];
 
-	r_buffer->write[p_buffer_index] *= 1 - _wet;
-	r_buffer->write[p_buffer_index] += value * _wet;
+	double wet_value = tap0 * _tap_weight0 + tap1 * _tap_weight1 + tap2 * _tap_weight2;
+	double feedback_value = wet_value * _feedback;
+
+	r_delay_buffer->write[_pointer_write] = (*r_buffer)[p_buffer_index] - feedback_value;
+
+	r_buffer->write[p_buffer_index] = (*r_buffer)[p_buffer_index] * _dry_gain + wet_value * _wet_gain;
 }
 
 int SiEffectStereoReverb::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
