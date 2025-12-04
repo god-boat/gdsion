@@ -280,10 +280,25 @@ void SiMMLTrack::set_modulation_envelope(bool p_is_pitch_mod, int p_depth, int p
 		memdelete(old_table);
 	}
 
-	if ((p_depth >= 0 && p_depth < p_end_depth) || (p_depth < 0 && p_depth > p_end_depth)) {
-		table->set(1, _make_modulation_table(p_depth, p_end_depth, p_delay, p_term));
-		_enable_envelope_mode(1);
+	if (p_depth != p_end_depth) {
+		if (p_term > 0) {
+			// Create ramp envelope from depth to end_depth over term steps.
+			table->set(1, _make_modulation_table(p_depth, p_end_depth, p_delay, p_term));
+			_enable_envelope_mode(1);
+		} else {
+			// term=0 means instant jump to end_depth.
+			table->set(1, nullptr);
+
+			if (p_is_pitch_mod) {
+				_channel->set_pitch_modulation(p_end_depth);
+			} else {
+				_channel->set_amplitude_modulation(p_end_depth);
+			}
+
+			_disable_envelope_mode(1);
+		}
 	} else {
+		// depth == end_depth, just set static modulation.
 		table->set(1, nullptr);
 
 		if (p_is_pitch_mod) {
@@ -1099,6 +1114,7 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("key_off", "sample_delay", "with_reset"), &SiMMLTrack::key_off, DEFVAL(0), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("set_expression", "value"), &SiMMLTrack::set_expression);
 	ClassDB::bind_method(D_METHOD("set_velocity", "value"), &SiMMLTrack::set_velocity);
+	ClassDB::bind_method(D_METHOD("set_pitch_bend", "value"), &SiMMLTrack::set_pitch_bend);
 
 	ClassDB::bind_method(D_METHOD("is_active"), &SiMMLTrack::is_active);
 	ClassDB::bind_method(D_METHOD("is_finished"), &SiMMLTrack::is_finished);
