@@ -110,8 +110,8 @@ void SiOPMStream::write_stereo(SinglyLinkedList<int>::Element *p_left_start, Sin
 
 	if (channels == 2) { // stereo
 		double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
-		double volume_left = pan_table[128 - p_pan] * p_volume;
-		double volume_right = pan_table[p_pan] * p_volume;
+		double volume_left = pan_table[128 - p_pan] * volume;
+		double volume_right = pan_table[p_pan] * volume;
 
 		SinglyLinkedList<int>::Element *current_left = p_left_start;
 		SinglyLinkedList<int>::Element *current_right = p_right_start;
