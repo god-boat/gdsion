@@ -16,6 +16,9 @@
 #include <godot_cpp/templates/hash_map.hpp>
 #include <godot_cpp/templates/list.hpp>
 #include <godot_cpp/templates/vector.hpp>
+#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_float64_array.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
 #include <cstdint>
 #include <godot_cpp/classes/audio_frame.hpp>
@@ -24,6 +27,7 @@
 #include "chip/wave/siopm_wave_sampler_data.h"
 #include "events/sion_event.h"
 #include "events/sion_track_event.h"
+#include "effector/si_effect_base.h"
 #include "sequencer/base/mml_data.h"
 #include "sequencer/base/mml_system_command.h"
 #include "templates/singly_linked_list.h"
@@ -49,6 +53,7 @@ class SiOPMWaveTable;
 class SiOPMWavePCMData;
 class SiOPMWaveSamplerData;
 class SiOPMWaveSamplerTable;
+class SiEffectStream;
 
 // SiONDriver class provides the driver of SiON's digital signal processor emulator. All SiON's basic operations are
 // provided as driver's properties, methods, and signals. Only one instance must exist at a time.
@@ -336,6 +341,8 @@ private:
 		int ch_am_depth = 0;
 		bool has_ch_pm = false;
 		int ch_pm_depth = 0;
+		bool has_pitch_bend = false;
+		int pitch_bend = 0;
 		// LFO frequency step
 		bool has_lfo_step = false;
 		int lfo_frequency_step = 0;
@@ -383,6 +390,13 @@ private:
 
 	bool _mb_try_push(const _TrackUpdate &p_update);
 	void _drain_track_mailbox();
+
+	HashMap<int, SiEffectStream *> _track_effect_streams;
+	SiEffectStream *_ensure_track_effect_stream(int p_track_id);
+	void _bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id);
+	void _clear_track_effect_streams(bool p_delete_streams);
+	Vector<double> _args_from_variant(const Variant &p_value) const;
+	Ref<SiEffectBase> _build_effect_from_dict(const Dictionary &p_slot);
 
 protected:
 	static void _bind_methods();
@@ -592,6 +606,7 @@ public:
 	void mailbox_set_fm_op_detune2(int p_track_id, int p_op_index, int p_value);
 	void mailbox_set_ch_am_depth(int p_track_id, int p_depth, int64_t p_voice_scope_id = -1);
 	void mailbox_set_ch_pm_depth(int p_track_id, int p_depth, int64_t p_voice_scope_id = -1);
+	void mailbox_set_pitch_bend(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
 	void mailbox_set_lfo_frequency_step(int p_track_id, int p_step, int64_t p_voice_scope_id = -1);
 	void mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id = -1);
 	void mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, int64_t p_voice_scope_id = -1);
@@ -600,6 +615,12 @@ public:
 	void mailbox_set_ch_al_ws2(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id = -1);
 	void mailbox_set_ch_al_balance(int p_track_id, int p_balance, int64_t p_voice_scope_id = -1);
 	void mailbox_set_ch_al_detune2(int p_track_id, int p_detune2, int64_t p_voice_scope_id = -1);
+
+	void track_effects_set_chain(int p_track_id, const Array &p_slots);
+	void track_effects_insert_effect(int p_track_id, const Dictionary &p_slot, int p_index = -1);
+	void track_effects_remove_effect(int p_track_id, int p_index);
+	void track_effects_swap_effects(int p_track_id, int p_index_a, int p_index_b);
+	void track_effects_set_effect_args(int p_track_id, int p_index, const Variant &p_args);
 };
 
 #endif // SION_DRIVER_H

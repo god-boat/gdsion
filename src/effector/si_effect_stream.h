@@ -39,6 +39,11 @@ public:
 	void set_chain(const Vector<Ref<SiEffectBase>> &p_effects) { _chain = p_effects; }
 	void add_to_chain(const Ref<SiEffectBase> &p_effect) { _chain.push_back(p_effect); }
 	SiOPMStream *get_stream() const { return _stream; }
+	int get_effect_count() const { return _chain.size(); }
+	void insert_effect(int p_index, const Ref<SiEffectBase> &p_effect);
+	void remove_effect(int p_index);
+	void swap_effects(int p_index_a, int p_index_b);
+	void set_effect_args(int p_index, Vector<double> p_args);
 
 	int get_depth() const { return _depth; }
 	int get_pan() const;

@@ -13,6 +13,7 @@
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/classes/audio_server.hpp>
 #include <godot_cpp/classes/thread.hpp>
 
@@ -28,6 +29,7 @@
 #include "chip/wave/siopm_wave_sampler_data.h"
 #include "chip/wave/siopm_wave_table.h"
 #include "effector/si_effector.h"
+#include "effector/si_effect_stream.h"
 #include "events/sion_event.h"
 #include "events/sion_track_event.h"
 #include "sequencer/base/mml_event.h"
@@ -114,7 +116,9 @@ void SiONDriver::clear_all_user_tables() {
 SiMMLTrack *SiONDriver::create_user_controllable_track(int p_track_id) {
 	int internal_track_id = (p_track_id & SiMMLTrack::TRACK_ID_FILTER) | SiMMLTrack::USER_CONTROLLED;
 
-	return sequencer->create_controllable_track(internal_track_id, false);
+	SiMMLTrack *track = sequencer->create_controllable_track(internal_track_id, false);
+	_bind_track_effect_stream(track, p_track_id);
+	return track;
 }
 
 void SiONDriver::notify_user_defined_track(int p_event_trigger_id, int p_note) {
@@ -859,6 +863,7 @@ void SiONDriver::_prepare_process(const Variant &p_data, bool p_reset_effector) 
 
 	if (p_reset_effector) {                                          // Initialize or reset effectors.
 		effector->initialize();
+		_clear_track_effect_streams(false);
 	} else {
 		effector->reset();
 	}
@@ -1241,6 +1246,11 @@ void SiONDriver::_bind_methods() {
 
 	// Metering API
 	ClassDB::bind_method(D_METHOD("track_get_level", "track", "window_length"), &SiONDriver::track_get_level, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("track_effects_set_chain", "track_id", "slots"), &SiONDriver::track_effects_set_chain);
+	ClassDB::bind_method(D_METHOD("track_effects_insert_effect", "track_id", "slot", "index"), &SiONDriver::track_effects_insert_effect, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("track_effects_remove_effect", "track_id", "index"), &SiONDriver::track_effects_remove_effect);
+	ClassDB::bind_method(D_METHOD("track_effects_swap_effects", "track_id", "index_a", "index_b"), &SiONDriver::track_effects_swap_effects);
+	ClassDB::bind_method(D_METHOD("track_effects_set_effect_args", "track_id", "index", "args"), &SiONDriver::track_effects_set_effect_args);
 
 	// Mailbox bindings
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_volume", "track_id", "linear_volume", "voice_scope_id"), &SiONDriver::mailbox_set_track_volume, DEFVAL(-1));
@@ -1571,6 +1581,8 @@ SiONDriver::~SiONDriver() {
 
 	memdelete(_fader);
 	memdelete(_background_fader);
+
+	_clear_track_effect_streams(true);
 
 	memdelete(sequencer);
 	memdelete(effector);
@@ -2069,6 +2081,170 @@ void SiONDriver::_drain_track_mailbox() {
         }
     }
     _mb_tail.store(tail, std::memory_order_release);
+}
+
+
+SiEffectStream *SiONDriver::_ensure_track_effect_stream(int p_track_id) {
+	ERR_FAIL_COND_V_MSG(p_track_id < 0, nullptr, vformat("SiONDriver: Invalid track id %d for effect stream.", p_track_id));
+	if (!effector) {
+		return nullptr;
+	}
+	if (_track_effect_streams.has(p_track_id)) {
+		return _track_effect_streams[p_track_id];
+	}
+
+	Vector<Ref<SiEffectBase>> empty_chain;
+	SiEffectStream *stream = effector->create_local_effect(0, empty_chain);
+	if (!stream) {
+		ERR_PRINT(vformat("SiONDriver: Failed to allocate effect stream for track %d.", p_track_id));
+		return nullptr;
+	}
+	_track_effect_streams[p_track_id] = stream;
+	return stream;
+}
+
+void SiONDriver::_bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id) {
+	if (!p_track) {
+		return;
+	}
+	SiEffectStream *stream = _ensure_track_effect_stream(p_track_id);
+	if (!stream) {
+		return;
+	}
+	SiOPMChannelBase *channel = p_track->get_channel();
+	if (!channel) {
+		return;
+	}
+	channel->set_stream_buffer(0, stream->get_stream());
+}
+
+void SiONDriver::_clear_track_effect_streams(bool p_delete_streams) {
+	if (p_delete_streams && effector) {
+		for (const KeyValue<int, SiEffectStream *> &entry : _track_effect_streams) {
+			if (entry.value) {
+				effector->delete_local_effect(entry.value);
+			}
+		}
+	}
+	_track_effect_streams.clear();
+}
+
+Vector<double> SiONDriver::_args_from_variant(const Variant &p_value) const {
+	Vector<double> args;
+	switch (p_value.get_type()) {
+		case Variant::PACKED_FLOAT64_ARRAY: {
+			PackedFloat64Array arr = p_value;
+			args.resize(arr.size());
+			for (int i = 0; i < arr.size(); i++) {
+				args.write[i] = arr[i];
+			}
+		} break;
+		case Variant::PACKED_FLOAT32_ARRAY: {
+			PackedFloat32Array arr = p_value;
+			args.resize(arr.size());
+			for (int i = 0; i < arr.size(); i++) {
+				args.write[i] = arr[i];
+			}
+		} break;
+		case Variant::ARRAY: {
+			Array arr = p_value;
+			args.resize(arr.size());
+			for (int i = 0; i < arr.size(); i++) {
+				args.write[i] = (double)arr[i];
+			}
+		} break;
+		case Variant::NIL:
+			break;
+		default: {
+			args.resize(1);
+			args.write[0] = (double)p_value;
+		} break;
+	}
+	return args;
+}
+
+Ref<SiEffectBase> SiONDriver::_build_effect_from_dict(const Dictionary &p_slot) {
+	String effect_id = p_slot.get("id", String());
+	if (effect_id.is_empty()) {
+		return Ref<SiEffectBase>();
+	}
+	Ref<SiEffectBase> effect = SiEffector::get_effect_instance(effect_id);
+	if (effect.is_null()) {
+		ERR_PRINT(vformat("SiONDriver: Unknown insert effect '%s'.", effect_id));
+		return Ref<SiEffectBase>();
+	}
+	Variant args_variant = p_slot.get("args", Variant());
+	Vector<double> args = _args_from_variant(args_variant);
+	effect->reset();
+	effect->set_by_mml(args);
+	return effect;
+}
+
+void SiONDriver::track_effects_set_chain(int p_track_id, const Array &p_slots) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for insert effects.", p_track_id));
+	SiEffectStream *stream = _ensure_track_effect_stream(p_track_id);
+	ERR_FAIL_COND_MSG(stream == nullptr, vformat("SiONDriver: Unable to create effect stream for track %d.", p_track_id));
+
+	Vector<Ref<SiEffectBase>> chain;
+	for (int i = 0; i < p_slots.size(); i++) {
+		Variant slot_variant = p_slots[i];
+		if (slot_variant.get_type() != Variant::DICTIONARY) {
+			continue;
+		}
+		Dictionary slot_dict = slot_variant;
+		Ref<SiEffectBase> effect = _build_effect_from_dict(slot_dict);
+		if (effect.is_null()) {
+			continue;
+		}
+		chain.push_back(effect);
+	}
+
+	stream->set_chain(chain);
+	stream->prepare_process();
+}
+
+void SiONDriver::track_effects_insert_effect(int p_track_id, const Dictionary &p_slot, int p_index) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for insert effects.", p_track_id));
+	SiEffectStream *stream = _ensure_track_effect_stream(p_track_id);
+	ERR_FAIL_COND_MSG(stream == nullptr, vformat("SiONDriver: Unable to create effect stream for track %d.", p_track_id));
+
+	Ref<SiEffectBase> effect = _build_effect_from_dict(p_slot);
+	ERR_FAIL_COND_MSG(effect.is_null(), "SiONDriver: Cannot insert an unknown or invalid effect.");
+
+	int insert_index = p_index;
+	if (insert_index < 0 || insert_index > stream->get_effect_count()) {
+		insert_index = stream->get_effect_count();
+	}
+
+	stream->insert_effect(insert_index, effect);
+	stream->prepare_process();
+}
+
+void SiONDriver::track_effects_remove_effect(int p_track_id, int p_index) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for insert effects.", p_track_id));
+	SiEffectStream *stream = _ensure_track_effect_stream(p_track_id);
+	ERR_FAIL_COND_MSG(stream == nullptr, vformat("SiONDriver: Unable to create effect stream for track %d.", p_track_id));
+
+	stream->remove_effect(p_index);
+	stream->prepare_process();
+}
+
+void SiONDriver::track_effects_swap_effects(int p_track_id, int p_index_a, int p_index_b) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for insert effects.", p_track_id));
+	SiEffectStream *stream = _ensure_track_effect_stream(p_track_id);
+	ERR_FAIL_COND_MSG(stream == nullptr, vformat("SiONDriver: Unable to create effect stream for track %d.", p_track_id));
+
+	stream->swap_effects(p_index_a, p_index_b);
+	stream->prepare_process();
+}
+
+void SiONDriver::track_effects_set_effect_args(int p_track_id, int p_index, const Variant &p_args) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for insert effects.", p_track_id));
+	SiEffectStream *stream = _ensure_track_effect_stream(p_track_id);
+	ERR_FAIL_COND_MSG(stream == nullptr, vformat("SiONDriver: Unable to create effect stream for track %d.", p_track_id));
+
+	Vector<double> args = _args_from_variant(p_args);
+	stream->set_effect_args(p_index, args);
 }
 
 SiONDriver::_FilterState &SiONDriver::_ensure_filter_state(int p_track_id) {

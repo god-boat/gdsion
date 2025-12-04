@@ -65,6 +65,40 @@ void SiEffectStream::connect(SiOPMStream *p_output) {
 	_output_streams.write[0] = p_output;
 }
 
+void SiEffectStream::insert_effect(int p_index, const Ref<SiEffectBase> &p_effect) {
+	ERR_FAIL_COND_MSG(p_effect.is_null(), "SiEffectStream: Cannot insert an invalid effect.");
+	int insert_at = CLAMP(p_index, 0, _chain.size());
+	_chain.insert(insert_at, p_effect);
+}
+
+void SiEffectStream::remove_effect(int p_index) {
+	ERR_FAIL_INDEX_MSG(p_index, _chain.size(), vformat("SiEffectStream: Invalid effect index %d for removal.", p_index));
+	Ref<SiEffectBase> effect = _chain[p_index];
+	if (effect.is_valid()) {
+		effect->set_free(true);
+	}
+	_chain.remove_at(p_index);
+}
+
+void SiEffectStream::swap_effects(int p_index_a, int p_index_b) {
+	if (p_index_a == p_index_b) {
+		return;
+	}
+	ERR_FAIL_INDEX_MSG(p_index_a, _chain.size(), vformat("SiEffectStream: Invalid swap index %d.", p_index_a));
+	ERR_FAIL_INDEX_MSG(p_index_b, _chain.size(), vformat("SiEffectStream: Invalid swap index %d.", p_index_b));
+	Ref<SiEffectBase> temp = _chain[p_index_a];
+	_chain.write[p_index_a] = _chain[p_index_b];
+	_chain.write[p_index_b] = temp;
+}
+
+void SiEffectStream::set_effect_args(int p_index, Vector<double> p_args) {
+	ERR_FAIL_INDEX_MSG(p_index, _chain.size(), vformat("SiEffectStream: Invalid effect index %d for parameter update.", p_index));
+	Ref<SiEffectBase> effect = _chain[p_index];
+	if (effect.is_valid()) {
+		effect->set_by_mml(p_args);
+	}
+}
+
 int SiEffectStream::prepare_process() {
 	if (_chain.is_empty()) {
 		return 0;
