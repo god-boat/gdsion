@@ -156,6 +156,21 @@ private:
 	int _pcm_end_point = 0;
 	int _pcm_loop_point = 0;
 
+	// Super wave parameters.
+
+	static const int MAX_SUPER_VOICES = 16;
+	int _super_phases[MAX_SUPER_VOICES] = {};
+	int _super_phase_steps[MAX_SUPER_VOICES] = {};
+	int _super_count = 1;
+	int _super_spread = 0;
+	// Stereo spread [0-100]. 0 = mono, 100 = full stereo spread across voices.
+	int _super_stereo_spread = 0;
+	// Precomputed per-voice pan values [0-128] for stereo spread. 64 = center.
+	int _super_pan_values[MAX_SUPER_VOICES] = {};
+
+	void _update_super_phase_steps();
+	void _update_super_pan_values();
+
 	// Pipes.
 
 	bool _final = false;
@@ -275,6 +290,17 @@ public:
 	void set_fnumber(int p_value);
 
 	void tick_pulse_generator(int p_extra = 0);
+
+	// Super wave.
+
+	int get_super_count() const { return _super_count; }
+	int get_super_spread() const { return _super_spread; }
+	int get_super_stereo_spread() const { return _super_stereo_spread; }
+	void set_super_wave(int p_count, int p_spread);
+	void set_super_stereo_spread(int p_value);
+	int get_super_output(int p_fm_input, int p_input_level, int p_am_level);
+	// Returns true if stereo spread is active and outputs left/right separately.
+	bool get_super_output_stereo(int p_fm_input, int p_input_level, int p_am_level, int &r_left, int &r_right);
 
 	// Envelope generator.
 

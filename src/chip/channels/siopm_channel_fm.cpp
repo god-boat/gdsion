@@ -10,6 +10,7 @@
 #include "chip/channels/siopm_operator.h"
 #include "chip/siopm_channel_params.h"
 #include "chip/siopm_sound_chip.h"
+#include "chip/siopm_stream.h"
 #include "chip/wave/siopm_wave_pcm_data.h"
 #include "chip/wave/siopm_wave_pcm_table.h"
 #include "chip/wave/siopm_wave_table.h"
@@ -683,6 +684,32 @@ void SiOPMChannelFM::set_detune1(int p_value) {
 	_active_operator->set_detune1(p_value);
 }
 
+void SiOPMChannelFM::set_operator_super_count(int p_value) {
+	_active_operator->set_super_wave(p_value, _active_operator->get_super_spread());
+}
+
+void SiOPMChannelFM::set_operator_super_spread(int p_value) {
+	_active_operator->set_super_wave(_active_operator->get_super_count(), p_value);
+}
+
+void SiOPMChannelFM::set_operator_super_stereo_spread(int p_value) {
+	_active_operator->set_super_stereo_spread(p_value);
+}
+
+bool SiOPMChannelFM::_is_stereo_super_mode() const {
+	// Stereo super mode is active when:
+	// 1. We're in single-operator mode (PROCESS_OP1)
+	// 2. The active operator has stereo spread enabled
+	// 3. The operator has more than 1 super voice
+	if (_process_function_type != PROCESS_OP1) {
+		return false;
+	}
+	if (!_active_operator) {
+		return false;
+	}
+	return _active_operator->get_super_stereo_spread() > 0 && _active_operator->get_super_count() > 1;
+}
+
 void SiOPMChannelFM::set_phase(int p_value) {
 	_active_operator->set_key_on_phase(p_value);
 }
@@ -822,6 +849,11 @@ void SiOPMChannelFM::_process_operator1_lfo_off(int p_length) {
 
 	SiOPMOperator *ope0 = _operators[0];
 
+	// Check for stereo super mode.
+	bool stereo_mode = _is_stereo_super_mode();
+	SinglyLinkedList<int>::Element *left_pipe = stereo_mode ? _stereo_left_pipe->get() : nullptr;
+	SinglyLinkedList<int>::Element *right_pipe = stereo_mode ? _stereo_right_pipe->get() : nullptr;
+
 	for (int i = 0; i < p_length; i++) {
 		int output = 0;
 
@@ -831,28 +863,46 @@ void SiOPMChannelFM::_process_operator1_lfo_off(int p_length) {
 		// Update PG.
 		{
 			ope0->tick_pulse_generator();
-			int t = ((ope0->get_phase() + (in_pipe->value << _input_level)) & SiOPMRefTable::PHASE_FILTER) >> ope0->get_wave_fixed_bits();
 
-			int log_idx = ope0->get_wave_value(t);
-			log_idx += ope0->get_eg_output();
-			output = _safe_log_lookup(_table, log_idx);
+			if (stereo_mode) {
+				int left_out, right_out;
+				ope0->get_super_output_stereo(in_pipe->value, _input_level, 0, left_out, right_out);
 
-			ope0->get_feed_pipe()->get()->value = output;
+				left_pipe->value = left_out + base_pipe->value;
+				right_pipe->value = right_out + base_pipe->value;
+
+				// For feedback, use mono mix.
+				output = (left_out + right_out) >> 1;
+				ope0->get_feed_pipe()->get()->value = output;
+			} else {
+				output = ope0->get_super_output(in_pipe->value, _input_level, 0);
+				ope0->get_feed_pipe()->get()->value = output;
+			}
 		}
 
 		// Output and increment pointers.
 		{
-			out_pipe->value = output + base_pipe->value;
+			if (!stereo_mode) {
+				out_pipe->value = output + base_pipe->value;
+			}
 
 			in_pipe = in_pipe->next();
 			base_pipe = base_pipe->next();
 			out_pipe = out_pipe->next();
+			if (stereo_mode) {
+				left_pipe = left_pipe->next();
+				right_pipe = right_pipe->next();
+			}
 		}
 	}
 
 	_in_pipe->set(in_pipe);
 	_base_pipe->set(base_pipe);
 	_out_pipe->set(out_pipe);
+	if (stereo_mode) {
+		_stereo_left_pipe->set(left_pipe);
+		_stereo_right_pipe->set(right_pipe);
+	}
 }
 
 void SiOPMChannelFM::_process_operator1_lfo_on(int p_length) {
@@ -861,6 +911,11 @@ void SiOPMChannelFM::_process_operator1_lfo_on(int p_length) {
 	SinglyLinkedList<int>::Element *out_pipe  = _out_pipe->get();
 
 	SiOPMOperator *ope0 = _operators[0];
+
+	// Check for stereo super mode.
+	bool stereo_mode = _is_stereo_super_mode();
+	SinglyLinkedList<int>::Element *left_pipe = stereo_mode ? _stereo_left_pipe->get() : nullptr;
+	SinglyLinkedList<int>::Element *right_pipe = stereo_mode ? _stereo_right_pipe->get() : nullptr;
 
 	for (int i = 0; i < p_length; i++) {
 		int output = 0;
@@ -874,27 +929,46 @@ void SiOPMChannelFM::_process_operator1_lfo_on(int p_length) {
 		// Update PG.
 		{
 			ope0->tick_pulse_generator();
-			int t = ((ope0->get_phase() + (in_pipe->value << _input_level)) & SiOPMRefTable::PHASE_FILTER) >> ope0->get_wave_fixed_bits();
+			int am_level = _amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift();
 
-			int log_idx = ope0->get_wave_value(t);
-			log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-			output = _safe_log_lookup(_table, log_idx);
+			if (stereo_mode) {
+				int left_out, right_out;
+				ope0->get_super_output_stereo(in_pipe->value, _input_level, am_level, left_out, right_out);
 
-			ope0->get_feed_pipe()->get()->value = output;
+				left_pipe->value = left_out + base_pipe->value;
+				right_pipe->value = right_out + base_pipe->value;
+
+				// For feedback, use mono mix.
+				output = (left_out + right_out) >> 1;
+				ope0->get_feed_pipe()->get()->value = output;
+			} else {
+				output = ope0->get_super_output(in_pipe->value, _input_level, am_level);
+				ope0->get_feed_pipe()->get()->value = output;
+			}
 		}
 
 		// Output and increment pointers.
 		{
-			out_pipe->value = output + base_pipe->value;
+			if (!stereo_mode) {
+				out_pipe->value = output + base_pipe->value;
+			}
 			in_pipe = in_pipe->next();
 			base_pipe = base_pipe->next();
 			out_pipe = out_pipe->next();
+			if (stereo_mode) {
+				left_pipe = left_pipe->next();
+				right_pipe = right_pipe->next();
+			}
 		}
 	}
 
 	_in_pipe->set(in_pipe);
 	_base_pipe->set(base_pipe);
 	_out_pipe->set(out_pipe);
+	if (stereo_mode) {
+		_stereo_left_pipe->set(left_pipe);
+		_stereo_right_pipe->set(right_pipe);
+	}
 }
 
 void SiOPMChannelFM::_process_operator2(int p_length) {
@@ -920,11 +994,8 @@ void SiOPMChannelFM::_process_operator2(int p_length) {
 			// Update PG.
 			{
 				ope0->tick_pulse_generator();
-				int t = ((ope0->get_phase() + (in_pipe->value << _input_level)) & SiOPMRefTable::PHASE_FILTER) >> ope0->get_wave_fixed_bits();
-
-				int log_idx = ope0->get_wave_value(t);
-				log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				int output = _safe_log_lookup(_table, log_idx);
+				int am_level = _amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift();
+				int output = ope0->get_super_output(in_pipe->value, _input_level, am_level);
 
 				ope0->get_feed_pipe()->get()->value = output;
 				ope0->get_out_pipe()->get()->value  = output + ope0->get_base_pipe()->get()->value;
@@ -939,11 +1010,8 @@ void SiOPMChannelFM::_process_operator2(int p_length) {
 			// Update PG.
 			{
 				ope1->tick_pulse_generator();
-				int t = ((ope1->get_phase() + (ope1->get_in_pipe()->get()->value << ope1->get_fm_shift())) & SiOPMRefTable::PHASE_FILTER) >> ope1->get_wave_fixed_bits();
-
-				int log_idx = ope1->get_wave_value(t);
-				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope1->get_amplitude_modulation_shift());
-				int output = _safe_log_lookup(_table, log_idx);
+				int am_level = _amplitude_modulation_output_level >> ope1->get_amplitude_modulation_shift();
+				int output = ope1->get_super_output(ope1->get_in_pipe()->get()->value, ope1->get_fm_shift(), am_level);
 
 				ope1->get_feed_pipe()->get()->value = output;
 				ope1->get_out_pipe()->get()->value  = output + ope1->get_base_pipe()->get()->value;
@@ -989,11 +1057,8 @@ void SiOPMChannelFM::_process_operator3(int p_length) {
 			// Update PG.
 			{
 				ope0->tick_pulse_generator();
-				int t = ((ope0->get_phase() + (in_pipe->value << _input_level)) & SiOPMRefTable::PHASE_FILTER) >> ope0->get_wave_fixed_bits();
-
-				int log_idx = ope0->get_wave_value(t);
-				log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				int output = _safe_log_lookup(_table, log_idx);
+				int am_level = _amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift();
+				int output = ope0->get_super_output(in_pipe->value, _input_level, am_level);
 
 				ope0->get_feed_pipe()->get()->value = output;
 				ope0->get_out_pipe()->get()->value  = output + ope0->get_base_pipe()->get()->value;
@@ -1008,11 +1073,8 @@ void SiOPMChannelFM::_process_operator3(int p_length) {
 			// Update PG.
 			{
 				ope1->tick_pulse_generator();
-				int t = ((ope1->get_phase() + (ope1->get_in_pipe()->get()->value << ope1->get_fm_shift())) & SiOPMRefTable::PHASE_FILTER) >> ope1->get_wave_fixed_bits();
-
-				int log_idx = ope1->get_wave_value(t);
-				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope1->get_amplitude_modulation_shift());
-				int output = _safe_log_lookup(_table, log_idx);
+				int am_level = _amplitude_modulation_output_level >> ope1->get_amplitude_modulation_shift();
+				int output = ope1->get_super_output(ope1->get_in_pipe()->get()->value, ope1->get_fm_shift(), am_level);
 
 				ope1->get_feed_pipe()->get()->value = output;
 				ope1->get_out_pipe()->get()->value  = output + ope1->get_base_pipe()->get()->value;
@@ -1027,11 +1089,8 @@ void SiOPMChannelFM::_process_operator3(int p_length) {
 			// Update PG.
 			{
 				ope2->tick_pulse_generator();
-				int t = ((ope2->get_phase() + (ope2->get_in_pipe()->get()->value << ope2->get_fm_shift())) & SiOPMRefTable::PHASE_FILTER) >> ope2->get_wave_fixed_bits();
-
-				int log_idx = ope2->get_wave_value(t);
-				log_idx += ope2->get_eg_output() + (_amplitude_modulation_output_level >> ope2->get_amplitude_modulation_shift());
-				int output = _safe_log_lookup(_table, log_idx);
+				int am_level = _amplitude_modulation_output_level >> ope2->get_amplitude_modulation_shift();
+				int output = ope2->get_super_output(ope2->get_in_pipe()->get()->value, ope2->get_fm_shift(), am_level);
 
 				ope2->get_feed_pipe()->get()->value = output;
 				ope2->get_out_pipe()->get()->value  = output + ope2->get_base_pipe()->get()->value;
@@ -1079,11 +1138,8 @@ void SiOPMChannelFM::_process_operator4(int p_length) {
 			// Update PG.
 			{
 				ope0->tick_pulse_generator();
-				int t = ((ope0->get_phase() + (in_pipe->value << _input_level)) & SiOPMRefTable::PHASE_FILTER) >> ope0->get_wave_fixed_bits();
-
-				int log_idx = ope0->get_wave_value(t);
-				log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				int output = _safe_log_lookup(_table, log_idx);
+				int am_level = _amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift();
+				int output = ope0->get_super_output(in_pipe->value, _input_level, am_level);
 
 				ope0->get_feed_pipe()->get()->value = output;
 				ope0->get_out_pipe()->get()->value  = output + ope0->get_base_pipe()->get()->value;
@@ -1098,11 +1154,8 @@ void SiOPMChannelFM::_process_operator4(int p_length) {
 			// Update PG.
 			{
 				ope1->tick_pulse_generator();
-				int t = ((ope1->get_phase() + (ope1->get_in_pipe()->get()->value << ope1->get_fm_shift())) & SiOPMRefTable::PHASE_FILTER) >> ope1->get_wave_fixed_bits();
-
-				int log_idx = ope1->get_wave_value(t);
-				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope1->get_amplitude_modulation_shift());
-				int output = _safe_log_lookup(_table, log_idx);
+				int am_level = _amplitude_modulation_output_level >> ope1->get_amplitude_modulation_shift();
+				int output = ope1->get_super_output(ope1->get_in_pipe()->get()->value, ope1->get_fm_shift(), am_level);
 
 				ope1->get_feed_pipe()->get()->value = output;
 				ope1->get_out_pipe()->get()->value  = output + ope1->get_base_pipe()->get()->value;
@@ -1118,11 +1171,8 @@ void SiOPMChannelFM::_process_operator4(int p_length) {
 			// Update PG.
 			{
 				ope2->tick_pulse_generator();
-				int t = ((ope2->get_phase() + (ope2->get_in_pipe()->get()->value << ope2->get_fm_shift())) & SiOPMRefTable::PHASE_FILTER) >> ope2->get_wave_fixed_bits();
-
-				int log_idx = ope2->get_wave_value(t);
-				log_idx += ope2->get_eg_output() + (_amplitude_modulation_output_level >> ope2->get_amplitude_modulation_shift());
-				int output = _safe_log_lookup(_table, log_idx);
+				int am_level = _amplitude_modulation_output_level >> ope2->get_amplitude_modulation_shift();
+				int output = ope2->get_super_output(ope2->get_in_pipe()->get()->value, ope2->get_fm_shift(), am_level);
 
 				ope2->get_feed_pipe()->get()->value = output;
 				ope2->get_out_pipe()->get()->value  = output + ope2->get_base_pipe()->get()->value;
@@ -1137,11 +1187,8 @@ void SiOPMChannelFM::_process_operator4(int p_length) {
 			// Update PG.
 			{
 				ope3->tick_pulse_generator();
-				int t = ((ope3->get_phase() + (ope3->get_in_pipe()->get()->value << ope3->get_fm_shift())) & SiOPMRefTable::PHASE_FILTER) >> ope3->get_wave_fixed_bits();
-
-				int log_idx = ope3->get_wave_value(t);
-				log_idx += ope3->get_eg_output() + (_amplitude_modulation_output_level >> ope3->get_amplitude_modulation_shift());
-				int output = _safe_log_lookup(_table, log_idx);
+				int am_level = _amplitude_modulation_output_level >> ope3->get_amplitude_modulation_shift();
+				int output = ope3->get_super_output(ope3->get_in_pipe()->get()->value, ope3->get_fm_shift(), am_level);
 
 				ope3->get_feed_pipe()->get()->value = output;
 				ope3->get_out_pipe()->get()->value  = output + ope3->get_base_pipe()->get()->value;
@@ -1308,21 +1355,15 @@ void SiOPMChannelFM::_process_analog_like(int p_length) {
 			// Operator 0.
 			{
 				ope0->tick_pulse_generator();
-				int t = ((ope0->get_phase() + (in_pipe->value << _input_level)) & SiOPMRefTable::PHASE_FILTER) >> ope0->get_wave_fixed_bits();
-
-				int log_idx = ope0->get_wave_value(t);
-				log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				output0 = _safe_log_lookup(_table, log_idx);
+				int am_level = _amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift();
+				output0 = ope0->get_super_output(in_pipe->value, _input_level, am_level);
 			}
 
 			// Operator 1 (w/ operator0's envelope and AMS).
 			{
 				ope1->tick_pulse_generator();
-				int t = (ope1->get_phase() & SiOPMRefTable::PHASE_FILTER) >> ope1->get_wave_fixed_bits();
-
-				int log_idx = ope1->get_wave_value(t);
-				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				output1 = _safe_log_lookup(_table, log_idx);
+				int am_level = _amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift();
+				output1 = ope1->get_super_output(0, 0, am_level);
 			}
 
 			ope0->get_feed_pipe()->get()->value = output0;
@@ -1486,6 +1527,91 @@ void SiOPMChannelFM::reset_channel_buffer_status() {
 			break;
 		}
 	}
+
+	// Reset stereo pipe cursors.
+	if (_stereo_left_pipe) {
+		_stereo_left_pipe->front();
+	}
+	if (_stereo_right_pipe) {
+		_stereo_right_pipe->front();
+	}
+}
+
+void SiOPMChannelFM::buffer(int p_length) {
+	if (_is_idling) {
+		buffer_no_process(p_length);
+		return;
+	}
+
+	bool stereo_mode = _is_stereo_super_mode();
+
+	// Preserve the start of the output pipes.
+	SinglyLinkedList<int>::Element *mono_out = _out_pipe->get();
+	SinglyLinkedList<int>::Element *left_start = stereo_mode ? _stereo_left_pipe->get() : nullptr;
+	SinglyLinkedList<int>::Element *right_start = stereo_mode ? _stereo_right_pipe->get() : nullptr;
+
+	// Update the output pipe for the provided length.
+	if (_process_function.is_valid()) {
+		_process_function.call(p_length);
+	}
+
+	if (_ring_pipe && !stereo_mode) {
+		_apply_ring_modulation(mono_out, p_length);
+	}
+	if (_filter_on && !stereo_mode) {
+		_apply_sv_filter(mono_out, p_length, _filter_variables);
+	}
+
+	if (_output_mode == OutputMode::OUTPUT_STANDARD && !_mute) {
+		if (stereo_mode) {
+			// Stereo super mode: write left/right channels separately.
+			if (_has_effect_send) {
+				for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
+					if (_volumes[i] > 0) {
+						SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
+						if (stream) {
+							stream->write_stereo(left_start, right_start, _buffer_index, p_length, _volumes[i], _pan);
+						}
+					}
+				}
+			} else {
+				SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
+				stream->write_stereo(left_start, right_start, _buffer_index, p_length, _volumes[0], _pan);
+			}
+		} else {
+			// Standard mono mode.
+			if (_has_effect_send) {
+				for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
+					if (_volumes[i] > 0) {
+						SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
+						if (stream) {
+							stream->write(mono_out, _buffer_index, p_length, _volumes[i], _pan);
+						}
+					}
+				}
+			} else {
+				SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
+				stream->write(mono_out, _buffer_index, p_length, _volumes[0], _pan);
+			}
+		}
+	}
+
+	// Copy to meter ring (use mono mix for metering in stereo mode).
+	if (stereo_mode) {
+		// For stereo mode, mix down to mono for metering.
+		SinglyLinkedList<int>::Element *left_elem = left_start;
+		SinglyLinkedList<int>::Element *right_elem = right_start;
+		SinglyLinkedList<int>::Element *mono_elem = mono_out;
+		for (int i = 0; i < p_length && left_elem && right_elem && mono_elem; i++) {
+			mono_elem->value = (left_elem->value + right_elem->value) >> 1;
+			left_elem = left_elem->next();
+			right_elem = right_elem->next();
+			mono_elem = mono_elem->next();
+		}
+	}
+	_meter_write_from(mono_out, p_length);
+
+	_buffer_index += p_length;
 }
 
 //
@@ -1569,6 +1695,11 @@ SiOPMChannelFM::SiOPMChannelFM(SiOPMSoundChip *p_chip) : SiOPMChannelBase(p_chip
 	_pipe0 = memnew(SinglyLinkedList<int>(1, 0, true));
 	_pipe1 = memnew(SinglyLinkedList<int>(1, 0, true));
 
+	// Allocate stereo super wave pipes with the same size as the sound chip's buffer.
+	int buffer_size = p_chip ? p_chip->get_buffer_length() : 2048;
+	_stereo_left_pipe = memnew(SinglyLinkedList<int>(buffer_size, 0, true));
+	_stereo_right_pipe = memnew(SinglyLinkedList<int>(buffer_size, 0, true));
+
 	initialize(nullptr, 0);
 }
 
@@ -1584,6 +1715,8 @@ SiOPMChannelFM::~SiOPMChannelFM() {
 
 	memdelete(_pipe0);
 	memdelete(_pipe1);
+	memdelete(_stereo_left_pipe);
+	memdelete(_stereo_right_pipe);
 }
 
 // --- Internal helper ---------------------------------------------------------

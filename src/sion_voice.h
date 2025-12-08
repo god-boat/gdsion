@@ -79,6 +79,8 @@ public:
 	void set_amplitude_modulation(int p_depth = 0, int p_end_depth = 0, int p_delay = 0, int p_term = 0);
 	void set_pitch_modulation(int p_depth = 0, int p_end_depth = 0, int p_delay = 0, int p_term = 0);
 
+	void set_operator_super_wave(int p_operator_index, int p_count, int p_spread);
+
 	// --- pitch_shift accessor ------------------------------------------------
 	int get_pitch_shift() const { return pitch_shift; }
 	void set_pitch_shift(int p_shift) { pitch_shift = p_shift; }

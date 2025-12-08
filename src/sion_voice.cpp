@@ -361,6 +361,14 @@ void SiONVoice::set_pitch_modulation(int p_depth, int p_end_depth, int p_delay, 
 	pitch_modulation_term = p_term;
 }
 
+void SiONVoice::set_operator_super_wave(int p_operator_index, int p_count, int p_spread) {
+	if (p_operator_index >= 0 && p_operator_index < channel_params->get_operator_count()) {
+		Ref<SiOPMOperatorParams> op_params = channel_params->get_operator_params(p_operator_index);
+		op_params->set_super_count(p_count);
+		op_params->set_super_spread(p_spread);
+	}
+}
+
 Ref<SiONVoice> SiONVoice::clone() {
 	Ref<SiONVoice> new_voice;
 	new_voice.instantiate();
@@ -421,6 +429,8 @@ void SiONVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_pitch_envelope", "envelope", "loop_point", "step"), &SiONVoice::set_pitch_envelope, DEFVAL(-1), DEFVAL(1));
 	ClassDB::bind_method(D_METHOD("set_amplitude_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_amplitude_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_pitch_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_pitch_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
+
+	ClassDB::bind_method(D_METHOD("set_operator_super_wave", "operator_index", "count", "spread"), &SiONVoice::set_operator_super_wave);
 
 	ClassDB::bind_method(D_METHOD("clone"), &SiONVoice::clone);
 

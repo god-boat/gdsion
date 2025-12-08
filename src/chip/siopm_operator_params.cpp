@@ -58,6 +58,10 @@ void SiOPMOperatorParams::initialize() {
 	ssg_envelope_control = SSG_DISABLED;
 	frequency_modulation_level = 5;
 	envelope_reset_on_attack = false;
+
+	super_count = 1;
+	super_spread = 0;
+	super_stereo_spread = 0;
 }
 
 void SiOPMOperatorParams::copy_from(const Ref<SiOPMOperatorParams> &p_params) {
@@ -86,6 +90,10 @@ void SiOPMOperatorParams::copy_from(const Ref<SiOPMOperatorParams> &p_params) {
 	ssg_envelope_control       = p_params->ssg_envelope_control;
 	frequency_modulation_level = p_params->frequency_modulation_level;
 	envelope_reset_on_attack   = p_params->envelope_reset_on_attack;
+
+	super_count  = p_params->super_count;
+	super_spread = p_params->super_spread;
+	super_stereo_spread = p_params->super_stereo_spread;
 }
 
 String SiOPMOperatorParams::_to_string() const {
@@ -111,7 +119,9 @@ String SiOPMOperatorParams::_to_string() const {
 
 	params += "ssgec=" + itos(ssg_envelope_control) + ", ";
 	params += "mute=" + String(mute ? "yes" : "no") + ", ";
-	params += "reset=" + String(envelope_reset_on_attack ? "yes" : "no");
+	params += "reset=" + String(envelope_reset_on_attack ? "yes" : "no") + ", ";
+
+	params += "super=(" + itos(super_count) + ", " + itos(super_spread) + ", stereo=" + itos(super_stereo_spread) + ")";
 
 	return "SiOPMOperatorParams: " + params;
 }
@@ -165,6 +175,13 @@ void SiOPMOperatorParams::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_envelope_reset_on_attack"), &SiOPMOperatorParams::is_envelope_reset_on_attack);
 	ClassDB::bind_method(D_METHOD("set_envelope_reset_on_attack", "reset"), &SiOPMOperatorParams::set_envelope_reset_on_attack);
 
+	ClassDB::bind_method(D_METHOD("get_super_count"), &SiOPMOperatorParams::get_super_count);
+	ClassDB::bind_method(D_METHOD("set_super_count", "value"), &SiOPMOperatorParams::set_super_count);
+	ClassDB::bind_method(D_METHOD("get_super_spread"), &SiOPMOperatorParams::get_super_spread);
+	ClassDB::bind_method(D_METHOD("set_super_spread", "value"), &SiOPMOperatorParams::set_super_spread);
+	ClassDB::bind_method(D_METHOD("get_super_stereo_spread"), &SiOPMOperatorParams::get_super_stereo_spread);
+	ClassDB::bind_method(D_METHOD("set_super_stereo_spread", "value"), &SiOPMOperatorParams::set_super_stereo_spread);
+
 	//
 
 	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "pulse_generator_type"), "set_pulse_generator_type", "get_pulse_generator_type");
@@ -193,6 +210,10 @@ void SiOPMOperatorParams::_bind_methods() {
 	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "ssg_envelope_control"), "set_ssg_envelope_control", "get_ssg_envelope_control");
 	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "frequency_modulation_level"), "set_frequency_modulation_level", "get_frequency_modulation_level");
 	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::BOOL, "envelope_reset_on_attack"), "set_envelope_reset_on_attack", "is_envelope_reset_on_attack");
+
+	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "super_count"), "set_super_count", "get_super_count");
+	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "super_spread"), "set_super_spread", "get_super_spread");
+	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "super_stereo_spread"), "set_super_stereo_spread", "get_super_stereo_spread");
 
 	BIND_ENUM_CONSTANT(SSG_DISABLED);
 	BIND_ENUM_CONSTANT(SSG_REPEAT_TO_ZERO);

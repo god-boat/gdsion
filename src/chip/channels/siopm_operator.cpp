@@ -6,6 +6,7 @@
 
 #include "siopm_operator.h"
 
+#include <cmath>
 #include <godot_cpp/classes/random_number_generator.hpp>
 #include "chip/siopm_operator_params.h"
 #include "chip/siopm_ref_table.h"
@@ -169,6 +170,7 @@ void SiOPMOperator::set_ssg_type(int p_value) {
 void SiOPMOperator::_update_pitch() {
 	int index = (_pitch_index + _pitch_index_shift + _pitch_index_shift2) & _pitch_table_filter;
 	_update_phase_step(_pitch_table[index] >> _wave_phase_step_shift);
+	_update_super_phase_steps();
 }
 
 void SiOPMOperator::_update_phase_step(int p_step) {
@@ -306,8 +308,133 @@ void SiOPMOperator::set_fnumber(int p_value) {
 	_update_phase_step((p_value & 2047) << ((p_value >> 11) & 7));
 }
 
+// Super wave methods.
+
+void SiOPMOperator::set_super_wave(int p_count, int p_spread) {
+	_super_count = (p_count < 1) ? 1 : ((p_count > MAX_SUPER_VOICES) ? MAX_SUPER_VOICES : p_count);
+	_super_spread = (p_spread < 0) ? 0 : ((p_spread > 1000) ? 1000 : p_spread);
+	_update_super_phase_steps();
+	_update_super_pan_values();
+}
+
+void SiOPMOperator::set_super_stereo_spread(int p_value) {
+	_super_stereo_spread = (p_value < 0) ? 0 : ((p_value > 100) ? 100 : p_value);
+	_update_super_pan_values();
+}
+
+void SiOPMOperator::_update_super_pan_values() {
+	// Pan values range from 0 (full left) to 128 (full right), 64 = center.
+	// Spread voices across the stereo field based on _super_stereo_spread.
+	// At spread=0, all voices are centered. At spread=100, voices span full L-R.
+	if (_super_count <= 1 || _super_stereo_spread == 0) {
+		for (int i = 0; i < MAX_SUPER_VOICES; i++) {
+			_super_pan_values[i] = 64; // Center
+		}
+		return;
+	}
+
+	// Calculate pan positions: distribute voices symmetrically around center.
+	// Voice 0 is leftmost, voice (count-1) is rightmost when spread is 100.
+	float half_spread = (_super_stereo_spread / 100.0f) * 64.0f; // Max offset from center
+	for (int i = 0; i < _super_count; i++) {
+		// Normalized position: -1 (leftmost) to +1 (rightmost)
+		float pos = (float)(i - (_super_count - 1) * 0.5f) / ((_super_count - 1) * 0.5f);
+		// Convert to pan range [0-128] with center at 64
+		int pan = 64 + (int)(pos * half_spread);
+		_super_pan_values[i] = CLAMP(pan, 0, 128);
+	}
+}
+
+void SiOPMOperator::_update_super_phase_steps() {
+	if (_super_count <= 1) {
+		return;
+	}
+
+	for (int i = 0; i < _super_count; i++) {
+		if (_super_count == 1) {
+			_super_phase_steps[i] = _phase_step;
+		} else {
+			float spread_factor = (float)(i - (_super_count - 1) * 0.5f) / ((_super_count - 1) * 0.5f);
+			int detune = (int)(_phase_step * spread_factor * _super_spread / 1000.0f);
+			_super_phase_steps[i] = _phase_step + detune;
+		}
+	}
+}
+
+int SiOPMOperator::get_super_output(int p_fm_input, int p_input_level, int p_am_level) {
+	if (_super_count <= 1) {
+		int t = ((_phase + (p_fm_input << p_input_level)) & SiOPMRefTable::PHASE_FILTER) >> _wave_fixed_bits;
+		int log_idx = get_wave_value(t) + _eg_output + p_am_level;
+		if (log_idx < 0) {
+			log_idx = 0;
+		} else if (log_idx > SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1) {
+			log_idx = SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1;
+		}
+		return _table->log_table[log_idx];
+	}
+
+	int sum = 0;
+	for (int i = 0; i < _super_count; i++) {
+		int t = ((_super_phases[i] + (p_fm_input << p_input_level)) & SiOPMRefTable::PHASE_FILTER) >> _wave_fixed_bits;
+		int log_idx = get_wave_value(t) + _eg_output + p_am_level;
+		if (log_idx < 0) {
+			log_idx = 0;
+		} else if (log_idx > SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1) {
+			log_idx = SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1;
+		}
+		sum += _table->log_table[log_idx];
+	}
+	// Normalize by sqrt(n) to maintain roughly consistent perceived loudness.
+	// With random phases, RMS power grows as sqrt(n), so this keeps the level
+	// stable while preserving the thickness from additional voices.
+	return (int)(sum / sqrt((double)_super_count));
+}
+
+bool SiOPMOperator::get_super_output_stereo(int p_fm_input, int p_input_level, int p_am_level, int &r_left, int &r_right) {
+	// If stereo spread is disabled or single voice, fall back to mono.
+	if (_super_stereo_spread == 0 || _super_count <= 1) {
+		r_left = r_right = get_super_output(p_fm_input, p_input_level, p_am_level);
+		return false; // Not stereo
+	}
+
+	// Pan table reference for converting pan position to L/R gains.
+	double (&pan_table)[129] = _table->pan_table;
+
+	double sum_left = 0.0;
+	double sum_right = 0.0;
+
+	for (int i = 0; i < _super_count; i++) {
+		int t = ((_super_phases[i] + (p_fm_input << p_input_level)) & SiOPMRefTable::PHASE_FILTER) >> _wave_fixed_bits;
+		int log_idx = get_wave_value(t) + _eg_output + p_am_level;
+		if (log_idx < 0) {
+			log_idx = 0;
+		} else if (log_idx > SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1) {
+			log_idx = SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1;
+		}
+		int sample = _table->log_table[log_idx];
+
+		// Apply per-voice panning.
+		int pan = _super_pan_values[i];
+		sum_left += sample * pan_table[128 - pan];
+		sum_right += sample * pan_table[pan];
+	}
+
+	// Normalize by sqrt(n) to maintain consistent perceived loudness.
+	double norm = sqrt((double)_super_count);
+	r_left = (int)(sum_left / norm);
+	r_right = (int)(sum_right / norm);
+
+	return true; // Stereo output
+}
+
 void SiOPMOperator::tick_pulse_generator(int p_extra) {
 	_phase += _phase_step + p_extra;
+
+	if (_super_count > 1) {
+		for (int i = 0; i < _super_count; i++) {
+			_super_phases[i] += _super_phase_steps[i] + p_extra;
+		}
+	}
 }
 
 // Envelope generator.
@@ -561,6 +688,9 @@ void SiOPMOperator::set_operator_params(const Ref<SiOPMOperatorParams> &p_params
 	set_sustain_level(p_params->get_sustain_level() & 15);
 	set_total_level(p_params->get_total_level());
 
+	set_super_wave(p_params->get_super_count(), p_params->get_super_spread());
+	set_super_stereo_spread(p_params->get_super_stereo_spread());
+
 	_update_pitch();
 }
 
@@ -587,6 +717,10 @@ void SiOPMOperator::get_operator_params(const Ref<SiOPMOperatorParams> &r_params
 
 	r_params->set_initial_phase(get_key_on_phase());
 	r_params->set_frequency_modulation_level(get_fm_level());
+
+	r_params->set_super_count(_super_count);
+	r_params->set_super_spread(_super_spread);
+	r_params->set_super_stereo_spread(_super_stereo_spread);
 }
 
 void SiOPMOperator::set_wave_table(const Ref<SiOPMWaveTable> &p_wave_table) {
@@ -628,6 +762,18 @@ void SiOPMOperator::note_on() {
 		_phase = int(rng->randi_range(0, SiOPMRefTable::PHASE_MAX));
 	}
 
+	if (_super_count > 1) {
+		// Each super voice gets a random starting phase for instant chorus/thickness.
+		// This is essential for the characteristic supersaw sound - without it,
+		// all voices start in phase and only gradually drift apart.
+		Ref<RandomNumberGenerator> rng;
+		rng.instantiate();
+
+		for (int i = 0; i < _super_count; i++) {
+			_super_phases[i] = int(rng->randi_range(0, SiOPMRefTable::PHASE_MAX));
+		}
+	}
+
 	_eg_ssgec_state = -1;
 	_shift_eg_state(EG_ATTACK);
 	update_eg_output();
@@ -654,6 +800,15 @@ void SiOPMOperator::initialize() {
 
 	_eg_tl_offset  = 0;
 	_pitch_index_shift2 = 0;
+
+	_super_count = 1;
+	_super_spread = 0;
+	_super_stereo_spread = 0;
+	for (int i = 0; i < MAX_SUPER_VOICES; i++) {
+		_super_phases[i] = 0;
+		_super_phase_steps[i] = 0;
+		_super_pan_values[i] = 64; // Center
+	}
 
 	_pcm_channel_num = 0;
 	_pcm_start_point = 0;

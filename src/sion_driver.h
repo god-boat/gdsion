@@ -334,6 +334,9 @@ private:
 		bool has_fm_op_fmul = false;
 		bool has_fm_op_dt1 = false;
 		bool has_fm_op_dt2 = false;
+		bool has_fm_op_super_count = false;
+		bool has_fm_op_super_spread = false;
+		bool has_fm_op_super_stereo_spread = false;
 		int op_index = 0;
 		int fm_value = 0;
 		// Channel modulation (FM-only currently)
@@ -604,6 +607,9 @@ public:
 	void mailbox_set_fm_op_fine_multiple(int p_track_id, int p_op_index, int p_value);
 	void mailbox_set_fm_op_detune1(int p_track_id, int p_op_index, int p_value);
 	void mailbox_set_fm_op_detune2(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_super_count(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_super_spread(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_super_stereo_spread(int p_track_id, int p_op_index, int p_value);
 	void mailbox_set_ch_am_depth(int p_track_id, int p_depth, int64_t p_voice_scope_id = -1);
 	void mailbox_set_ch_pm_depth(int p_track_id, int p_depth, int64_t p_voice_scope_id = -1);
 	void mailbox_set_pitch_bend(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);

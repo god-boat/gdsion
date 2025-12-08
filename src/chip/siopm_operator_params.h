@@ -88,6 +88,14 @@ private:
 	int frequency_modulation_level = 5;
 	bool envelope_reset_on_attack = false;
 
+	// Super wave parameters.
+	// Number of stacked voices [1-16]. 1 = normal single oscillator.
+	int super_count = 1;
+	// Detune spread amount [0-1000]. Higher values = wider detuning.
+	int super_spread = 0;
+	// Stereo spread amount [0-100]. 0 = mono, 100 = full stereo spread.
+	int super_stereo_spread = 0;
+
 protected:
 	static void _bind_methods();
 
@@ -142,6 +150,13 @@ public:
 	void set_frequency_modulation_level(int p_value) { frequency_modulation_level = p_value; }
 	bool is_envelope_reset_on_attack() const { return envelope_reset_on_attack; }
 	void set_envelope_reset_on_attack(bool p_reset) { envelope_reset_on_attack = p_reset; }
+
+	int get_super_count() const { return super_count; }
+	void set_super_count(int p_value) { super_count = (p_value < 1) ? 1 : ((p_value > 16) ? 16 : p_value); }
+	int get_super_spread() const { return super_spread; }
+	void set_super_spread(int p_value) { super_spread = (p_value < 0) ? 0 : ((p_value > 1000) ? 1000 : p_value); }
+	int get_super_stereo_spread() const { return super_stereo_spread; }
+	void set_super_stereo_spread(int p_value) { super_stereo_spread = (p_value < 0) ? 0 : ((p_value > 100) ? 100 : p_value); }
 
 	void initialize();
 	void copy_from(const Ref<SiOPMOperatorParams> &p_params);

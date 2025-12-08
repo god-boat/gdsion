@@ -66,6 +66,13 @@ class SiOPMChannelFM : public SiOPMChannelBase {
 	SinglyLinkedList<int> *_pipe0 = nullptr;
 	SinglyLinkedList<int> *_pipe1 = nullptr;
 
+	// Stereo super wave output pipes.
+	SinglyLinkedList<int> *_stereo_left_pipe = nullptr;
+	SinglyLinkedList<int> *_stereo_right_pipe = nullptr;
+
+	// Returns true if the active operator has stereo super spread enabled.
+	bool _is_stereo_super_mode() const;
+
 	enum RegisterType {
 		REGISTER_OPM = 0,
 		REGISTER_2A03 = 1, // Not actually implemented.
@@ -147,6 +154,9 @@ public:
 	// Helpers to set operator params on the active operator
 	void set_multiple(int p_value);
 	void set_detune1(int p_value);
+	void set_operator_super_count(int p_value);
+	void set_operator_super_spread(int p_value);
+	void set_operator_super_stereo_spread(int p_value);
 	virtual void set_phase(int p_value) override;
 	virtual void set_detune(int p_value) override;
 	virtual void set_fixed_pitch(int p_value) override;
@@ -170,6 +180,7 @@ public:
 	virtual void note_off() override;
 
 	virtual void reset_channel_buffer_status() override;
+	virtual void buffer(int p_length) override;
 
 	//
 
