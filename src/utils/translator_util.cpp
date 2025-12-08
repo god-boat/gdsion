@@ -186,9 +186,9 @@ void TranslatorUtil::_set_opm_params_by_array(const Ref<SiOPMChannelParams> &p_p
 		return;
 	}
 
-	// #OPM@ signature:
+	// #OPM@ signature (internal format, no scaling):
 	// AL[0-7], FB[0-7],
-	// (AR[0-31], DR[0-31], SR[0-31], RR[0-15], SL[0-15], TL[0-127], KR[0-3], ML[0-15], D1[0-7], D2[0-3], AM[0-3]) x operator_count
+	// (AR[0-63], DR[0-63], SR[0-63], RR[0-63], SL[0-15], TL[0-127], KR[0-3], ML[0-15], D1[0-7], D2[0-3], AM[0-3]) x operator_count
 
 	int algorithm = _get_params_algorithm(SiMMLRefTable::get_instance()->algorithm_opm, p_params->operator_count, p_data[0], 7, "#OPM@");
 	if (algorithm == -1) {
@@ -202,15 +202,15 @@ void TranslatorUtil::_set_opm_params_by_array(const Ref<SiOPMChannelParams> &p_p
 	for (int op_index = 0; op_index < p_params->operator_count; op_index++) {
 		Ref<SiOPMOperatorParams> op_params = p_params->operator_params[op_index];
 
-		op_params->attack_rate               = (_sanitize_param_loop(p_data[data_index++], 0, 31, "AR") << 1);       // 1
-		op_params->decay_rate                = (_sanitize_param_loop(p_data[data_index++], 0, 31, "DR") << 1);       // 2
-		op_params->sustain_rate              = (_sanitize_param_loop(p_data[data_index++], 0, 31, "SR") << 1);       // 3
-		op_params->release_rate             = ((_sanitize_param_loop(p_data[data_index++], 0, 15, "RR") << 2) + 2);  // 4
-		op_params->sustain_level             = _sanitize_param_loop(p_data[data_index++], 0, 15,  "SL");             // 5
-		op_params->total_level               = _sanitize_param_loop(p_data[data_index++], 0, 127, "TL");             // 6
-		op_params->key_scaling_rate          = _sanitize_param_loop(p_data[data_index++], 0, 3,   "KR");             // 7
-		op_params->set_multiple               (_sanitize_param_loop(p_data[data_index++], 0, 15,  "ML"));            // 8
-		op_params->detune1                   = _sanitize_param_loop(p_data[data_index++], 0, 7,   "D1");             // 9
+		op_params->attack_rate                = _sanitize_param_loop(p_data[data_index++], 0, 63,  "AR");            // 1
+		op_params->decay_rate                 = _sanitize_param_loop(p_data[data_index++], 0, 63,  "DR");            // 2
+		op_params->sustain_rate               = _sanitize_param_loop(p_data[data_index++], 0, 63,  "SR");            // 3
+		op_params->release_rate               = _sanitize_param_loop(p_data[data_index++], 0, 63,  "RR");            // 4
+		op_params->sustain_level              = _sanitize_param_loop(p_data[data_index++], 0, 15,  "SL");            // 5
+		op_params->total_level                = _sanitize_param_loop(p_data[data_index++], 0, 127, "TL");            // 6
+		op_params->key_scaling_rate           = _sanitize_param_loop(p_data[data_index++], 0, 3,   "KR");            // 7
+		op_params->set_multiple                (_sanitize_param_loop(p_data[data_index++], 0, 15,  "ML"));           // 8
+		op_params->detune1                    = _sanitize_param_loop(p_data[data_index++], 0, 7,   "D1");            // 9
 
 		int n = _sanitize_param_loop(p_data[data_index++], 0, 3, "D2");
 		op_params->detune2 = SiOPMRefTable::get_instance()->dt2_table[n];                                            // 10
@@ -223,9 +223,9 @@ void TranslatorUtil::_set_opn_params_by_array(const Ref<SiOPMChannelParams> &p_p
 		return;
 	}
 
-	// #OPN@ signature:
+	// #OPN@ signature (internal format, no scaling):
 	// AL[0-7], FB[0-7],
-	// (AR[0-31], DR[0-31], SR[0-31], RR[0-15], SL[0-15], TL[0-127], KR[0-3], ML[0-15], D1[0-7], AM[0-3]) x operator_count
+	// (AR[0-63], DR[0-63], SR[0-63], RR[0-63], SL[0-15], TL[0-127], KR[0-3], ML[0-15], D1[0-7], AM[0-3]) x operator_count
 
 	// Note: OPM and OPN share the algo list.
 	int algorithm = _get_params_algorithm(SiMMLRefTable::get_instance()->algorithm_opm, p_params->operator_count, p_data[0], 7, "#OPN@");
@@ -240,16 +240,16 @@ void TranslatorUtil::_set_opn_params_by_array(const Ref<SiOPMChannelParams> &p_p
 	for (int op_index = 0; op_index < p_params->operator_count; op_index++) {
 		Ref<SiOPMOperatorParams> op_params = p_params->operator_params[op_index];
 
-		op_params->attack_rate                = (_sanitize_param_loop(p_data[data_index++], 0, 31, "AR") << 1);       // 1
-		op_params->decay_rate                 = (_sanitize_param_loop(p_data[data_index++], 0, 31, "DR") << 1);       // 2
-		op_params->sustain_rate               = (_sanitize_param_loop(p_data[data_index++], 0, 31, "SR") << 1);       // 3
-		op_params->release_rate              = ((_sanitize_param_loop(p_data[data_index++], 0, 15, "RR") << 2) + 2);  // 4
-		op_params->sustain_level              = _sanitize_param_loop(p_data[data_index++], 0, 15,  "SL");             // 5
-		op_params->total_level                = _sanitize_param_loop(p_data[data_index++], 0, 127, "TL");             // 6
-		op_params->key_scaling_rate           = _sanitize_param_loop(p_data[data_index++], 0, 3,   "KR");             // 7
-		op_params->set_multiple                (_sanitize_param_loop(p_data[data_index++], 0, 15,  "ML"));            // 8
-		op_params->detune1                    = _sanitize_param_loop(p_data[data_index++], 0, 7,   "D1");             // 9
-		op_params->amplitude_modulation_shift = _sanitize_param_loop(p_data[data_index++], 0, 3,   "AM");             // 10
+		op_params->attack_rate                = _sanitize_param_loop(p_data[data_index++], 0, 63,  "AR");            // 1
+		op_params->decay_rate                 = _sanitize_param_loop(p_data[data_index++], 0, 63,  "DR");            // 2
+		op_params->sustain_rate               = _sanitize_param_loop(p_data[data_index++], 0, 63,  "SR");            // 3
+		op_params->release_rate               = _sanitize_param_loop(p_data[data_index++], 0, 63,  "RR");            // 4
+		op_params->sustain_level              = _sanitize_param_loop(p_data[data_index++], 0, 15,  "SL");            // 5
+		op_params->total_level                = _sanitize_param_loop(p_data[data_index++], 0, 127, "TL");            // 6
+		op_params->key_scaling_rate           = _sanitize_param_loop(p_data[data_index++], 0, 3,   "KR");            // 7
+		op_params->set_multiple                (_sanitize_param_loop(p_data[data_index++], 0, 15,  "ML"));           // 8
+		op_params->detune1                    = _sanitize_param_loop(p_data[data_index++], 0, 7,   "D1");            // 9
+		op_params->amplitude_modulation_shift = _sanitize_param_loop(p_data[data_index++], 0, 3,   "AM");            // 10
 	}
 }
 
@@ -648,11 +648,12 @@ Vector<int> TranslatorUtil::get_opm_params(const Ref<SiOPMChannelParams> &p_para
 
 		int	detune2 = _get_nearest_dt2(op_params->detune2);
 
+		// Return internal format values directly (no reverse-scaling).
 		res.append_array({
-			op_params->attack_rate >> 1,
-			op_params->decay_rate >> 1,
-			op_params->sustain_rate >> 1,
-			op_params->release_rate >> 2,
+			op_params->attack_rate,
+			op_params->decay_rate,
+			op_params->sustain_rate,
+			op_params->release_rate,
 			op_params->sustain_level,
 			op_params->total_level,
 			op_params->key_scaling_rate,
@@ -682,11 +683,12 @@ Vector<int> TranslatorUtil::get_opn_params(const Ref<SiOPMChannelParams> &p_para
 	for (int i = 0; i < p_params->operator_count; i++) {
 		Ref<SiOPMOperatorParams> op_params = p_params->operator_params[i];
 
+		// Return internal format values directly (no reverse-scaling).
 		res.append_array({
-			op_params->attack_rate >> 1,
-			op_params->decay_rate >> 1,
-			op_params->sustain_rate >> 1,
-			op_params->release_rate >> 2,
+			op_params->attack_rate,
+			op_params->decay_rate,
+			op_params->sustain_rate,
+			op_params->release_rate,
 			op_params->sustain_level,
 			op_params->total_level,
 			op_params->key_scaling_rate,
@@ -1000,7 +1002,7 @@ String TranslatorUtil::get_opm_params_as_mml(const Ref<SiOPMChannelParams> &p_pa
 
 	mml += _format_mml_comment(p_comment, p_line_end);
 
-	// Operator parameters.
+	// Operator parameters (internal format, no reverse-scaling).
 
 	OperatorParamsSizes sizes = _get_operator_params_sizes(p_params);
 
@@ -1009,10 +1011,10 @@ String TranslatorUtil::get_opm_params_as_mml(const Ref<SiOPMChannelParams> &p_pa
 
 		mml += p_line_end;
 
-		mml += _format_mml_digit(op_params->attack_rate >> 1, 2)            + p_separator;
-		mml += _format_mml_digit(op_params->decay_rate >> 1, 2)             + p_separator;
-		mml += _format_mml_digit(op_params->sustain_rate >> 1, 2)           + p_separator;
-		mml += _format_mml_digit(op_params->release_rate >> 2, 2)           + p_separator;
+		mml += _format_mml_digit(op_params->attack_rate, 2)                 + p_separator;
+		mml += _format_mml_digit(op_params->decay_rate, 2)                  + p_separator;
+		mml += _format_mml_digit(op_params->sustain_rate, 2)                + p_separator;
+		mml += _format_mml_digit(op_params->release_rate, 2)                + p_separator;
 		mml += _format_mml_digit(op_params->sustain_level, 2)               + p_separator;
 		mml += _format_mml_digit(op_params->total_level, sizes.total_level) + p_separator;
 		mml += _format_mml_digit(op_params->key_scaling_level)              + p_separator;
@@ -1053,7 +1055,7 @@ String TranslatorUtil::get_opn_params_as_mml(const Ref<SiOPMChannelParams> &p_pa
 
 	mml += _format_mml_comment(p_comment, p_line_end);
 
-	// Operator parameters.
+	// Operator parameters (internal format, no reverse-scaling).
 
 	OperatorParamsSizes sizes = _get_operator_params_sizes(p_params);
 
@@ -1062,10 +1064,10 @@ String TranslatorUtil::get_opn_params_as_mml(const Ref<SiOPMChannelParams> &p_pa
 
 		mml += p_line_end;
 
-		mml += _format_mml_digit(op_params->attack_rate >> 1, 2)            + p_separator;
-		mml += _format_mml_digit(op_params->decay_rate >> 1, 2)             + p_separator;
-		mml += _format_mml_digit(op_params->sustain_rate >> 1, 2)           + p_separator;
-		mml += _format_mml_digit(op_params->release_rate >> 2, 2)           + p_separator;
+		mml += _format_mml_digit(op_params->attack_rate, 2)                 + p_separator;
+		mml += _format_mml_digit(op_params->decay_rate, 2)                  + p_separator;
+		mml += _format_mml_digit(op_params->sustain_rate, 2)                + p_separator;
+		mml += _format_mml_digit(op_params->release_rate, 2)                + p_separator;
 		mml += _format_mml_digit(op_params->sustain_level, 2)               + p_separator;
 		mml += _format_mml_digit(op_params->total_level, sizes.total_level) + p_separator;
 		mml += _format_mml_digit(op_params->key_scaling_level)              + p_separator;
