@@ -161,7 +161,7 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 
 		ClassDB::register_internal_class<BeatsPerMinute>();
 		ClassDB::register_internal_class<MMLSystemCommand>();
-		ClassDB::register_internal_class<SiMMLEnvelopeTable>();
+		ClassDB::register_class<SiMMLEnvelopeTable>();
 
 		ClassDB::register_abstract_class<MMLData>();
 		ClassDB::register_class<MMLEvent>();
