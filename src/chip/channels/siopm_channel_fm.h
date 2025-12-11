@@ -70,6 +70,9 @@ class SiOPMChannelFM : public SiOPMChannelBase {
 	SinglyLinkedList<int> *_stereo_left_pipe = nullptr;
 	SinglyLinkedList<int> *_stereo_right_pipe = nullptr;
 
+	// Second set of filter variables for stereo right channel.
+	double _filter_variables2[3] = { 0, 0, 0 };
+
 	// Returns true if the active operator has stereo super spread enabled.
 	bool _is_stereo_super_mode() const;
 

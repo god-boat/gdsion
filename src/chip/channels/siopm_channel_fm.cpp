@@ -1555,11 +1555,21 @@ void SiOPMChannelFM::buffer(int p_length) {
 		_process_function.call(p_length);
 	}
 
-	if (_ring_pipe && !stereo_mode) {
-		_apply_ring_modulation(mono_out, p_length);
+	if (_ring_pipe) {
+		if (stereo_mode) {
+			_apply_ring_modulation(left_start, p_length);
+			_apply_ring_modulation(right_start, p_length);
+		} else {
+			_apply_ring_modulation(mono_out, p_length);
+		}
 	}
-	if (_filter_on && !stereo_mode) {
-		_apply_sv_filter(mono_out, p_length, _filter_variables);
+	if (_filter_on) {
+		if (stereo_mode) {
+			_apply_sv_filter(left_start, p_length, _filter_variables);
+			_apply_sv_filter(right_start, p_length, _filter_variables2);
+		} else {
+			_apply_sv_filter(mono_out, p_length, _filter_variables);
+		}
 	}
 
 	if (_output_mode == OutputMode::OUTPUT_STANDARD && !_mute) {
@@ -1622,6 +1632,11 @@ void SiOPMChannelFM::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 
 	_is_note_on = false;
 	SiOPMChannelBase::initialize(p_prev, p_buffer_index);
+
+	// Reset stereo filter state.
+	_filter_variables2[0] = 0;
+	_filter_variables2[1] = 0;
+	_filter_variables2[2] = 0;
 }
 
 void SiOPMChannelFM::reset() {
