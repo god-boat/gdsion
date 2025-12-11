@@ -614,7 +614,7 @@ int SiMMLTrack::_buffer_envelope(int p_length, int p_step) {
 				if (_sweep_step > 0 && _sweep_pitch > _sweep_end) {
 					_sweep_pitch = _sweep_end;
 					_sweep_step = 0;
-				} else if (_sweep_step <= 0 && _sweep_pitch < _sweep_end) {
+				} else if (_sweep_step < 0 && _sweep_pitch < _sweep_end) {
 					_sweep_pitch = _sweep_end;
 					_sweep_step = 0;
 				}
