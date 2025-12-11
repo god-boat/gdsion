@@ -9,6 +9,7 @@
 
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/templates/vector.hpp>
+#include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include "templates/singly_linked_list.h"
 
@@ -32,6 +33,7 @@ public:
 	//
 
 	void parse_mml(String p_table_numbers, String p_postfix, int p_max_index = 65536);
+	void from_array(const PackedInt32Array &p_table, int p_loop_point = -1);
 	void from_vector(Vector<int> p_table, int p_loop_point = -1);
 	// NOTE: Original code can implicitly create the destination vector and return it. We require creating it ahead of the call.
 	void to_vector(int p_length, Vector<int> *r_destination, int p_min = -65536, int p_max = 65536);
