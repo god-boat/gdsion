@@ -4,72 +4,82 @@
 		Container for processing operator parameters within [SiOPMChannelParams].
 	</brief_description>
 	<description>
+		Stores parameters for a single FM operator, including envelope (ADSR), pitch, and modulation settings. These parameters control the behavior of an oscillator within the FM synthesis pipeline.
 	</description>
 	<tutorials>
 	</tutorials>
 	<members>
 		<member name="amplitude_modulation_shift" type="int" setter="set_amplitude_modulation_shift" getter="get_amplitude_modulation_shift">
-			Modulation shift for the amplitude.
+			Controls how strongly LFO amplitude modulation (tremolo) affects this operator. Valid range is [code]0-3[/code]. A value of [code]0[/code] disables amplitude modulation, while higher values increase the modulation depth.
 		</member>
 		<member name="attack_rate" type="int" setter="set_attack_rate" getter="get_attack_rate">
-			Attack rate of the pulse.
+			Attack rate of the envelope. Valid range is [code]0-63[/code]. Higher values result in a faster attack (quicker rise to full volume). A value of [code]63[/code] produces an instant attack.
 		</member>
 		<member name="decay_rate" type="int" setter="set_decay_rate" getter="get_decay_rate">
-			Decay rate of the pulse.
+			Decay rate of the envelope. Valid range is [code]0-63[/code]. Controls how quickly the volume drops from the peak to the sustain level after the attack phase. Higher values produce faster decay.
 		</member>
 		<member name="detune1" type="int" setter="set_detune1" getter="get_detune1">
-			First detune factor of the pulse.
+			Fine detuning factor. Valid range is [code]0-7[/code]. Applies a small pitch offset based on a lookup table, typically used for FM synthesis richness. The actual pitch offset varies with the key code (note).
 		</member>
 		<member name="detune2" type="int" setter="set_detune2" getter="get_detune2">
-			Second detune factor of the pulse, typicaly a detune for pTSS.
+			Coarse detuning factor, typically used for pTSS (programmable tone sound source). Valid range is [code]0-3[/code]. Applies a larger pitch shift in 64ths of a semitone increments.
 		</member>
 		<member name="envelope_reset_on_attack" type="bool" setter="set_envelope_reset_on_attack" getter="is_envelope_reset_on_attack">
-			Flag that enables envelope reset on attack.
+			When [code]true[/code], the envelope level resets to zero when a new note is triggered (key-on). When [code]false[/code], the envelope continues from its current level, allowing for smoother transitions between notes.
 		</member>
 		<member name="fine_multiple" type="int" setter="set_fine_multiple" getter="get_fine_multiple">
-			Fine multiple factor.
+			Fine frequency multiplier with sub-integer precision. The frequency is multiplied by [code]fine_multiple / 128[/code]. Common values are [code]64[/code] (0.5x), [code]128[/code] (1x), [code]256[/code] (2x), etc. Use this for precise frequency ratios in FM synthesis.
 		</member>
 		<member name="fixed_pitch" type="int" setter="set_fixed_pitch" getter="get_fixed_pitch">
-			Fixed pitch value for the pulse. This makes the operator ignore the pitch/note played with the owner voice.
+			When set to a non-zero value, the operator ignores the played note and uses this fixed pitch instead. Useful for creating fixed-frequency effects like kick drums or noise elements within an instrument.
 		</member>
 		<member name="frequency_modulation_level" type="int" setter="set_frequency_modulation_level" getter="get_frequency_modulation_level">
-			Level for the frequency modulation. Value of [code]5[/code] means standard modulation.
+			Controls the depth of frequency modulation applied to this operator. Valid range is [code]0-7[/code]. A value of [code]5[/code] is the standard FM modulation depth. Higher values increase the modulation intensity.
 		</member>
 		<member name="initial_phase" type="int" setter="set_initial_phase" getter="get_initial_phase">
-			Initial phase of the pulse.
+			Starting phase of the waveform when a note is triggered. Used to control the initial position in the wave cycle. A value of [code]-1[/code] means no phase reset occurs on key-on.
 		</member>
 		<member name="key_scaling_level" type="int" setter="set_key_scaling_level" getter="get_key_scaling_level">
-			Level for the key scaling.
+			Controls how the operator's volume changes with pitch. Valid range is [code]0-3[/code]. At [code]0[/code], volume is constant across all notes. Higher values cause higher notes to become progressively quieter, simulating the natural behavior of acoustic instruments where high frequencies tend to have less energy.
 		</member>
 		<member name="key_scaling_rate" type="int" setter="set_key_scaling_rate" getter="get_key_scaling_rate">
-			Rate of the key scaling.
+			Controls how the envelope speed changes with pitch. Valid range is [code]0-3[/code]. At [code]0[/code], envelope rates are constant across all notes. Higher values cause higher notes to have faster envelopes (shorter attack, decay, and release times), simulating the natural behavior of acoustic instruments.
 		</member>
 		<member name="multiple" type="int" setter="set_multiple" getter="get_multiple">
-			Multiple factor.
+			Integer frequency multiplier. Valid range is [code]0-15[/code]. The operator's frequency is multiplied by this value (with [code]0[/code] treated as [code]0.5[/code]). Used to set harmonic relationships between operators in FM synthesis.
 		</member>
 		<member name="mute" type="bool" setter="set_mute" getter="is_mute">
-			Mute flag.
+			When [code]true[/code], this operator produces no sound output. Useful for temporarily disabling an operator without changing other parameters.
 		</member>
 		<member name="pitch_table_type" type="int" setter="set_pitch_table_type" getter="get_pitch_table_type" enum="SiONPitchTableType">
-			Type of the pitch table used by the pulse.
+			Determines which pitch-to-frequency conversion table is used. Different table types support different tuning systems and frequency ranges.
 		</member>
 		<member name="pulse_generator_type" type="int" setter="set_pulse_generator_type" getter="get_pulse_generator_type">
-			Type of the pulse generator. Must be one of the [enum SiONPulseGeneratorType] values, or another value in the valid range.
+			Determines the waveform shape used by this operator. Must be one of the [enum SiONPulseGeneratorType] values. Common types include sine, square, sawtooth, and various FM-specific waveforms.
 		</member>
 		<member name="release_rate" type="int" setter="set_release_rate" getter="get_release_rate">
-			Release rate of the pulse.
+			Release rate of the envelope. Valid range is [code]0-63[/code]. Controls how quickly the volume fades to silence after the note is released. Higher values produce faster release. A value of [code]63[/code] produces an instant release.
 		</member>
 		<member name="ssg_envelope_control" type="int" setter="set_ssg_envelope_control" getter="get_ssg_envelope_control">
-			Type of the SSG envelope control. This features uses the ADSR envelope to create a wave shape as the final envelope. Must be one of the [enum SSGEnvelopeControl] values, or another value in the valid range.
+			Enables SSG-EG (Software-controlled Sound Generator Envelope Generator) mode, which modifies the ADSR envelope behavior to create repeating or shaped envelopes. Must be one of the [enum SSGEnvelopeControl] values. Values [code]0-7[/code] disable SSG-EG, while [code]8-17[/code] enable various looping and shaping modes.
 		</member>
 		<member name="sustain_level" type="int" setter="set_sustain_level" getter="get_sustain_level">
-			Sustain level of the pulse.
+			Sustain level of the envelope. Valid range is [code]0-15[/code]. Defines the volume level maintained after the decay phase while the note is held. A value of [code]0[/code] is maximum volume (no attenuation), while [code]15[/code] is silent.
 		</member>
 		<member name="sustain_rate" type="int" setter="set_sustain_rate" getter="get_sustain_rate">
-			Sustain rate of the pulse. Allows for the pulse to change while being sustained.
+			Sustain rate of the envelope (also known as secondary decay). Valid range is [code]0-63[/code]. Controls how quickly the volume decays during the sustain phase. A value of [code]0[/code] means the sustain level is held indefinitely.
 		</member>
 		<member name="total_level" type="int" setter="set_total_level" getter="get_total_level">
-			Total level of the pulse.
+			Overall output level (volume) of the operator. Valid range is [code]0-127[/code]. A value of [code]0[/code] is maximum volume, while higher values attenuate the output. Each increment reduces volume by approximately 0.75 dB.
+		</member>
+		<member name="super_count" type="int" setter="set_super_count" getter="get_super_count">
+			Number of stacked oscillator voices for super/unison effects. Valid range is [code]1-16[/code]. A value of [code]1[/code] is a normal single oscillator. Higher values create a thicker, chorus-like sound by layering multiple detuned copies.
+		</member>
+		<member name="super_spread" type="int" setter="set_super_spread" getter="get_super_spread">
+			Detune spread amount for super/unison voices. Valid range is [code]0-1000[/code]. Controls how much the stacked voices are detuned from each other. Higher values create a wider, more detuned sound.
+		</member>
+		<member name="super_stereo_spread" type="int" setter="set_super_stereo_spread" getter="get_super_stereo_spread">
+			Stereo spread amount for super/unison voices. Valid range is [code]0-100[/code]. A value of [code]0[/code] places all voices in the center (mono), while [code]100[/code] spreads them fully across the stereo field.
 		</member>
 	</members>
 	<constants>
