@@ -1290,6 +1290,11 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws2", "track_id", "wave_shape", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_ws2, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_balance", "track_id", "balance", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_balance, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_detune2", "track_id", "detune2", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_detune2, DEFVAL(-1));
+	// Note control (thread-safe) - track_instance_id targets specific track by Godot object ID
+	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "track_instance_id"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("mailbox_key_off", "track_id", "immediate", "track_instance_id"), &SiONDriver::mailbox_key_off, DEFVAL(false), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("mailbox_set_expression", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_expression, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("mailbox_set_velocity", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_velocity, DEFVAL(0));
 
 	// User-controllable track API
 	ClassDB::bind_method(D_METHOD("create_user_controllable_track", "track_id"), &SiONDriver::create_user_controllable_track, DEFVAL(0));
@@ -1921,6 +1926,43 @@ void SiONDriver::mailbox_set_ch_al_detune2(int p_track_id, int p_detune2, int64_
     _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_key_on(int p_track_id, int p_note, int p_tick_length, uint64_t p_track_instance_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.track_instance_id = p_track_instance_id;
+    u.has_key_on = true;
+    u.key_on_note = p_note;
+    u.key_on_length = p_tick_length;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_key_off(int p_track_id, bool p_immediate, uint64_t p_track_instance_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.track_instance_id = p_track_instance_id;
+    u.has_key_off = true;
+    u.key_off_immediate = p_immediate;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_expression(int p_track_id, int p_value, uint64_t p_track_instance_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.track_instance_id = p_track_instance_id;
+    u.has_expression = true;
+    u.expression_value = p_value;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_velocity(int p_track_id, int p_value, uint64_t p_track_instance_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.track_instance_id = p_track_instance_id;
+    u.has_velocity = true;
+    u.velocity_value = p_value;
+    _mb_try_push(u);
+}
+
 // Thread-safe signal emission helper.
 void SiONDriver::_emit_signal_thread_safe(const StringName &signal_name, const Variant &arg) {
     if (arg.get_type() == Variant::NIL) {
@@ -2119,6 +2161,22 @@ void SiONDriver::_drain_track_mailbox() {
             }
             if (u.has_lfo_wave) {
                 ch->initialize_lfo(u.lfo_wave_shape); // resets LFO with new wave shape
+            }
+            // Note control commands - these can target specific track instances
+            bool instance_match = (u.track_instance_id == 0 || trk->get_instance_id() == u.track_instance_id);
+            if (instance_match) {
+                if (u.has_key_on) {
+                    trk->key_on(u.key_on_note, u.key_on_length, 0);
+                }
+                if (u.has_key_off) {
+                    trk->key_off(0, u.key_off_immediate);
+                }
+                if (u.has_expression) {
+                    trk->set_expression(CLAMP(u.expression_value, 0, 128));
+                }
+                if (u.has_velocity) {
+                    trk->set_velocity(CLAMP(u.velocity_value, 0, 512));
+                }
             }
         }
     }

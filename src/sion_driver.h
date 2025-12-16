@@ -364,6 +364,18 @@ private:
 		int al_balance = 0;
 		bool has_al_detune2 = false;
 		int al_detune2 = 0;
+		// Note control commands (executed on audio thread)
+		bool has_key_on = false;
+		int key_on_note = 0;
+		int key_on_length = 0;  // tick length, 0 = indefinite
+		bool has_key_off = false;
+		bool key_off_immediate = false;
+		bool has_expression = false;
+		int expression_value = 128;
+		bool has_velocity = false;
+		int velocity_value = 256;
+		// Target specific track instance by Godot object ID (for note commands on pooled tracks)
+		uint64_t track_instance_id = 0;  // 0 = apply to all matching track_id
 	};
 
 	// Per-track cached filter state for merging partial updates
@@ -621,6 +633,12 @@ public:
 	void mailbox_set_ch_al_ws2(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id = -1);
 	void mailbox_set_ch_al_balance(int p_track_id, int p_balance, int64_t p_voice_scope_id = -1);
 	void mailbox_set_ch_al_detune2(int p_track_id, int p_detune2, int64_t p_voice_scope_id = -1);
+	// Note control (thread-safe alternatives to direct track method calls)
+	// p_track_instance_id: If non-zero, targets specific track by Godot object ID (for pooled tracks)
+	void mailbox_key_on(int p_track_id, int p_note, int p_tick_length = 0, uint64_t p_track_instance_id = 0);
+	void mailbox_key_off(int p_track_id, bool p_immediate = false, uint64_t p_track_instance_id = 0);
+	void mailbox_set_expression(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);
+	void mailbox_set_velocity(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);
 
 	void track_effects_set_chain(int p_track_id, const Array &p_slots);
 	void track_effects_insert_effect(int p_track_id, const Dictionary &p_slot, int p_index = -1);
