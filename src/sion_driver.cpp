@@ -1295,9 +1295,6 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_key_off", "track_id", "immediate", "track_instance_id"), &SiONDriver::mailbox_key_off, DEFVAL(false), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_set_expression", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_expression, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_set_velocity", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_velocity, DEFVAL(0));
-	// Track creation (async, thread-safe)
-	ClassDB::bind_method(D_METHOD("mailbox_create_track", "track_id"), &SiONDriver::mailbox_create_track);
-	ClassDB::bind_method(D_METHOD("poll_created_track", "request_id"), &SiONDriver::poll_created_track);
 
 	// User-controllable track API
 	ClassDB::bind_method(D_METHOD("create_user_controllable_track", "track_id"), &SiONDriver::create_user_controllable_track, DEFVAL(0));
@@ -1966,28 +1963,6 @@ void SiONDriver::mailbox_set_velocity(int p_track_id, int p_value, uint64_t p_tr
     _mb_try_push(u);
 }
 
-uint64_t SiONDriver::mailbox_create_track(int p_track_id) {
-    uint64_t req_id = _next_creation_request_id.fetch_add(1, std::memory_order_relaxed);
-    _TrackUpdate u;
-    u.track_id = p_track_id;
-    u.has_create_track = true;
-    u.creation_request_id = req_id;
-    _mb_try_push(u);
-    return req_id;
-}
-
-SiMMLTrack* SiONDriver::poll_created_track(uint64_t p_request_id) {
-    if (p_request_id == 0) return nullptr;
-    int slot = p_request_id & (_CT_CAPACITY - 1);
-    uint64_t stored_id = _created_tracks[slot].request_id.load(std::memory_order_acquire);
-    if (stored_id != p_request_id) return nullptr;  // not ready or wrong entry
-    SiMMLTrack* track = _created_tracks[slot].track.load(std::memory_order_acquire);
-    // Clear slot for reuse (main thread only clears after successful read)
-    _created_tracks[slot].request_id.store(0, std::memory_order_release);
-    _created_tracks[slot].track.store(nullptr, std::memory_order_release);
-    return track;
-}
-
 // Thread-safe signal emission helper.
 void SiONDriver::_emit_signal_thread_safe(const StringName &signal_name, const Variant &arg) {
     if (arg.get_type() == Variant::NIL) {
@@ -2019,17 +1994,6 @@ void SiONDriver::_drain_track_mailbox() {
     while (tail != head) {
         const _TrackUpdate &u = _mb_ring[tail];
         tail = (tail + 1) & (_MB_CAPACITY - 1);
-        // Handle track creation request (does not iterate existing tracks)
-        if (u.has_create_track) {
-            int internal_track_id = (u.track_id & SiMMLTrack::TRACK_ID_FILTER) | SiMMLTrack::USER_CONTROLLED;
-            SiMMLTrack *track = sequencer->create_controllable_track(internal_track_id, false);
-            _bind_track_effect_stream(track, u.track_id);
-            // Store in completion ring (lock-free)
-            int slot = u.creation_request_id & (_CT_CAPACITY - 1);
-            _created_tracks[slot].track.store(track, std::memory_order_relaxed);
-            _created_tracks[slot].request_id.store(u.creation_request_id, std::memory_order_release);
-            continue;  // Skip normal per-track iteration
-        }
         // Apply to all live tracks that match this track_id (and optional voice scope)
         for (SiMMLTrack *trk : sequencer->get_tracks()) {
             if (!trk) continue;

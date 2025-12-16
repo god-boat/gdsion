@@ -376,9 +376,6 @@ private:
 		int velocity_value = 256;
 		// Target specific track instance by Godot object ID (for note commands on pooled tracks)
 		uint64_t track_instance_id = 0;  // 0 = apply to all matching track_id
-		// Track creation request (async, processed on audio thread)
-		bool has_create_track = false;
-		uint64_t creation_request_id = 0;
 	};
 
 	// Per-track cached filter state for merging partial updates
@@ -408,15 +405,6 @@ private:
 
 	bool _mb_try_push(const _TrackUpdate &p_update);
 	void _drain_track_mailbox();
-
-	// Lock-free completion ring for track creation (audio->main direction)
-	struct _CreatedTrackEntry {
-		std::atomic<uint64_t> request_id{0};  // 0 = empty/consumed
-		std::atomic<SiMMLTrack*> track{nullptr};
-	};
-	static const int _CT_CAPACITY = 256;  // power of two for cheap modulo
-	_CreatedTrackEntry _created_tracks[_CT_CAPACITY];
-	std::atomic<uint64_t> _next_creation_request_id{1};  // 0 = invalid
 
 	HashMap<int, SiEffectStream *> _track_effect_streams;
 	SiEffectStream *_ensure_track_effect_stream(int p_track_id);
@@ -651,9 +639,6 @@ public:
 	void mailbox_key_off(int p_track_id, bool p_immediate = false, uint64_t p_track_instance_id = 0);
 	void mailbox_set_expression(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);
 	void mailbox_set_velocity(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);
-	// Track creation (async, thread-safe)
-	uint64_t mailbox_create_track(int p_track_id);
-	SiMMLTrack* poll_created_track(uint64_t p_request_id);
 
 	void track_effects_set_chain(int p_track_id, const Array &p_slots);
 	void track_effects_insert_effect(int p_track_id, const Dictionary &p_slot, int p_index = -1);
