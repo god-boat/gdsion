@@ -138,7 +138,7 @@ public:
 	double psg_clock = 0;
 	// (fm_clock/64/sampling_rate) << CLOCK_RATIO_BITS
 	int clock_ratio = 1;
-	// 44100Hz=0, 22050Hz=1
+	// 48000Hz=0, 44100Hz=1, 22050Hz=1
 	int sample_rate_pitch_shift = 0;
 
 	// int->double ratio on pulse data
@@ -291,7 +291,7 @@ public:
 	//
 
 	// TODO: Define parameters as constants?
-	SiOPMRefTable(int p_fm_clock = 3580000, double p_psg_clock = 1789772.5, int p_sampling_rate = 44100);
+	SiOPMRefTable(int p_fm_clock = 3580000, double p_psg_clock = 1789772.5, int p_sampling_rate = 48000);
 	~SiOPMRefTable();
 };
 

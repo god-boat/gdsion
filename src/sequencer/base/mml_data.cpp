@@ -20,7 +20,7 @@ double MMLData::get_bpm() const {
 
 void MMLData::set_bpm(double p_value) {
 	if (p_value > 0) {
-		Ref<BeatsPerMinute> bpm = memnew(BeatsPerMinute(p_value, 44100));
+		Ref<BeatsPerMinute> bpm = memnew(BeatsPerMinute(p_value, 48000));
 		_initial_bpm = bpm;
 	} else {
 		Ref<BeatsPerMinute> bpm;

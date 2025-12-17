@@ -431,7 +431,7 @@ void SiOPMRefTable::_create_pg_tables() {
 			Vector<int> table;
 			table.resize_zeroed(table_size);
 
-			// noise_phase_shift = ((1<<PHASE_BIT)  /  ((nf/(clock/16))[sec]  /  (1/44100)[sec])) >> (PHASE_BIT - waveTable.fixedBits)
+			// noise_phase_shift = ((1<<PHASE_BIT)  /  ((nf/(clock/16))[sec]  /  (1/sampling_rate)[sec])) >> (PHASE_BIT - waveTable.fixedBits)
 			double pitch_coef = PHASE_MAX * (double)fm_clock / (sampling_rate * 16);
 
 			for (int i = 0; i < 32; i++) {
@@ -454,7 +454,7 @@ void SiOPMRefTable::_create_pg_tables() {
 			Vector<int> table;
 			table.resize_zeroed(table_size);
 
-			// noise_phase_shift = ((1<<PHASE_BIT)  /  ((nf/clock)[sec]  /  (1/44100)[sec])) >> (PHASE_BIT - waveTable.fixedBits)
+			// noise_phase_shift = ((1<<PHASE_BIT)  /  ((nf/clock)[sec]  /  (1/sampling_rate)[sec])) >> (PHASE_BIT - waveTable.fixedBits)
 			double pitch_coef = PHASE_MAX * psg_clock / sampling_rate;
 
 			for (int i = 0; i < 16; i++) {
@@ -482,7 +482,7 @@ void SiOPMRefTable::_create_pg_tables() {
 			Vector<int> table;
 			table.resize_zeroed(table_size);
 
-			// noise_phase_shift = ((1<<PHASE_BIT)  /  ((nf/clock)[sec]  /  (1/44100)[sec])) >> (PHASE_BIT - waveTable.fixedBits)
+			// noise_phase_shift = ((1<<PHASE_BIT)  /  ((nf/clock)[sec]  /  (1/sampling_rate)[sec])) >> (PHASE_BIT - waveTable.fixedBits)
 			double pitch_coef = PHASE_MAX * 1048576.0 / sampling_rate; // gb clock = 1048576
 
 			for (int i = 0; i < 64; i++) {

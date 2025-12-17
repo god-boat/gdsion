@@ -16,7 +16,7 @@ using namespace godot;
 // This is a building block class, not a standalone effect.
 class SiEffectLineDelay {
 
-	int _sample_rate = 44100;
+	int _sample_rate = 48000;
 	int _index = 0;
 	double _max_delay = 0.0;
 	Vector<double> _delay_buffer;
@@ -32,8 +32,8 @@ public:
 	double get_max_delay() const { return _max_delay; }
 	int get_sample_rate() const { return _sample_rate; }
 
-	SiEffectLineDelay(int p_sample_rate = 44100);
-	SiEffectLineDelay(double p_max_delay, int p_sample_rate = 44100);
+	SiEffectLineDelay(int p_sample_rate = 48000);
+	SiEffectLineDelay(double p_max_delay, int p_sample_rate = 48000);
 	~SiEffectLineDelay() {}
 };
 

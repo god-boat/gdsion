@@ -34,7 +34,7 @@
 			<return type="SiONDriver" />
 			<param index="0" name="buffer_size" type="int" default="2048" />
 			<param index="1" name="channel_num" type="int" default="2" />
-			<param index="2" name="sample_rate" type="int" default="44100" />
+			<param index="2" name="sample_rate" type="int" default="48000" />
 			<param index="3" name="bitrate" type="int" default="0" />
 			<description>
 				Creates a new instance of a GDSiON synth driver. Only one driver can exist at the same time in the scene tree, unless [method set_allow_multiple_drivers] has been called with [code]true[/code]. Use this as a static factory method.

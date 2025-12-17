@@ -115,8 +115,9 @@ void SiOPMChannelBase::initialize_lfo(int p_waveform, Vector<int> p_custom_wave_
 
 void SiOPMChannelBase::set_lfo_cycle_time(double p_ms) {
 	_lfo_timer = 0;
-	// 0.17294117647058824 = 44100/(1000*255)
-	_lfo_timer_step = ((int)(SiOPMRefTable::LFO_TIMER_INITIAL/(p_ms * 0.17294117647058824))) << _table->sample_rate_pitch_shift;
+	// Coefficient = sampling_rate / (1000 * 255)
+	double coef = _table->sampling_rate / (1000.0 * 255.0);
+	_lfo_timer_step = ((int)(SiOPMRefTable::LFO_TIMER_INITIAL/(p_ms * coef))) << _table->sample_rate_pitch_shift;
 	_lfo_timer_step_buffer = _lfo_timer_step;
 }
 
