@@ -342,6 +342,13 @@ private:
 		bool has_fm_op_super_count = false;
 		bool has_fm_op_super_spread = false;
 		bool has_fm_op_super_stereo_spread = false;
+		bool has_fm_op_ar = false;
+		bool has_fm_op_dr = false;
+		bool has_fm_op_sr = false;
+		bool has_fm_op_rr = false;
+		bool has_fm_op_sl = false;
+		bool has_fm_op_mute = false;
+		bool has_fm_op_env_reset = false;
 		int op_index = 0;
 		int fm_value = 0;
 		// Channel modulation (FM-only currently)
@@ -627,6 +634,13 @@ public:
 	void mailbox_set_fm_op_super_count(int p_track_id, int p_op_index, int p_value);
 	void mailbox_set_fm_op_super_spread(int p_track_id, int p_op_index, int p_value);
 	void mailbox_set_fm_op_super_stereo_spread(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_attack_rate(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_decay_rate(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_sustain_rate(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_release_rate(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_sustain_level(int p_track_id, int p_op_index, int p_value);
+	void mailbox_set_fm_op_mute(int p_track_id, int p_op_index, bool p_mute);
+	void mailbox_set_fm_op_envelope_reset(int p_track_id, int p_op_index, bool p_reset);
 	void mailbox_set_ch_am_depth(int p_track_id, int p_depth, int64_t p_voice_scope_id = -1);
 	void mailbox_set_ch_pm_depth(int p_track_id, int p_depth, int64_t p_voice_scope_id = -1);
 	void mailbox_set_pitch_bend(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);

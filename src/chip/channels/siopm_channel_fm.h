@@ -155,11 +155,17 @@ public:
 	virtual void set_total_level(int p_value) override;
 	virtual void set_fine_multiple(int p_value) override;
 	// Helpers to set operator params on the active operator
+	void set_attack_rate(int p_value);
+	void set_decay_rate(int p_value);
+	void set_sustain_rate(int p_value);
+	void set_sustain_level(int p_value);
 	void set_multiple(int p_value);
 	void set_detune1(int p_value);
 	void set_operator_super_count(int p_value);
 	void set_operator_super_spread(int p_value);
 	void set_operator_super_stereo_spread(int p_value);
+	void set_mute(bool p_mute);
+	void set_envelope_reset_on_attack(bool p_reset);
 	virtual void set_phase(int p_value) override;
 	virtual void set_detune(int p_value) override;
 	virtual void set_fixed_pitch(int p_value) override;

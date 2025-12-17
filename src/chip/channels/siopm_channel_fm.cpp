@@ -676,6 +676,22 @@ void SiOPMChannelFM::set_fine_multiple(int p_value) {
 	_active_operator->set_fine_multiple(p_value);
 }
 
+void SiOPMChannelFM::set_attack_rate(int p_value) {
+	_active_operator->set_attack_rate(p_value);
+}
+
+void SiOPMChannelFM::set_decay_rate(int p_value) {
+	_active_operator->set_decay_rate(p_value);
+}
+
+void SiOPMChannelFM::set_sustain_rate(int p_value) {
+	_active_operator->set_sustain_rate(p_value);
+}
+
+void SiOPMChannelFM::set_sustain_level(int p_value) {
+	_active_operator->set_sustain_level(p_value);
+}
+
 void SiOPMChannelFM::set_multiple(int p_value) {
 	_active_operator->set_multiple(p_value);
 }
@@ -694,6 +710,14 @@ void SiOPMChannelFM::set_operator_super_spread(int p_value) {
 
 void SiOPMChannelFM::set_operator_super_stereo_spread(int p_value) {
 	_active_operator->set_super_stereo_spread(p_value);
+}
+
+void SiOPMChannelFM::set_mute(bool p_mute) {
+	_active_operator->set_mute(p_mute);
+}
+
+void SiOPMChannelFM::set_envelope_reset_on_attack(bool p_reset) {
+	_active_operator->set_envelope_reset_on_attack(p_reset);
 }
 
 bool SiOPMChannelFM::_is_stereo_super_mode() const {
