@@ -13,6 +13,7 @@
 #include <godot_cpp/classes/audio_stream_player.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <atomic>
+#include <mutex>
 #include <godot_cpp/templates/hash_map.hpp>
 #include <godot_cpp/templates/list.hpp>
 #include <godot_cpp/templates/vector.hpp>
@@ -86,6 +87,10 @@ private:
 	// Single unique instance.
 	static SiONDriver *_mutex;
 	static bool _allow_multiple_drivers;
+
+	// Guards audio state to prevent concurrent access between the audio thread
+	// (generate_audio) and the main thread (play/stop/reset operations).
+	mutable std::mutex _audio_state_mutex;
 
 	SiOPMSoundChip *sound_chip = nullptr;
 	SiEffector *effector = nullptr;

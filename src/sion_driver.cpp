@@ -394,6 +394,9 @@ void SiONDriver::_prepare_render(const Variant &p_data, int p_buffer_size, int p
 }
 
 bool SiONDriver::_rendering() {
+	// Protect audio processing from concurrent state modifications.
+	std::lock_guard<std::mutex> lock(_audio_state_mutex);
+
 	// Processing.
 	_drain_track_mailbox();
 	sound_chip->begin_process();
@@ -587,6 +590,9 @@ void SiONDriver::stop() {
 		return;
 	}
 
+	// Protect state modification from concurrent audio processing.
+	std::lock_guard<std::mutex> lock(_audio_state_mutex);
+
 	_preserve_stop = false;
 	_is_paused = false;
 	_is_streaming = false;
@@ -608,6 +614,9 @@ void SiONDriver::stop() {
 }
 
 void SiONDriver::reset() {
+	// Protect state modification from concurrent audio processing.
+	std::lock_guard<std::mutex> lock(_audio_state_mutex);
+
 	sequencer->reset_all_tracks();
 }
 
@@ -828,6 +837,9 @@ void SiONDriver::_clear_processing() {
 }
 
 void SiONDriver::_prepare_process(const Variant &p_data, bool p_reset_effector) {
+	// Protect state modification from concurrent audio processing.
+	std::lock_guard<std::mutex> lock(_audio_state_mutex);
+
 	Variant::Type data_type = p_data.get_type();
 	switch (data_type) {
 		case Variant::NIL: {
@@ -1601,6 +1613,9 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
     if (p_frames <= 0) {
         return 0;
     }
+
+    // Protect audio processing from concurrent state modifications (play/stop/reset).
+    std::lock_guard<std::mutex> lock(_audio_state_mutex);
 
     int frames_generated = 0;
     const int block = _buffer_length; // internal SiON processing block
