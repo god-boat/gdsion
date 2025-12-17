@@ -664,6 +664,7 @@ public:
 	void track_effects_remove_effect(int p_track_id, int p_index);
 	void track_effects_swap_effects(int p_track_id, int p_index_a, int p_index_b);
 	void track_effects_set_effect_args(int p_track_id, int p_index, const Variant &p_args);
+	void track_effects_set_bypass(int p_track_id, int p_index, bool p_bypassed);
 };
 
 #endif // SION_DRIVER_H

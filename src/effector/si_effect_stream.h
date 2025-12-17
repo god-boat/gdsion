@@ -21,6 +21,7 @@ class SiEffectStream {
 
 	SiOPMSoundChip *_sound_chip = nullptr;
 	Vector<Ref<SiEffectBase>> _chain;
+	Vector<bool> _bypassed;
 
 	SiOPMStream *_stream = nullptr;
 	// Deeper streams execute first.
@@ -44,6 +45,7 @@ public:
 	void remove_effect(int p_index);
 	void swap_effects(int p_index_a, int p_index_b);
 	void set_effect_args(int p_index, Vector<double> p_args);
+	void set_effect_bypass(int p_index, bool p_bypassed);
 
 	int get_depth() const { return _depth; }
 	int get_pan() const;

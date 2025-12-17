@@ -1263,6 +1263,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("track_effects_remove_effect", "track_id", "index"), &SiONDriver::track_effects_remove_effect);
 	ClassDB::bind_method(D_METHOD("track_effects_swap_effects", "track_id", "index_a", "index_b"), &SiONDriver::track_effects_swap_effects);
 	ClassDB::bind_method(D_METHOD("track_effects_set_effect_args", "track_id", "index", "args"), &SiONDriver::track_effects_set_effect_args);
+	ClassDB::bind_method(D_METHOD("track_effects_set_bypass", "track_id", "index", "bypassed"), &SiONDriver::track_effects_set_bypass);
 
 	// Mailbox bindings
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_volume", "track_id", "linear_volume", "voice_scope_id"), &SiONDriver::mailbox_set_track_volume, DEFVAL(-1));
@@ -2458,6 +2459,14 @@ void SiONDriver::track_effects_set_effect_args(int p_track_id, int p_index, cons
 
 	Vector<double> args = _args_from_variant(p_args);
 	stream->set_effect_args(p_index, args);
+}
+
+void SiONDriver::track_effects_set_bypass(int p_track_id, int p_index, bool p_bypassed) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for insert effects.", p_track_id));
+	SiEffectStream *stream = _ensure_track_effect_stream(p_track_id);
+	ERR_FAIL_COND_MSG(stream == nullptr, vformat("SiONDriver: Unable to create effect stream for track %d.", p_track_id));
+
+	stream->set_effect_bypass(p_index, p_bypassed);
 }
 
 SiONDriver::_FilterState &SiONDriver::_ensure_filter_state(int p_track_id) {

@@ -69,6 +69,7 @@ void SiEffectStream::insert_effect(int p_index, const Ref<SiEffectBase> &p_effec
 	ERR_FAIL_COND_MSG(p_effect.is_null(), "SiEffectStream: Cannot insert an invalid effect.");
 	int insert_at = CLAMP(p_index, 0, _chain.size());
 	_chain.insert(insert_at, p_effect);
+	_bypassed.insert(insert_at, false);
 }
 
 void SiEffectStream::remove_effect(int p_index) {
@@ -78,6 +79,9 @@ void SiEffectStream::remove_effect(int p_index) {
 		effect->set_free(true);
 	}
 	_chain.remove_at(p_index);
+	if (p_index < _bypassed.size()) {
+		_bypassed.remove_at(p_index);
+	}
 }
 
 void SiEffectStream::swap_effects(int p_index_a, int p_index_b) {
@@ -89,6 +93,11 @@ void SiEffectStream::swap_effects(int p_index_a, int p_index_b) {
 	Ref<SiEffectBase> temp = _chain[p_index_a];
 	_chain.write[p_index_a] = _chain[p_index_b];
 	_chain.write[p_index_b] = temp;
+	if (_bypassed.size() == _chain.size()) {
+		bool temp_bypassed = _bypassed[p_index_a];
+		_bypassed.write[p_index_a] = _bypassed[p_index_b];
+		_bypassed.write[p_index_b] = temp_bypassed;
+	}
 }
 
 void SiEffectStream::set_effect_args(int p_index, Vector<double> p_args) {
@@ -97,6 +106,14 @@ void SiEffectStream::set_effect_args(int p_index, Vector<double> p_args) {
 	if (effect.is_valid()) {
 		effect->set_by_mml(p_args);
 	}
+}
+
+void SiEffectStream::set_effect_bypass(int p_index, bool p_bypassed) {
+	ERR_FAIL_INDEX_MSG(p_index, _chain.size(), vformat("SiEffectStream: Invalid effect index %d for bypass toggle.", p_index));
+	if (_bypassed.size() != _chain.size()) {
+		_bypassed.resize(_chain.size());
+	}
+	_bypassed.write[p_index] = p_bypassed;
 }
 
 int SiEffectStream::prepare_process() {
@@ -117,6 +134,9 @@ int SiEffectStream::process(int p_start_idx, int p_length, bool p_write_in_strea
 	int channel_count = _stream->get_channel_count();
 
 	for (int i = 0; i < _chain.size(); i++) {
+		if (i < _bypassed.size() && _bypassed[i]) {
+			continue;
+		}
 		channel_count = _chain[i]->process(channel_count, buffer, p_start_idx, p_length);
 	}
 
@@ -291,6 +311,7 @@ void SiEffectStream::free() {
 		effect->set_free(true);
 	}
 	_chain.clear();
+	_bypassed.clear();
 }
 
 SiEffectStream::SiEffectStream(SiOPMSoundChip *p_chip, SiOPMStream *p_stream) {
