@@ -19,6 +19,7 @@
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_float64_array.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
 #include <cstdint>
@@ -180,6 +181,13 @@ private:
 	double _start_position = 0; // ms
 	double _master_volume = 1;
 	double _fader_volume = 1;
+
+	// --- Output capture (for export/resampling) ---
+	mutable std::mutex _capture_mutex;
+	bool _capture_active = false;
+	bool _capture_post_master = true;
+	Vector<float> _capture_buffer;  // Interleaved stereo float32
+	size_t _capture_write_pos = 0;
 
 	ExceptionMode _note_on_exception_mode = NEM_IGNORE;
 	// Send the CHANGE_BPM event when position changes.
@@ -582,6 +590,13 @@ public:
 	void set_beat_callback_interval(double p_length_16th = 1);
 	// Note: Original code takes a callback. Here you need to connect to the `timer_interval` signal.
 	void set_timer_interval(double p_length = 1);
+
+	// Output capture API (for export/resampling).
+	bool begin_output_capture(int p_max_seconds = 0, bool p_post_master = true);
+	PackedFloat32Array end_output_capture();
+	void abort_output_capture();
+	bool is_output_capturing() const;
+	PackedFloat32Array poll_output_capture_chunk(int p_max_frames = 0);
 
 	// MIDI.
 	// FIXME: Implement SMF/MIDI support.

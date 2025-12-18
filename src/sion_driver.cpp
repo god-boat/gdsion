@@ -1210,6 +1210,96 @@ void SiONDriver::set_timer_interval(double p_length) {
 	}
 }
 
+// --- Output capture (for export/resampling) ---
+
+bool SiONDriver::begin_output_capture(int p_max_seconds, bool p_post_master) {
+	if (_capture_active) {
+		ERR_PRINT("SiONDriver: Cannot start capture while already capturing.");
+		return false;
+	}
+
+	std::lock_guard<std::mutex> lock(_capture_mutex);
+	_capture_buffer.clear();
+	if (p_max_seconds > 0) {
+		// Reserve for stereo float samples: seconds * sample_rate * 2 channels
+		size_t capacity = p_max_seconds * (size_t)_sample_rate * 2;
+		_capture_buffer.resize(capacity);
+	}
+	_capture_post_master = p_post_master;
+	_capture_write_pos = 0;
+	_capture_active = true;
+	return true;
+}
+
+PackedFloat32Array SiONDriver::end_output_capture() {
+	if (!_capture_active) {
+		return PackedFloat32Array();
+	}
+
+	std::lock_guard<std::mutex> lock(_capture_mutex);
+	_capture_active = false;
+
+	// Return captured samples (up to write position)
+	PackedFloat32Array result;
+	result.resize(_capture_write_pos);
+	for (size_t i = 0; i < _capture_write_pos; i++) {
+		result[i] = _capture_buffer[i];
+	}
+
+	_capture_buffer.clear();
+	_capture_write_pos = 0;
+	return result;
+}
+
+void SiONDriver::abort_output_capture() {
+	if (!_capture_active) {
+		return;
+	}
+
+	std::lock_guard<std::mutex> lock(_capture_mutex);
+	_capture_active = false;
+	_capture_buffer.clear();
+	_capture_write_pos = 0;
+}
+
+bool SiONDriver::is_output_capturing() const {
+	return _capture_active;
+}
+
+PackedFloat32Array SiONDriver::poll_output_capture_chunk(int p_max_frames) {
+	if (!_capture_active || _capture_write_pos == 0) {
+		return PackedFloat32Array();
+	}
+
+	std::lock_guard<std::mutex> lock(_capture_mutex);
+
+	size_t available_floats = _capture_write_pos;
+	size_t frames_available = available_floats / 2;  // stereo
+
+	if (p_max_frames > 0 && frames_available > (size_t)p_max_frames) {
+		frames_available = p_max_frames;
+	}
+
+	size_t floats_to_return = frames_available * 2;
+
+	PackedFloat32Array result;
+	result.resize(floats_to_return);
+	for (size_t i = 0; i < floats_to_return; i++) {
+		result[i] = _capture_buffer[i];
+	}
+
+	// Shift remaining data to front
+	size_t remaining = available_floats - floats_to_return;
+	if (remaining > 0) {
+		memmove(_capture_buffer.ptrw(),
+				_capture_buffer.ptr() + floats_to_return,
+				remaining * sizeof(float));
+	}
+	_capture_write_pos = remaining;
+
+	return result;
+}
+
 //
 
 void SiONDriver::_update_node_processing() {
@@ -1360,6 +1450,13 @@ void SiONDriver::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_beat_callback_interval", "length_16th"), &SiONDriver::set_beat_callback_interval);
 	ClassDB::bind_method(D_METHOD("set_timer_interval", "length_16th"), &SiONDriver::set_timer_interval);
+
+	// Output capture (for export/resampling).
+	ClassDB::bind_method(D_METHOD("begin_output_capture", "max_seconds", "post_master"), &SiONDriver::begin_output_capture, DEFVAL(0), DEFVAL(true));
+	ClassDB::bind_method(D_METHOD("end_output_capture"), &SiONDriver::end_output_capture);
+	ClassDB::bind_method(D_METHOD("abort_output_capture"), &SiONDriver::abort_output_capture);
+	ClassDB::bind_method(D_METHOD("is_output_capturing"), &SiONDriver::is_output_capturing);
+	ClassDB::bind_method(D_METHOD("poll_output_capture_chunk", "max_frames"), &SiONDriver::poll_output_capture_chunk, DEFVAL(0));
 
 	ClassDB::bind_method(D_METHOD("set_beat_event_enabled", "enabled"), &SiONDriver::set_beat_event_enabled);
 	ClassDB::bind_method(D_METHOD("set_stream_event_enabled", "enabled"), &SiONDriver::set_stream_event_enabled);
@@ -1661,6 +1758,28 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
             int src_index = i * 2; // stereo in SiON buffer
             p_buffer[frames_generated + i].left  = (float)(*out_buf)[src_index];
             p_buffer[frames_generated + i].right = (float)(*out_buf)[src_index + 1];
+        }
+
+        // Capture output if active (for export/resampling)
+        if (_capture_active) {
+            float volume_mult = 1.0f;
+            if (_capture_post_master) {
+                volume_mult = (float)(_master_volume * _fader_volume);
+            }
+
+            for (int i = 0; i < frames_to_copy; ++i) {
+                int src_index = i * 2;
+                float left = (float)(*out_buf)[src_index] * volume_mult;
+                float right = (float)(*out_buf)[src_index + 1] * volume_mult;
+
+                // Append to capture buffer (grow if needed)
+                if (_capture_write_pos + 2 > (size_t)_capture_buffer.size()) {
+                    _capture_buffer.resize(_capture_write_pos + frames_to_copy * 2);
+                }
+
+                _capture_buffer.write[_capture_write_pos++] = left;
+                _capture_buffer.write[_capture_write_pos++] = right;
+            }
         }
 
         frames_generated += frames_to_copy;
