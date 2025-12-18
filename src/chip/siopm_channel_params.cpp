@@ -159,6 +159,8 @@ void SiOPMChannelParams::initialize() {
 
 	lfo_wave_shape = SiOPMRefTable::LFO_WAVE_TRIANGLE;
 	lfo_frequency_step = 12126; // 12126 = 30 frames / 100 fratio
+	lfo_time_mode = 0; // Default to Rate mode
+	lfo_beat_division = 2; // Default to 1/4 note
 
 	amplitude_modulation_depth = 0;
 	pitch_modulation_depth = 0;
@@ -212,6 +214,8 @@ void SiOPMChannelParams::copy_from(const Ref<SiOPMChannelParams> &p_params) {
 
 	lfo_wave_shape = p_params->lfo_wave_shape;
 	lfo_frequency_step = p_params->lfo_frequency_step;
+	lfo_time_mode = p_params->lfo_time_mode;
+	lfo_beat_division = p_params->lfo_beat_division;
 
 	amplitude_modulation_depth = p_params->amplitude_modulation_depth;
 	pitch_modulation_depth = p_params->pitch_modulation_depth;
@@ -293,6 +297,8 @@ void SiOPMChannelParams::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_lfo_wave_shape", "value"), &SiOPMChannelParams::set_lfo_wave_shape);
 	ClassDB::bind_method(D_METHOD("get_lfo_frequency_step"), &SiOPMChannelParams::get_lfo_frequency_step);
 	ClassDB::bind_method(D_METHOD("set_lfo_frequency_step", "value"), &SiOPMChannelParams::set_lfo_frequency_step);
+	ClassDB::bind_method(D_METHOD("get_lfo_time_mode"), &SiOPMChannelParams::get_lfo_time_mode);
+	ClassDB::bind_method(D_METHOD("set_lfo_time_mode", "value"), &SiOPMChannelParams::set_lfo_time_mode);
 
 	ClassDB::bind_method(D_METHOD("get_amplitude_modulation_depth"), &SiOPMChannelParams::get_amplitude_modulation_depth);
 	ClassDB::bind_method(D_METHOD("set_amplitude_modulation_depth", "value"), &SiOPMChannelParams::set_amplitude_modulation_depth);
@@ -340,6 +346,7 @@ void SiOPMChannelParams::_bind_methods() {
 
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "lfo_wave_shape"), "set_lfo_wave_shape", "get_lfo_wave_shape");
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "lfo_frequency_step"), "set_lfo_frequency_step", "get_lfo_frequency_step");
+	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "lfo_time_mode"), "set_lfo_time_mode", "get_lfo_time_mode");
 
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "amplitude_modulation_depth"), "set_amplitude_modulation_depth", "get_amplitude_modulation_depth");
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "pitch_modulation_depth"), "set_pitch_modulation_depth", "get_pitch_modulation_depth");

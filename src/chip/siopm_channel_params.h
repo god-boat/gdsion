@@ -43,6 +43,10 @@ private:
 	int envelope_frequency_ratio = 100;
 	int lfo_wave_shape = 0;
 	int lfo_frequency_step = 0;
+	// LFO time mode: 0=Rate, 1=Time(ms), 2=Synced, 3=Dotted, 4=Triplet
+	int lfo_time_mode = 0;
+	// Beat division value for BPM-synced modes (0=1/1, 1=1/2, 2=1/4, 3=1/8, 4=1/16, 5=1/32)
+	int lfo_beat_division = 2;
 
 	int amplitude_modulation_depth = 0;
 	int pitch_modulation_depth = 0;
@@ -95,6 +99,8 @@ public:
 	void set_lfo_wave_shape(int p_value) { lfo_wave_shape = p_value; }
 	int get_lfo_frequency_step() const { return lfo_frequency_step; }
 	void set_lfo_frequency_step(int p_value) { lfo_frequency_step = p_value; }
+	int get_lfo_time_mode() const { return lfo_time_mode; }
+	void set_lfo_time_mode(int p_value) { lfo_time_mode = p_value; }
 
 	int get_amplitude_modulation_depth() const { return amplitude_modulation_depth; }
 	void set_amplitude_modulation_depth(int p_value) { amplitude_modulation_depth = p_value; }

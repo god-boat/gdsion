@@ -364,6 +364,9 @@ private:
 		// LFO wave shape (new)
 		bool has_lfo_wave = false;
 		int lfo_wave_shape = 0;
+		// LFO time mode (0=Rate, 1=Time, 2=Synced, 3=Dotted, 4=Triplet)
+		bool has_lfo_time_mode = false;
+		int lfo_time_mode = 0;
 		// Envelope frequency ratio (channel)
 		bool has_env_freq_ratio = false;
 		int env_freq_ratio = 100;
@@ -646,6 +649,7 @@ public:
 	void mailbox_set_pitch_bend(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
 	void mailbox_set_lfo_frequency_step(int p_track_id, int p_step, int64_t p_voice_scope_id = -1);
 	void mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id = -1);
+	void mailbox_set_lfo_time_mode(int p_track_id, int p_mode, int64_t p_voice_scope_id = -1);
 	void mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, int64_t p_voice_scope_id = -1);
 	// Analog-Like (AL) mailboxes
 	void mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id = -1);

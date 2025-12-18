@@ -327,6 +327,21 @@ void SiONDriver::set_bpm(double p_value) {
 	ERR_FAIL_COND_MSG(p_value < 1 || p_value > 4000, "SiONDriver: BPM must be between 1 and 4000 (inclusive).");
 
 	sequencer->set_effective_bpm(p_value);
+
+	// Update LFO timer for all tracks in BPM-synced modes.
+	for (SiMMLTrack *trk : sequencer->get_tracks()) {
+		if (!trk) {
+			continue;
+		}
+		SiOPMChannelBase *ch = trk->get_channel();
+		if (!ch) {
+			continue;
+		}
+		SiOPMChannelFM *fm = Object::cast_to<SiOPMChannelFM>(ch);
+		if (fm) {
+			fm->update_lfo_for_bpm(p_value);
+		}
+	}
 }
 
 // Streaming and rendering.
@@ -1304,6 +1319,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_pitch_bend", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_pitch_bend, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_frequency_step", "track_id", "step", "voice_scope_id"), &SiONDriver::mailbox_set_lfo_frequency_step, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_wave_shape", "track_id", "wave_shape", "voice_scope_id"), &SiONDriver::mailbox_set_lfo_wave_shape, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_time_mode", "track_id", "mode", "voice_scope_id"), &SiONDriver::mailbox_set_lfo_time_mode, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_envelope_freq_ratio", "track_id", "ratio", "voice_scope_id"), &SiONDriver::mailbox_set_envelope_freq_ratio, DEFVAL(-1));
 	// Analog-Like (AL)
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws1", "track_id", "wave_shape", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_ws1, DEFVAL(-1));
@@ -1967,6 +1983,15 @@ void SiONDriver::mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape, in
     _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_lfo_time_mode(int p_track_id, int p_mode, int64_t p_voice_scope_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
+    u.has_lfo_time_mode = true;
+    u.lfo_time_mode = p_mode;
+    _mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -2275,6 +2300,13 @@ void SiONDriver::_drain_track_mailbox() {
             }
             if (u.has_lfo_wave) {
                 ch->initialize_lfo(u.lfo_wave_shape); // resets LFO with new wave shape
+            }
+            // LFO time mode (FM channels only)
+            SiOPMChannelFM *fm_lfo = Object::cast_to<SiOPMChannelFM>(ch);
+            if (fm_lfo) {
+                if (u.has_lfo_time_mode) {
+                    fm_lfo->set_lfo_time_mode(u.lfo_time_mode);
+                }
             }
             // Note control commands - these can target specific track instances
             bool instance_match = (u.track_instance_id == 0 || trk->get_instance_id() == u.track_instance_id);

@@ -21,6 +21,90 @@ List<SiOPMOperator *> SiOPMChannelFM::_operator_pool;
 // Forward declaration of helper (definition further below).
 static _FORCE_INLINE_ int _safe_log_lookup(class SiOPMRefTable *p_table, int p_index);
 
+// LFO time mode constants.
+enum LFOTimeMode {
+	LFO_TIME_MODE_RATE = 0,    // Raw timer step value (current behavior)
+	LFO_TIME_MODE_TIME = 1,    // Time in milliseconds
+	LFO_TIME_MODE_SYNCED = 2,  // BPM-synced straight notes
+	LFO_TIME_MODE_DOTTED = 3,  // BPM-synced dotted notes (1.5x period)
+	LFO_TIME_MODE_TRIPLET = 4  // BPM-synced triplet notes (2/3 period)
+};
+
+// Beat division constants (used with BPM-synced modes).
+enum LFOBeatDivision {
+	LFO_BEAT_1_1 = 0,   // Whole note
+	LFO_BEAT_1_2 = 1,   // Half note
+	LFO_BEAT_1_4 = 2,   // Quarter note
+	LFO_BEAT_1_8 = 3,   // Eighth note
+	LFO_BEAT_1_16 = 4,  // Sixteenth note
+	LFO_BEAT_1_32 = 5   // Thirty-second note
+};
+
+// Convert beat division to period in milliseconds at a given BPM.
+// quarter_note_ms = 60000 / BPM
+// 1/1 = 4 * quarter_note_ms
+// 1/2 = 2 * quarter_note_ms
+// 1/4 = 1 * quarter_note_ms
+// 1/8 = 0.5 * quarter_note_ms
+// etc.
+static double _beat_division_to_ms(int p_division, double p_bpm) {
+	if (p_bpm <= 0) {
+		p_bpm = 120.0; // Default BPM
+	}
+	double quarter_note_ms = 60000.0 / p_bpm;
+	double multipliers[6] = { 4.0, 2.0, 1.0, 0.5, 0.25, 0.125 };
+	int idx = CLAMP(p_division, 0, 5);
+	return quarter_note_ms * multipliers[idx];
+}
+
+// Convert milliseconds to LFO timer step.
+// Based on set_lfo_cycle_time formula:
+// coef = sampling_rate / (1000.0 * 255.0)
+// timer_step = (LFO_TIMER_INITIAL / (ms * coef)) << sample_rate_pitch_shift
+static int _ms_to_lfo_timer_step(double p_ms, int p_sampling_rate, int p_sample_rate_pitch_shift) {
+	if (p_ms <= 0) {
+		return 0;
+	}
+	double coef = p_sampling_rate / (1000.0 * 255.0);
+	int timer_step = (int)(SiOPMRefTable::LFO_TIMER_INITIAL / (p_ms * coef));
+	return timer_step << p_sample_rate_pitch_shift;
+}
+
+// Calculate LFO timer step based on time mode, beat division, and BPM.
+// This is the main conversion function used by the engine.
+static int _calculate_lfo_timer_step(int p_time_mode, int p_value, double p_bpm, int p_sampling_rate, int p_sample_rate_pitch_shift) {
+	switch (p_time_mode) {
+		case LFO_TIME_MODE_RATE:
+			// Rate mode: value is the raw timer step (current behavior)
+			return p_value;
+
+		case LFO_TIME_MODE_TIME:
+			// Time mode: value is period in milliseconds
+			return _ms_to_lfo_timer_step((double)p_value, p_sampling_rate, p_sample_rate_pitch_shift);
+
+		case LFO_TIME_MODE_SYNCED: {
+			// Synced mode: value is beat division, calculate period from BPM
+			double ms = _beat_division_to_ms(p_value, p_bpm);
+			return _ms_to_lfo_timer_step(ms, p_sampling_rate, p_sample_rate_pitch_shift);
+		}
+
+		case LFO_TIME_MODE_DOTTED: {
+			// Dotted mode: multiply period by 1.5
+			double ms = _beat_division_to_ms(p_value, p_bpm) * 1.5;
+			return _ms_to_lfo_timer_step(ms, p_sampling_rate, p_sample_rate_pitch_shift);
+		}
+
+		case LFO_TIME_MODE_TRIPLET: {
+			// Triplet mode: multiply period by 2/3
+			double ms = _beat_division_to_ms(p_value, p_bpm) * (2.0 / 3.0);
+			return _ms_to_lfo_timer_step(ms, p_sampling_rate, p_sample_rate_pitch_shift);
+		}
+
+		default:
+			return p_value;
+	}
+}
+
 void SiOPMChannelFM::finalize_pool() {
 	for (SiOPMOperator *op : _operator_pool) {
 		memdelete(op);
@@ -106,6 +190,7 @@ void SiOPMChannelFM::get_channel_params(const Ref<SiOPMChannelParams> &p_params)
 
 	p_params->set_lfo_wave_shape(_lfo_wave_shape);
 	p_params->set_lfo_frequency_step(_lfo_timer_step_buffer);
+	p_params->set_lfo_time_mode(_lfo_time_mode);
 
 	p_params->set_amplitude_modulation_depth(_amplitude_modulation_depth);
 	p_params->set_pitch_modulation_depth(_pitch_modulation_depth);
@@ -139,7 +224,30 @@ void SiOPMChannelFM::set_channel_params(const Ref<SiOPMChannelParams> &p_params,
 
 	if (p_with_modulation) {
 		initialize_lfo(p_params->get_lfo_wave_shape());
-		_set_lfo_timer(p_params->get_lfo_frequency_step());
+
+		// Set up LFO time mode parameters.
+		_lfo_time_mode = p_params->get_lfo_time_mode();
+
+		// Calculate and set LFO timer based on time mode.
+		// In all modes, lfo_frequency_step holds the relevant value:
+		// - Rate mode: raw timer step
+		// - Time mode: milliseconds
+		// - Synced/Dotted/Triplet modes: beat division enum (0-5)
+		int freq_step_value = p_params->get_lfo_frequency_step();
+
+		if (_lfo_time_mode >= LFO_TIME_MODE_SYNCED) {
+			// BPM-synced modes: freq_step_value is beat division, store for BPM recalc.
+			_lfo_beat_division = freq_step_value;
+		}
+
+		int timer_step = _calculate_lfo_timer_step(
+			_lfo_time_mode,
+			freq_step_value,
+			_lfo_bpm,
+			_table->sampling_rate,
+			_table->sample_rate_pitch_shift
+		);
+		_set_lfo_timer(timer_step);
 
 		set_amplitude_modulation(p_params->get_amplitude_modulation_depth());
 		set_pitch_modulation(p_params->get_pitch_modulation_depth());
@@ -787,6 +895,52 @@ void SiOPMChannelFM::_set_lfo_timer(int p_value) {
 	_lfo_timer = (p_value > 0 ? 1 : 0);
 	_lfo_timer_step = p_value;
 	_lfo_timer_step_buffer = p_value;
+}
+
+void SiOPMChannelFM::set_lfo_frequency_step(int p_value) {
+	// Override to handle time mode conversion for real-time updates.
+	// In synced modes, p_value is beat division; in Rate mode, it's raw timer step.
+	if (_lfo_time_mode >= LFO_TIME_MODE_SYNCED) {
+		_lfo_beat_division = p_value;
+	}
+	int timer_step = _calculate_lfo_timer_step(
+		_lfo_time_mode,
+		p_value,
+		_lfo_bpm,
+		_table->sampling_rate,
+		_table->sample_rate_pitch_shift
+	);
+	_set_lfo_timer(timer_step);
+}
+
+void SiOPMChannelFM::set_lfo_time_mode(int p_mode) {
+	_lfo_time_mode = p_mode;
+	// Recalculate timer step if in a BPM-synced mode.
+	if (p_mode >= LFO_TIME_MODE_SYNCED) {
+		int timer_step = _calculate_lfo_timer_step(
+			_lfo_time_mode,
+			_lfo_beat_division,
+			_lfo_bpm,
+			_table->sampling_rate,
+			_table->sample_rate_pitch_shift
+		);
+		_set_lfo_timer(timer_step);
+	}
+}
+
+void SiOPMChannelFM::update_lfo_for_bpm(double p_bpm) {
+	_lfo_bpm = p_bpm;
+	// Only recalculate if in a BPM-synced mode.
+	if (_lfo_time_mode >= LFO_TIME_MODE_SYNCED) {
+		int timer_step = _calculate_lfo_timer_step(
+			_lfo_time_mode,
+			_lfo_beat_division,
+			_lfo_bpm,
+			_table->sampling_rate,
+			_table->sample_rate_pitch_shift
+		);
+		_set_lfo_timer(timer_step);
+	}
 }
 
 void SiOPMChannelFM::set_frequency_ratio(int p_ratio) {
