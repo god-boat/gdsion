@@ -67,6 +67,9 @@ void SiEffectStream::connect(SiOPMStream *p_output) {
 
 void SiEffectStream::insert_effect(int p_index, const Ref<SiEffectBase> &p_effect) {
 	ERR_FAIL_COND_MSG(p_effect.is_null(), "SiEffectStream: Cannot insert an invalid effect.");
+	if (_bypassed.size() != _chain.size()) {
+		_bypassed.resize(_chain.size());
+	}
 	int insert_at = CLAMP(p_index, 0, _chain.size());
 	_chain.insert(insert_at, p_effect);
 	_bypassed.insert(insert_at, false);
@@ -79,6 +82,9 @@ void SiEffectStream::remove_effect(int p_index) {
 		effect->set_free(true);
 	}
 	_chain.remove_at(p_index);
+	if (_bypassed.size() != _chain.size() + 1) {
+		_bypassed.resize(_chain.size() + 1);
+	}
 	if (p_index < _bypassed.size()) {
 		_bypassed.remove_at(p_index);
 	}
@@ -93,11 +99,12 @@ void SiEffectStream::swap_effects(int p_index_a, int p_index_b) {
 	Ref<SiEffectBase> temp = _chain[p_index_a];
 	_chain.write[p_index_a] = _chain[p_index_b];
 	_chain.write[p_index_b] = temp;
-	if (_bypassed.size() == _chain.size()) {
-		bool temp_bypassed = _bypassed[p_index_a];
-		_bypassed.write[p_index_a] = _bypassed[p_index_b];
-		_bypassed.write[p_index_b] = temp_bypassed;
+	if (_bypassed.size() != _chain.size()) {
+		_bypassed.resize(_chain.size());
 	}
+	bool temp_bypassed = _bypassed[p_index_a];
+	_bypassed.write[p_index_a] = _bypassed[p_index_b];
+	_bypassed.write[p_index_b] = temp_bypassed;
 }
 
 void SiEffectStream::set_effect_args(int p_index, Vector<double> p_args) {
