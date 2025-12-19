@@ -470,6 +470,7 @@ private:
 
 	HashMap<int, SiEffectStream *> _track_effect_streams;
 	SiEffectStream *_ensure_track_effect_stream(int p_track_id);
+	SiEffectStream *_get_track_effect_stream(int p_track_id);
 	void _bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id);
 	void _clear_track_effect_streams(bool p_delete_streams);
 	Vector<double> _args_from_variant(const Variant &p_value) const;
@@ -733,6 +734,7 @@ public:
 	void track_effects_swap_effects(int p_track_id, int p_index_a, int p_index_b);
 	void track_effects_set_effect_args(int p_track_id, int p_index, const Variant &p_args);
 	void track_effects_set_bypass(int p_track_id, int p_index, bool p_bypassed);
+	void track_effects_set_mute(int p_track_id, bool p_mute);
 };
 
 #endif // SION_DRIVER_H

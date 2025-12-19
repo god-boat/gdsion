@@ -1370,6 +1370,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("track_effects_swap_effects", "track_id", "index_a", "index_b"), &SiONDriver::track_effects_swap_effects);
 	ClassDB::bind_method(D_METHOD("track_effects_set_effect_args", "track_id", "index", "args"), &SiONDriver::track_effects_set_effect_args);
 	ClassDB::bind_method(D_METHOD("track_effects_set_bypass", "track_id", "index", "bypassed"), &SiONDriver::track_effects_set_bypass);
+	ClassDB::bind_method(D_METHOD("track_effects_set_mute", "track_id", "mute"), &SiONDriver::track_effects_set_mute);
 
 	// Mailbox bindings
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_volume", "track_id", "linear_volume", "voice_scope_id"), &SiONDriver::mailbox_set_track_volume, DEFVAL(-1));
@@ -1827,7 +1828,7 @@ Vector2 SiONDriver::track_get_level(Object *p_track_obj, int p_window_length) {
 	SiOPMChannelBase *ch = track->get_channel();
 	if (!ch) {
 		return Vector2(0.0, 0.0);
-	}
+                                                          	}
 	// Post-fader approximation: scale channel meter by current master volume.
 	// Pan is constant-power, so we ignore it; future: implement bus-level post-mix meter.
 	Vector2 v = ch->get_recent_level(p_window_length);
@@ -2708,6 +2709,13 @@ SiEffectStream *SiONDriver::_ensure_track_effect_stream(int p_track_id) {
 	return stream;
 }
 
+SiEffectStream *SiONDriver::_get_track_effect_stream(int p_track_id) {
+	if (p_track_id < 0 || !_track_effect_streams.has(p_track_id)) {
+		return nullptr;
+	}
+	return _track_effect_streams[p_track_id];
+}
+
 void SiONDriver::_bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id) {
 	if (!p_track) {
 		return;
@@ -2858,6 +2866,13 @@ void SiONDriver::track_effects_set_bypass(int p_track_id, int p_index, bool p_by
 	ERR_FAIL_COND_MSG(stream == nullptr, vformat("SiONDriver: Unable to create effect stream for track %d.", p_track_id));
 
 	stream->set_effect_bypass(p_index, p_bypassed);
+}
+
+void SiONDriver::track_effects_set_mute(int p_track_id, bool p_mute) {
+	SiEffectStream *stream = _get_track_effect_stream(p_track_id);
+	if (stream) {
+		stream->set_mute(p_mute);
+	}
 }
 
 SiONDriver::_FilterState &SiONDriver::_ensure_filter_state(int p_track_id) {

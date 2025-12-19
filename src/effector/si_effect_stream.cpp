@@ -147,7 +147,8 @@ int SiEffectStream::process(int p_start_idx, int p_length, bool p_write_in_strea
 		channel_count = _chain[i]->process(channel_count, buffer, p_start_idx, p_length);
 	}
 
-	if (p_write_in_stream) {
+	// Only write to output if not muted
+	if (p_write_in_stream && !_mute) {
 		if (_has_effect_send) {
 			for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
 				if (_volumes[i] > 0) {

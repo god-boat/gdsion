@@ -28,6 +28,7 @@ class SiEffectStream {
 	int _depth = 0;
 	int _pan = 64;
 	bool _has_effect_send = false;
+	bool _mute = false;
 
 	Vector<double> _volumes;
 	Vector<SiOPMStream *> _output_streams;
@@ -50,6 +51,9 @@ public:
 	int get_depth() const { return _depth; }
 	int get_pan() const;
 	void set_pan(int p_value);
+
+	bool is_mute() const { return _mute; }
+	void set_mute(bool p_value) { _mute = p_value; }
 
 	bool is_outputting_directly() const;
 
