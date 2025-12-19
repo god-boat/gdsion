@@ -29,26 +29,10 @@ void SiOPMStream::clear() {
 	}
 }
 
+//unused :(
 void SiOPMStream::limit() {
-	// Replace hard clip with cubic soft-clipping. The transfer
-	// function follows: y = x - x^3/3 for |x| <= 1, above that
-	// it smoothly saturates and is clamped to ±2/3. This avoids
-	// the harsh distortion introduced by the previous hard clamp
-	// while still preventing runaway amplitudes.
 	for (int i = 0; i < buffer.size(); i++) {
-		double s = buffer[i];
-
-		if (s > 1.0) {
-			s = 2.0 / 3.0; // asymptotic maximum
-		} else if (s < -1.0) {
-			s = -2.0 / 3.0;
-		} else {
-			// Cubic soft-clip inside the knee region (|x| <= 1).
-			double s2 = s * s;
-			s = s - (s * s2) / 3.0; // x - x^3/3
-		}
-
-		buffer.write[i] = s;
+		buffer.write[i] = CLAMP(buffer[i], -1, 1);
 	}
 }
 
