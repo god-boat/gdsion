@@ -1753,24 +1753,23 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
         Vector<double> *out_buf = sound_chip->get_output_buffer_ptr();
 
         int frames_to_copy = std::min(block, p_frames - frames_generated);
-        // Copy left/right pairs into AudioFrame array.
+        // Copy left/right pairs into AudioFrame array with hard clamping.
+        // prevents overflow/wrapping regardless of what happens during mixing.
         for (int i = 0; i < frames_to_copy; ++i) {
             int src_index = i * 2; // stereo in SiON buffer
-            p_buffer[frames_generated + i].left  = (float)(*out_buf)[src_index];
-            p_buffer[frames_generated + i].right = (float)(*out_buf)[src_index + 1];
+            p_buffer[frames_generated + i].left  = std::clamp((float)(*out_buf)[src_index], -1.0f, 1.0f);
+            p_buffer[frames_generated + i].right = std::clamp((float)(*out_buf)[src_index + 1], -1.0f, 1.0f);
         }
 
-        // Capture output if active (for export/resampling)
+        // Capture output at unity gain if active (for export/resampling)
         if (_capture_active) {
-            float volume_mult = 1.0f;
-            if (_capture_post_master) {
-                volume_mult = (float)(_master_volume * _fader_volume);
-            }
 
             for (int i = 0; i < frames_to_copy; ++i) {
                 int src_index = i * 2;
-                float left = (float)(*out_buf)[src_index] * volume_mult;
-                float right = (float)(*out_buf)[src_index + 1] * volume_mult;
+
+                // Clamp before storing to prevent any overflow in captured audio
+                float left = std::clamp((float)(*out_buf)[src_index], -1.0f, 1.0f);
+                float right = std::clamp((float)(*out_buf)[src_index + 1], -1.0f, 1.0f);
 
                 // Append to capture buffer (grow if needed)
                 if (_capture_write_pos + 2 > (size_t)_capture_buffer.size()) {
@@ -2236,6 +2235,10 @@ void SiONDriver::_drain_track_mailbox() {
             SiOPMChannelBase *ch = trk->get_channel();
             if (!ch) continue;
             if (u.has_vol) {
+                // Allow up to 2.0× (200%) for hot mixing headroom.
+                // This lets individual tracks exceed 0dBFS during mixing,
+                // but the final output is always hard-clamped to ±1.0 in generate_audio()
+                // to prevent actual clipping at the DAC. This matches Audacity's approach.
                 int vol128 = (int)Math::round(CLAMP(u.vol_linear, 0.0, 2.0) * 128.0);
                 ch->set_master_volume(vol128);
             }
