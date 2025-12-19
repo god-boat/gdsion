@@ -39,8 +39,11 @@ void SiOPMSoundChip::begin_process() {
 }
 
 void SiOPMSoundChip::end_process() {
-	// Limit output level in the range between -1 ~ 1.
-	output_stream->limit();
+	// Removed: output_stream->limit();
+	// Soft-clipping here is counterproductive:
+	// 1. Saturates to ±2/3, reducing headroom unnecessarily
+	// 2. Runs before effector chain, so doesn't protect final output
+	// 3. Hard clamping at generate_audio() is the proper safety net
 	if (_bitrate != 0) {
 		output_stream->quantize(_bitrate);
 	}
