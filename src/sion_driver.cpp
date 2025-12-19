@@ -24,6 +24,7 @@
 #include "chip/siopm_channel_params.h"
 #include "chip/siopm_ref_table.h"
 #include "chip/siopm_sound_chip.h"
+#include "chip/siopm_stream.h"
 #include "chip/wave/siopm_wave_pcm_data.h"
 #include "chip/wave/siopm_wave_pcm_table.h"
 #include "chip/wave/siopm_wave_sampler_data.h"
@@ -1458,6 +1459,16 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_output_capturing"), &SiONDriver::is_output_capturing);
 	ClassDB::bind_method(D_METHOD("poll_output_capture_chunk", "max_frames"), &SiONDriver::poll_output_capture_chunk, DEFVAL(0));
 
+	// Metering API (professional post-effects, post-fader metering).
+	ClassDB::bind_method(D_METHOD("set_metering_enabled", "enabled"), &SiONDriver::set_metering_enabled);
+	ClassDB::bind_method(D_METHOD("is_metering_enabled"), &SiONDriver::is_metering_enabled);
+	ClassDB::bind_method(D_METHOD("set_meter_downsample_factor", "factor"), &SiONDriver::set_meter_downsample_factor);
+	ClassDB::bind_method(D_METHOD("get_meter_downsample_factor"), &SiONDriver::get_meter_downsample_factor);
+	ClassDB::bind_method(D_METHOD("get_master_meter_snapshot"), &SiONDriver::get_master_meter_snapshot);
+	ClassDB::bind_method(D_METHOD("get_track_meter_snapshot", "track_id"), &SiONDriver::get_track_meter_snapshot);
+	ClassDB::bind_method(D_METHOD("register_track_for_metering", "track_id"), &SiONDriver::register_track_for_metering);
+	ClassDB::bind_method(D_METHOD("unregister_track_for_metering", "track_id"), &SiONDriver::unregister_track_for_metering);
+
 	ClassDB::bind_method(D_METHOD("set_beat_event_enabled", "enabled"), &SiONDriver::set_beat_event_enabled);
 	ClassDB::bind_method(D_METHOD("set_stream_event_enabled", "enabled"), &SiONDriver::set_stream_event_enabled);
 	ClassDB::bind_method(D_METHOD("set_fading_event_enabled", "enabled"), &SiONDriver::set_fading_event_enabled);
@@ -1752,6 +1763,19 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 
         Vector<double> *out_buf = sound_chip->get_output_buffer_ptr();
 
+        // Process post-effects audio (metering)
+        if (_metering_enabled.load(std::memory_order_relaxed)) {
+            if (++_meter_downsample_counter >= _meter_downsample_factor.load(std::memory_order_relaxed)) {
+                _meter_downsample_counter = 0;
+
+                // Meter per-track outputs (post track-effects, pre-master)
+                _meter_all_track_outputs(block);
+
+                // Meter master output (post-master effects)
+                _update_batch_meters(out_buf, block);
+            }
+        }
+
         int frames_to_copy = std::min(block, p_frames - frames_generated);
         // Copy left/right pairs into AudioFrame array with hard clamping.
         // prevents overflow/wrapping regardless of what happens during mixing.
@@ -1811,6 +1835,219 @@ Vector2 SiONDriver::track_get_level(Object *p_track_obj, int p_window_length) {
 	v.x *= vol;
 	v.y *= vol;
 	return v;
+}
+
+// --- Professional Metering Implementation ------------------------------------
+
+void SiONDriver::_update_batch_meters(const Vector<double> *out_buf, int frames) {
+	if (!out_buf || frames <= 0) {
+		return;
+	}
+
+	MeterSnapshot master;
+	master.timestamp_us = Time::get_singleton()->get_ticks_usec();
+	master.sample_count = frames;
+
+	double sum_sq_left = 0.0;
+	double sum_sq_right = 0.0;
+
+	// Process all samples in the buffer for accurate RMS and peak detection
+	for (int i = 0; i < frames; ++i) {
+		float left = (float)(*out_buf)[i * 2];
+		float right = (float)(*out_buf)[i * 2 + 1];
+
+		// Track peaks (absolute max)
+		float abs_left = fabsf(left);
+		float abs_right = fabsf(right);
+		master.peak_left = std::max(master.peak_left, abs_left);
+		master.peak_right = std::max(master.peak_right, abs_right);
+
+		// Accumulate for RMS
+		sum_sq_left += left * left;
+		sum_sq_right += right * right;
+	}
+
+	// Calculate RMS
+	master.rms_left = sqrtf(float(sum_sq_left / frames));
+	master.rms_right = sqrtf(float(sum_sq_right / frames));
+
+	// Store master meter (thread-safe)
+	{
+		std::lock_guard<std::mutex> lock(_master_meter_mutex);
+		_master_meter = master;
+	}
+
+	// Push to ring buffer for historical data
+	_push_meter_to_ring(master);
+}
+
+void SiONDriver::_meter_track_output(int track_id, const Vector<double> *track_buf, int frames) {
+	if (!_metering_enabled.load(std::memory_order_relaxed)) {
+		return;
+	}
+
+	if (!track_buf || frames <= 0) {
+		return;
+	}
+
+	// Check if track is registered for metering
+	{
+		std::lock_guard<std::mutex> lock(_track_meters_mutex);
+		if (!_track_meters.has(track_id)) {
+			return;
+		}
+	}
+
+	MeterSnapshot snapshot;
+	snapshot.timestamp_us = Time::get_singleton()->get_ticks_usec();
+	snapshot.sample_count = frames;
+
+	double sum_sq_left = 0.0;
+	double sum_sq_right = 0.0;
+
+	for (int i = 0; i < frames; ++i) {
+		float left = fabsf((float)(*track_buf)[i * 2]);
+		float right = fabsf((float)(*track_buf)[i * 2 + 1]);
+
+		snapshot.peak_left = std::max(snapshot.peak_left, left);
+		snapshot.peak_right = std::max(snapshot.peak_right, right);
+
+		sum_sq_left += left * left;
+		sum_sq_right += right * right;
+	}
+
+	snapshot.rms_left = sqrtf(float(sum_sq_left / frames));
+	snapshot.rms_right = sqrtf(float(sum_sq_right / frames));
+
+	// Store track meter (thread-safe)
+	{
+		std::lock_guard<std::mutex> lock(_track_meters_mutex);
+		_track_meters[track_id] = snapshot;
+	}
+}
+
+void SiONDriver::_push_meter_to_ring(const MeterSnapshot &snapshot) {
+	int head = _meter_ring_head.load(std::memory_order_relaxed);
+	int next = (head + 1) % METER_RING_SIZE;
+
+	// If ring is full, overwrite oldest (tail advances implicitly on read)
+	_meter_ring[head] = snapshot;
+	_meter_ring_head.store(next, std::memory_order_release);
+}
+
+void SiONDriver::_meter_all_track_outputs(int frames) {
+	if (!_metering_enabled.load(std::memory_order_relaxed)) {
+		return;
+	}
+
+	// Iterate through all registered track effect streams
+	for (const KeyValue<int, SiEffectStream *> &entry : _track_effect_streams) {
+		int track_id = entry.key;
+		SiEffectStream *stream = entry.value;
+
+		if (!stream) {
+			continue;
+		}
+
+		// Get the stream's output buffer (post-effects)
+		SiOPMStream *opm_stream = stream->get_stream();
+		if (!opm_stream) {
+			continue;
+		}
+
+		Vector<double> *track_buf = opm_stream->get_buffer_ptr();
+		if (!track_buf || track_buf->is_empty()) {
+			continue;
+		}
+
+		// Verify buffer has enough samples for the requested frames
+		if (track_buf->size() < frames * 2) {
+			continue;
+		}
+
+		// Meter this track's post-effects output
+		_meter_track_output(track_id, track_buf, frames);
+	}
+}
+
+void SiONDriver::set_metering_enabled(bool p_enabled) {
+	_metering_enabled.store(p_enabled, std::memory_order_release);
+	if (!p_enabled) {
+		// Reset meter counter when disabled
+		_meter_downsample_counter = 0;
+	}
+}
+
+bool SiONDriver::is_metering_enabled() const {
+	return _metering_enabled.load(std::memory_order_acquire);
+}
+
+void SiONDriver::set_meter_downsample_factor(int p_factor) {
+	int clamped = CLAMP(p_factor, 1, 16);
+	_meter_downsample_factor.store(clamped, std::memory_order_release);
+}
+
+int SiONDriver::get_meter_downsample_factor() const {
+	return _meter_downsample_factor.load(std::memory_order_acquire);
+}
+
+Dictionary SiONDriver::get_master_meter_snapshot() const {
+	Dictionary result;
+
+	MeterSnapshot snapshot;
+	{
+		std::lock_guard<std::mutex> lock(_master_meter_mutex);
+		snapshot = _master_meter;
+	}
+
+	result["rms_left"] = snapshot.rms_left;
+	result["rms_right"] = snapshot.rms_right;
+	result["peak_left"] = snapshot.peak_left;
+	result["peak_right"] = snapshot.peak_right;
+	result["timestamp_us"] = (int64_t)snapshot.timestamp_us;
+	result["sample_count"] = (int)snapshot.sample_count;
+
+	return result;
+}
+
+Dictionary SiONDriver::get_track_meter_snapshot(int p_track_id) const {
+	Dictionary result;
+
+	MeterSnapshot snapshot;
+	bool found = false;
+
+	{
+		std::lock_guard<std::mutex> lock(_track_meters_mutex);
+		if (_track_meters.has(p_track_id)) {
+			snapshot = _track_meters[p_track_id];
+			found = true;
+		}
+	}
+
+	if (!found) {
+		return result;  // Return empty dictionary if track not registered
+	}
+
+	result["rms_left"] = snapshot.rms_left;
+	result["rms_right"] = snapshot.rms_right;
+	result["peak_left"] = snapshot.peak_left;
+	result["peak_right"] = snapshot.peak_right;
+	result["timestamp_us"] = (int64_t)snapshot.timestamp_us;
+	result["sample_count"] = (int)snapshot.sample_count;
+
+	return result;
+}
+
+void SiONDriver::register_track_for_metering(int p_track_id) {
+	std::lock_guard<std::mutex> lock(_track_meters_mutex);
+	if (!_track_meters.has(p_track_id)) {
+		_track_meters[p_track_id] = MeterSnapshot();
+	}
+}
+
+void SiONDriver::unregister_track_for_metering(int p_track_id) {
+	std::lock_guard<std::mutex> lock(_track_meters_mutex);
+	_track_meters.erase(p_track_id);
 }
 
 // --- Mailbox setters (main thread) --------------------------------------------

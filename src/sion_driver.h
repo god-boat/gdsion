@@ -12,6 +12,7 @@
 #include <godot_cpp/classes/audio_stream_generator_playback.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
 #include <godot_cpp/classes/node.hpp>
+#include <array>
 #include <atomic>
 #include <mutex>
 #include <godot_cpp/templates/hash_map.hpp>
@@ -188,6 +189,44 @@ private:
 	bool _capture_post_master = true;
 	Vector<float> _capture_buffer;  // Interleaved stereo float32
 	size_t _capture_write_pos = 0;
+
+	// --- Professional audio metering infrastructure ---
+public:
+	// Meter data snapshot (cache-line friendly, lock-free readable)
+	struct MeterSnapshot {
+		float rms_left = 0.0f;
+		float rms_right = 0.0f;
+		float peak_left = 0.0f;
+		float peak_right = 0.0f;
+		uint64_t timestamp_us = 0;
+		uint32_t sample_count = 0;
+	};
+
+private:
+	// Lock-free ring buffer for historical meter data
+	static constexpr int METER_RING_SIZE = 8;
+	std::array<MeterSnapshot, METER_RING_SIZE> _meter_ring;
+	std::atomic<int> _meter_ring_head{0};
+	std::atomic<int> _meter_ring_tail{0};
+
+	// Per-track meter storage (atomic snapshots per track_id)
+	HashMap<int, MeterSnapshot> _track_meters;
+	mutable std::mutex _track_meters_mutex;  // Protects HashMap structure, not individual reads
+
+	// Master output meter (atomic for lock-free read)
+	MeterSnapshot _master_meter;
+	mutable std::mutex _master_meter_mutex;
+
+	// Metering settings
+	std::atomic<bool> _metering_enabled{true};
+	std::atomic<int> _meter_downsample_factor{4};  // Process every Nth buffer
+	int _meter_downsample_counter = 0;
+
+	// Metering helper functions
+	void _update_batch_meters(const Vector<double> *out_buf, int frames);
+	void _meter_track_output(int track_id, const Vector<double> *track_buf, int frames);
+	void _meter_all_track_outputs(int frames);
+	void _push_meter_to_ring(const MeterSnapshot &snapshot);
 
 	ExceptionMode _note_on_exception_mode = NEM_IGNORE;
 	// Send the CHANGE_BPM event when position changes.
@@ -597,6 +636,16 @@ public:
 	void abort_output_capture();
 	bool is_output_capturing() const;
 	PackedFloat32Array poll_output_capture_chunk(int p_max_frames = 0);
+
+	// Metering API (professional post-effects, post-fader metering).
+	void set_metering_enabled(bool p_enabled);
+	bool is_metering_enabled() const;
+	void set_meter_downsample_factor(int p_factor);
+	int get_meter_downsample_factor() const;
+	Dictionary get_master_meter_snapshot() const;
+	Dictionary get_track_meter_snapshot(int p_track_id) const;
+	void register_track_for_metering(int p_track_id);
+	void unregister_track_for_metering(int p_track_id);
 
 	// MIDI.
 	// FIXME: Implement SMF/MIDI support.
