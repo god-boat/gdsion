@@ -28,7 +28,7 @@ class SiMMLSequencer : public MMLSequencer {
 
 	static const int MAX_PARAM_COUNT = 16;
 	static const int MACRO_SIZE = 26;
-	static const int DEFAULT_MAX_TRACK_COUNT = 128;
+	static const int DEFAULT_MAX_TRACK_COUNT = 2048;
 
 	SiOPMSoundChip *_sound_chip = nullptr;
 	MMLExecutorConnector *_connector = nullptr;
