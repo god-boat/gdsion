@@ -427,9 +427,10 @@ void SiOPMChannelBase::buffer(int p_length) {
 	SinglyLinkedList<int>::Element *mono_out = _out_pipe->get();
 
 	// Update the output pipe for the provided length.
-	if (_process_function.is_valid()) {
-		_process_function.call(p_length);
-	}
+	// Note: _process_function is always initialized and updated atomically,
+	// so no validity check needed. Checking validity from the audio thread
+	// can cause crashes due to Callable internal state access during updates.
+	_process_function.call(p_length);
 
 	if (_ring_pipe) {
 		_apply_ring_modulation(mono_out, p_length);

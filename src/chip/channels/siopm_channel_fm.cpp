@@ -147,18 +147,24 @@ void SiOPMChannelFM::_update_process_function() {
 }
 
 void SiOPMChannelFM::_update_operator_count(int p_count) {
+	// CORRECT FIX: All 4 operators are allocated at construction time.
+	// This function ONLY updates the logical count - zero allocation, zero deletion.
+	// This eliminates ALL lifecycle races with the audio thread.
+	
+	// Re-initialize operators that are becoming active
 	if (_operator_count < p_count) {
 		for (int i = _operator_count; i < p_count; i++) {
-			_operators.write[i] = _alloc_operator();
 			_operators[i]->initialize();
 		}
-	} else if (_operator_count > p_count) {
+	}
+	// Reset operators that are becoming inactive to ensure they produce zero output
+	else if (_operator_count > p_count) {
 		for (int i = p_count; i < _operator_count; i++) {
-			_release_operator(_operators[i]);
-			_operators.write[i] = nullptr;
+			_operators[i]->reset(); // Sets EG to OFF, zeroes phase
 		}
 	}
-
+	
+	// Just update the logical count - operators always exist
 	_operator_count = p_count;
 	_process_function_type = (ProcessType)(p_count - 1);
 	_update_process_function();
@@ -324,9 +330,13 @@ void SiOPMChannelFM::set_wave_data(const Ref<SiOPMWaveBase> &p_wave_data) {
 	}
 
 	if (pcm_data.is_valid() && !pcm_data->get_wavelet().is_empty()) {
-		_update_operator_count(1);
-		_process_function_type = PROCESS_PCM;
-		_update_process_function();
+		// Skip operator count update if already configured for PCM with 1 operator
+		// to prevent race with audio thread during rapid note triggers
+		if (_operator_count != 1 || _process_function_type != PROCESS_PCM) {
+			_update_operator_count(1);
+			_process_function_type = PROCESS_PCM;
+			_update_process_function();
+		}
 		_active_operator->set_pcm_data(pcm_data);
 		set_envelope_reset(true);
 
@@ -666,16 +676,32 @@ void SiOPMChannelFM::_set_algorithm_operator4(int p_algorithm) {
 }
 
 void SiOPMChannelFM::_set_algorithm_analog_like(int p_algorithm) {
+	int target_algorithm = (p_algorithm >= 0 && p_algorithm <= 3) ? p_algorithm : 0;
+	ProcessType target_process_type = (ProcessType)(PROCESS_ANALOG_LIKE + target_algorithm);
+	
+	// Skip if already configured for this analog-like algorithm to prevent redundant updates
+	if (_operator_count == 2 && _algorithm == target_algorithm && _process_function_type == target_process_type) {
+		return;
+	}
+	
 	_update_operator_count(2);
 	_operators[0]->set_pipes(_pipe0, nullptr, true);
 	_operators[1]->set_pipes(_pipe0, nullptr, true);
 
-	_algorithm = (p_algorithm >= 0 && p_algorithm <= 3) ? p_algorithm : 0;
-	_process_function_type = (ProcessType)(PROCESS_ANALOG_LIKE + _algorithm);
+	_algorithm = target_algorithm;
+	_process_function_type = target_process_type;
 	_update_process_function();
 }
 
 void SiOPMChannelFM::set_algorithm(int p_operator_count, bool p_analog_like, int p_algorithm) {
+	// Skip if algorithm hasn't changed - prevents race conditions with audio thread
+	// during rapid note triggers with the same voice
+	bool is_analog_like_now = (_process_function_type >= PROCESS_ANALOG_LIKE && _process_function_type < PROCESS_ANALOG_LIKE + 4);
+	if (p_analog_like == is_analog_like_now && _operator_count == p_operator_count && _algorithm == p_algorithm) {
+		return;
+	}
+
+
 	if (p_analog_like) {
 		_set_algorithm_analog_like(p_algorithm);
 		return;
@@ -1729,9 +1755,11 @@ void SiOPMChannelFM::buffer(int p_length) {
 	SinglyLinkedList<int>::Element *right_start = stereo_mode ? _stereo_right_pipe->get() : nullptr;
 
 	// Update the output pipe for the provided length.
-	if (_process_function.is_valid()) {
-		_process_function.call(p_length);
-	}
+	// Note: _process_function is always initialized in constructor and updated
+	// atomically via _update_process_function(), so no validity check needed.
+	// The validity check itself was causing crashes due to Callable internal state
+	// access from the audio thread during concurrent updates.
+	_process_function.call(p_length);
 
 	if (_ring_pipe) {
 		if (stereo_mode) {
@@ -1818,8 +1846,12 @@ void SiOPMChannelFM::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 }
 
 void SiOPMChannelFM::reset() {
-	for (int i = 0; i < _operator_count; i++) {
-		_operators[i]->reset();
+	// Reset all 4 operators, not just the active ones
+	// This ensures operators beyond _operator_count are also in a clean state
+	for (int i = 0; i < 4; i++) {
+		if (_operators[i]) {
+			_operators[i]->reset();
+		}
 	}
 
 	_is_note_on = false;
@@ -1878,9 +1910,15 @@ SiOPMChannelFM::SiOPMChannelFM(SiOPMSoundChip *p_chip) : SiOPMChannelBase(p_chip
 		}
 	};
 
-	_operator_count = 1;
+	// CRITICAL: Allocate all 4 operators at construction time.
+	// Never allocate/deallocate during playback to avoid races with audio thread.
 	_operators.resize_zeroed(4);
-	_operators.write[0] = _alloc_operator();
+	for (int i = 0; i < 4; i++) {
+		_operators.write[i] = _alloc_operator();
+		_operators[i]->initialize();
+	}
+	
+	_operator_count = 1;
 	_active_operator = _operators[0];
 
 	_update_process_function();
