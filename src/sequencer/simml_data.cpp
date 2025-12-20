@@ -29,6 +29,19 @@ void SiMMLData::clear_ref_stencils() {
 }
 
 void SiMMLData::register_ref_stencils() {
+	// ARCHITECTURAL CONTRACT:
+	// This method can be safely called from the audio thread because:
+	// 1. The constructor allocates all vectors to their *_MAX sizes.
+	// 2. clear() resets the contents but does not change sizes or layout.
+	// 3. The destructor does not mutate vector sizes; normal destruction happens
+	//    only after the audio thread has stopped using this instance.
+	// 4. Callers must ensure SiMMLData is not destroyed while the audio thread
+	//    may access it (e.g. via Ref<> ownership in the driver/sequencer).
+	//
+	// Therefore: if we have a valid Ref<SiMMLData> on the audio thread,
+	// the vectors are guaranteed to exist with the proper sizes, even if
+	// clear() has been called.
+
 	// Bank 2 and 3 are not available at this time.
 	SiOPMRefTable::get_instance()->set_sampler_table_stencil(0, _sampler_tables[0]);
 	SiOPMRefTable::get_instance()->set_sampler_table_stencil(1, _sampler_tables[1]);
@@ -160,7 +173,10 @@ SiMMLData::SiMMLData() {
 }
 
 SiMMLData::~SiMMLData() {
-	_envelope_tables.clear();
-	_wave_tables.clear();
-	_sampler_tables.clear();
+	// Vectors will clean themselves up on destruction.
+	// We intentionally do NOT call .clear() here:
+	//  - clear() mutates sizes/layout, which would be dangerous if anyone
+	//    were still accessing this instance via raw pointers during teardown.
+	//  - Our lifetime model requires that the audio thread has fully stopped
+	//    using this instance before destruction, so no extra mutation is needed.
 }
