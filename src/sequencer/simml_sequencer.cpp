@@ -437,6 +437,9 @@ void SiMMLSequencer::prepare_process(const Ref<MMLData> &p_data, int p_sample_ra
 void SiMMLSequencer::process() {
 	// Prepare for buffering.
 	for (SiMMLTrack *track : _tracks) {
+		// Invariant: _tracks must never contain null entries
+		ERR_FAIL_COND_MSG(track == nullptr, "SiMMLSequencer: Null track found in _tracks array (invariant violation).");
+		
 		SiOPMChannelBase *channel = track->get_channel();
 		if (channel) {
 			channel->reset_channel_buffer_status();
@@ -453,6 +456,9 @@ void SiMMLSequencer::process() {
 		_bpm_change_enabled = false;
 
 		for (SiMMLTrack *track : _tracks) {
+			// Invariant: _tracks must never contain null entries
+			ERR_FAIL_COND_MSG(track == nullptr, "SiMMLSequencer: Null track found in _tracks array (invariant violation).");
+			
 			_current_track = track;
 			int length = track->prepare_buffer(buffering_length);
 			_bpm = track->get_bpm_settings();
@@ -471,6 +477,17 @@ void SiMMLSequencer::process() {
 	_processed_sample_count += _sound_chip->get_buffer_length();
 
 	_is_sequence_finished = finished;
+	
+	// Safe point: retire tracks marked for disposal after all audio processing is complete
+	for (int i = _tracks.size() - 1; i >= 0; --i) {
+		SiMMLTrack *track = _tracks[i];
+		ERR_FAIL_COND_MSG(track == nullptr, "SiMMLSequencer: Null track during cleanup (invariant violation).");
+		
+		if (track->is_pending_disposal() && track->is_finished()) {
+			_tracks.remove_at(i);
+			memdelete(track);
+		}
+	}
 }
 
 // Parser.

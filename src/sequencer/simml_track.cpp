@@ -514,6 +514,11 @@ void SiMMLTrack::_disable_envelope_mode(int p_note_on) {
 }
 
 int SiMMLTrack::prepare_buffer(int p_buffer_length) {
+	// Skip processing if track is marked for disposal (prevents accessing corrupted _mml_data)
+	if (_pending_disposal) {
+		return 0;
+	}
+	
 	if (_mml_data.is_valid()) {
 		_mml_data->register_ref_stencils();
 	} else {
@@ -1118,6 +1123,10 @@ void SiMMLTrack::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("is_active"), &SiMMLTrack::is_active);
 	ClassDB::bind_method(D_METHOD("is_finished"), &SiMMLTrack::is_finished);
+	
+	// Disposal controls
+	ClassDB::bind_method(D_METHOD("is_pending_disposal"), &SiMMLTrack::is_pending_disposal);
+	ClassDB::bind_method(D_METHOD("mark_for_disposal"), &SiMMLTrack::mark_for_disposal);
 
 	// Mute controls
 	ClassDB::bind_method(D_METHOD("is_mute"), &SiMMLTrack::is_mute);
