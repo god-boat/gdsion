@@ -21,6 +21,7 @@
 #include "sequencer/simml_envelope_table.h"
 #include "sequencer/simml_ref_table.h"
 #include "sequencer/simml_track.h"
+#include "sequencer/simml_channel_settings.h"
 #include "utils/godot_util.h"
 
 using namespace godot;
@@ -83,37 +84,60 @@ bool SiMMLVoice::has_pitch_modulation() const {
 }
 
 void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
+	// Fast-path: check if existing channel type matches what we need.
+	// This avoids reinitializing the channel, which preserves DSP state
+	// (envelopes, filters, fade) and helps prevent clicks during rapid note triggering.
+	SiOPMChannelBase *existing_ch = p_track->get_channel();
+	bool needs_rebind = false;
+
 	switch (module_type) {
-		case SiONModuleType::MODULE_FM: { // Registered FM voice (%6)
-			p_track->set_channel_module_type(SiONModuleType::MODULE_FM, channel_num);
+		case SiONModuleType::MODULE_FM: {
+			// Check if already an FM channel
+			SiOPMChannelFM *fm_ch = existing_ch ? dynamic_cast<SiOPMChannelFM *>(existing_ch) : nullptr;
+			if (!fm_ch) {
+				p_track->set_channel_module_type(SiONModuleType::MODULE_FM, channel_num);
+			}
+			p_track->get_channel()->set_channel_params(channel_params, update_volumes, true);
+			p_track->reset_volume_offset();
 		} break;
 
-		case SiONModuleType::MODULE_KS: { // PMS Guitar (%11)
-		// Fast-path: if the current channel is already KS, update parameters in-place
-		// to avoid replacing the channel object while the audio thread is running.
-		SiOPMChannelBase *base_ch = p_track->get_channel();
-		SiOPMChannelKS *ks_ch = (base_ch ? dynamic_cast<SiOPMChannelKS *>(base_ch) : nullptr);
-		if (ks_ch) {
-			ks_ch->apply_voice_params(channel_params, is_pcm_voice() ? wave_data : Ref<SiOPMWaveBase>(), pms_tension);
-		} else {
-			// Channel type differs – perform a full rebind once, then use the in-place path.
-			p_track->set_channel_module_type(SiONModuleType::MODULE_KS, 1);
-			base_ch = p_track->get_channel();
-			ks_ch = (base_ch ? dynamic_cast<SiOPMChannelKS *>(base_ch) : nullptr);
+		case SiONModuleType::MODULE_KS: {
+			// Check if already a KS channel
+			SiOPMChannelKS *ks_ch = existing_ch ? dynamic_cast<SiOPMChannelKS *>(existing_ch) : nullptr;
+			if (!ks_ch) {
+				p_track->set_channel_module_type(SiONModuleType::MODULE_KS, 1);
+				ks_ch = dynamic_cast<SiOPMChannelKS *>(p_track->get_channel());
+			}
 			if (ks_ch) {
 				ks_ch->apply_voice_params(channel_params, is_pcm_voice() ? wave_data : Ref<SiOPMWaveBase>(), pms_tension);
 			}
-		}
 		} break;
 
 		default: { // Other sound modules.
+			// For wave data, check if the wave's module type matches
 			if (wave_data.is_valid()) {
-				p_track->set_channel_module_type(wave_data->get_module_type(), -1);
+				SiMMLChannelSettings *wave_settings = SiMMLRefTable::get_instance()->channel_settings_map[wave_data->get_module_type()];
+				needs_rebind = !existing_ch || !wave_settings ||
+					(existing_ch->get_channel_type() != wave_settings->get_channel_type());
+				
+				if (needs_rebind) {
+					p_track->set_channel_module_type(wave_data->get_module_type(), -1);
+				}
 				p_track->get_channel()->set_channel_params(channel_params, update_volumes);
 				p_track->get_channel()->set_wave_data(wave_data);
 			} else {
-				p_track->set_channel_module_type(module_type, channel_num, tone_num);
+				// Check if channel type matches the module type
+				SiMMLChannelSettings *settings = SiMMLRefTable::get_instance()->channel_settings_map[module_type];
+				needs_rebind = !existing_ch || !settings ||
+					(existing_ch->get_channel_type() != settings->get_channel_type());
+				
+				if (needs_rebind) {
+					p_track->set_channel_module_type(module_type, channel_num, tone_num);
+				}
 				p_track->get_channel()->set_channel_params(channel_params, update_volumes);
+				if (!needs_rebind) {
+					p_track->reset_volume_offset();
+				}
 			}
 		} break;
 	}

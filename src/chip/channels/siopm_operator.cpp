@@ -523,9 +523,19 @@ void SiOPMOperator::_shift_eg_state(EGState p_state) {
 					_eg_level_table = make_vector<int>(_table->eg_level_tables[0]);
 				}
 
-				const int index = _release_rate + _eg_key_scale_rate;
-				_eg_increment_table = make_vector<int>(_table->eg_increment_tables[_table->eg_table_selector[index]]);
-				_eg_timer_step = _table->eg_timer_steps[index];
+				// Voice stealing: use the absolute fastest release (~2-3ms) to quickly
+				// silence the old voice before starting the new one. This ensures
+				// smooth but near-instant transitions without waiting for release tails.
+				// Fast release is implicit when _deferred_attack_target != EG_OFF.
+				if (_deferred_attack_target != EG_OFF) {
+					// Table 16 = fastest (increment by 8 per cycle), with fastest timer.
+					_eg_increment_table = make_vector<int>(_table->eg_increment_tables[16]);
+					_eg_timer_step = _table->eg_timer_steps[63]; // Maximum timer step
+				} else {
+					const int index = _release_rate + _eg_key_scale_rate;
+					_eg_increment_table = make_vector<int>(_table->eg_increment_tables[_table->eg_table_selector[index]]);
+					_eg_timer_step = _table->eg_timer_steps[index];
+				}
 				break;
 			}
 		}
@@ -541,6 +551,28 @@ void SiOPMOperator::_shift_eg_state(EGState p_state) {
 			_eg_increment_table = make_vector<int>(_table->eg_increment_tables[17]); // 17 = all zero
 			_eg_timer_step = _table->eg_timer_steps[96]; // 96 = all zero
 		} break;
+	}
+}
+
+void SiOPMOperator::_reset_note_phases() {
+	if (_key_on_phase >= 0) {
+		_phase = _key_on_phase;
+	} else if (_key_on_phase == -1) {
+		Ref<RandomNumberGenerator> rng;
+		rng.instantiate();
+		_phase = int(rng->randi_range(0, SiOPMRefTable::PHASE_MAX));
+	}
+
+	if (_super_count > 1) {
+		// Each super voice gets a random starting phase for instant chorus/thickness.
+		// This is essential for the characteristic supersaw sound - without it,
+		// all voices start in phase and only gradually drift apart.
+		Ref<RandomNumberGenerator> rng;
+		rng.instantiate();
+
+		for (int i = 0; i < _super_count; i++) {
+			_super_phases[i] = int(rng->randi_range(0, SiOPMRefTable::PHASE_MAX));
+		}
 	}
 }
 
@@ -580,7 +612,24 @@ void SiOPMOperator::tick_eg(int p_timer_initial) {
 		}
 	} else {
 		_eg_level += step;
-		if (_eg_level >= _eg_state_shift_level) {
+		// When a new note is triggered while the operator is still audible, we
+		// defer the ATTACK (and any phase reset) until the envelope has fully
+		// decayed to silence. This avoids instantaneous slope changes and phase
+		// jumps that manifest as clicks during voice stealing.
+		if (_deferred_attack_target != EG_OFF && _eg_state == SiOPMOperator::EG_RELEASE) {
+			// During voice stealing, transition to ATTACK when envelope is "quiet enough"
+			// rather than waiting for full silence. This reduces perceived latency while
+			// still avoiding the loudest clicks. Use 90% of the way to silence as threshold.
+			// ENV_BOTTOM is 832, so ~750 is quiet enough to mask any remaining discontinuity.
+			constexpr int FAST_RELEASE_THRESHOLD = SiOPMRefTable::ENV_BOTTOM - 80;
+			
+			if (_eg_level >= FAST_RELEASE_THRESHOLD) {
+				// Now quiet enough: reset phase and start deferred attack
+				_reset_note_phases();
+				_shift_eg_state(_deferred_attack_target);
+				_deferred_attack_target = EG_OFF; // Clear deferred state
+			}
+		} else if (_eg_level >= _eg_state_shift_level) {
 			_shift_eg_state((EGState)_eg_next_state_table[_eg_state_table_index][_eg_state]);
 		}
 	}
@@ -753,30 +802,57 @@ void SiOPMOperator::set_pcm_data(const Ref<SiOPMWavePCMData> &p_pcm_data) {
 }
 
 void SiOPMOperator::note_on() {
-	if (_key_on_phase >= 0) {
-		_phase = _key_on_phase;
-	} else if (_key_on_phase == -1) {
-		Ref<RandomNumberGenerator> rng;
-		rng.instantiate();
-
-		_phase = int(rng->randi_range(0, SiOPMRefTable::PHASE_MAX));
-	}
-
-	if (_super_count > 1) {
-		// Each super voice gets a random starting phase for instant chorus/thickness.
-		// This is essential for the characteristic supersaw sound - without it,
-		// all voices start in phase and only gradually drift apart.
-		Ref<RandomNumberGenerator> rng;
-		rng.instantiate();
-
-		for (int i = 0; i < _super_count; i++) {
-			_super_phases[i] = int(rng->randi_range(0, SiOPMRefTable::PHASE_MAX));
-		}
-	}
-
 	_eg_ssgec_state = -1;
-	_shift_eg_state(EG_ATTACK);
+
+	// Envelope- and phase-aware voice stealing:
+	// If a new note is triggered while this operator is still audible, do not
+	// jump straight into ATTACK or reset the oscillator phase. Instead, force
+	// the current envelope to finish a RELEASE down to silence and only then
+	// start ATTACK and apply the phase reset. This guarantees that both the
+	// amplitude and the waveform are continuous at non-zero levels.
+	const bool envelope_audible =
+		(_eg_state != EG_OFF && _eg_level < SiOPMRefTable::ENV_BOTTOM);
+	const bool treat_as_voice_steal = _is_voice_steal_hint || envelope_audible;
+
+	if (treat_as_voice_steal) {
+		// Defer attack and phase reset until envelope is quiet.
+		// Fast release is implicit - will be detected in _shift_eg_state(EG_RELEASE).
+		_deferred_attack_target = EG_ATTACK;
+
+		// If we are not already in RELEASE, switch to it now so the current
+		// envelope decays smoothly towards silence using the fast release rate.
+		if (_eg_state != EG_RELEASE) {
+			_shift_eg_state(EG_RELEASE);
+		} else {
+			// Already in RELEASE but with natural rate - re-shift to apply fast rate.
+			_shift_eg_state(EG_RELEASE);
+		}
+	} else {
+		// Envelope is effectively silent already: we can safely reset phases
+		// and jump straight into ATTACK without introducing discontinuities.
+		_deferred_attack_target = EG_OFF;
+		_reset_note_phases();
+		_shift_eg_state(EG_ATTACK);
+	}
+
+	// Voice-steal hint is one-shot per note.
+	_is_voice_steal_hint = false;
+
 	update_eg_output();
+
+	// // Debug: log EG state at attack start to diagnose clicky voice starts.
+	// // Uses UtilityFunctions::print so it shows up in the Godot console.
+	// UtilityFunctions::print(
+	// 	"FM_OP_NOTE_ON",
+	// 	" ptr=", (int64_t)this,
+	// 	" prev_state=", (int)prev_state,
+	// 	" prev_level=", prev_level,
+	// 	" prev_output=", prev_output,
+	// 	" new_state=", (int)_eg_state,
+	// 	" new_level=", _eg_level,
+	// 	" new_output=", _eg_output,
+	// 	" phase=", _phase
+	// );
 }
 
 void SiOPMOperator::note_off() {
@@ -817,6 +893,17 @@ void SiOPMOperator::initialize() {
 
 	// Reset PG and EG states.
 	reset();
+
+	// // Debug: log EG state at operator (re)initialization to verify that
+	// // voices start from a fully silent state before any new note_on.
+	// UtilityFunctions::print(
+	// 	"FM_OP_INIT",
+	// 	" ptr=", (int64_t)this,
+	// 	" eg_state=", (int)_eg_state,
+	// 	" eg_level=", _eg_level,
+	// 	" eg_output=", _eg_output,
+	// 	" phase=", _phase
+	// );
 }
 
 void SiOPMOperator::reset() {
@@ -825,6 +912,10 @@ void SiOPMOperator::reset() {
 	_eg_timer = SiOPMRefTable::ENV_TIMER_INITIAL;
 	_eg_counter = 0;
 	_eg_ssgec_state = 0;
+
+	// Clear voice-stealing state.
+	_deferred_attack_target = EG_OFF;
+	_is_voice_steal_hint = false;
 
 	_phase = 0;
 }

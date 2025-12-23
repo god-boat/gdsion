@@ -147,6 +147,23 @@ private:
 	int _eg_state_table_index = 0;
 	Vector<int> _eg_level_table;
 
+	// Voice-stealing state: when != EG_OFF, we're deferring transition to this
+	// state until the envelope reaches near-silence. This avoids discontinuities
+	// during voice reuse by letting the old sound decay smoothly before starting
+	// the new sound. Combines what was previously 5 separate flags (_eg_pending_state,
+	// _eg_has_pending_state, _phase_pending_reset, _eg_fast_release, _force_voice_steal)
+	// into a single state variable: EG_OFF = "not deferring", any other value = "deferring to that state".
+	EGState _deferred_attack_target = EG_OFF;
+
+	// Hint from the owning channel that the next note_on() should be treated
+	// as a voice-steal event, even if the current EG state looks idle. This
+	// lets us apply the deferred-release logic based on channel-level
+	// knowledge (_is_note_on / _is_idling) rather than relying solely on the
+	// operator's own EG state, which can be reset by initialize().
+	bool _is_voice_steal_hint = false;
+
+	void _reset_note_phases();
+
 	void _shift_eg_state(EGState p_state);
 
 	// PCM wave.
@@ -340,6 +357,8 @@ public:
 
 	void note_on();
 	void note_off();
+
+	void set_voice_steal_hint(bool p_hint) { _is_voice_steal_hint = p_hint; }
 
 	//
 

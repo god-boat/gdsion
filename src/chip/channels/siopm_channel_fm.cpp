@@ -14,7 +14,9 @@
 #include "chip/wave/siopm_wave_pcm_data.h"
 #include "chip/wave/siopm_wave_pcm_table.h"
 #include "chip/wave/siopm_wave_table.h"
+#include "utils/godot_util.h"
 #include <algorithm>
+#include <cmath>
 
 List<SiOPMOperator *> SiOPMChannelFM::_operator_pool;
 
@@ -1701,8 +1703,17 @@ void SiOPMChannelFM::_process_sync(int p_length) {
 }
 
 void SiOPMChannelFM::note_on() {
+	// If this channel is already active, this note_on represents a voice-steal
+	// event from the channel's point of view. Let the operators know so they
+	// can defer envelope ATTACK and phase reset until their envelopes reach
+	// (practically) zero instead of restarting abruptly mid-release.
+	bool is_voice_steal = _is_note_on && !_is_idling;
+
 	for (int i = 0; i < _operator_count; i++) {
-		_operators[i]->note_on();
+		if (_operators[i]) {
+			_operators[i]->set_voice_steal_hint(is_voice_steal);
+			_operators[i]->note_on();
+		}
 	}
 
 	_is_note_on = true;
@@ -1826,6 +1837,105 @@ void SiOPMChannelFM::buffer(int p_length) {
 		}
 	}
 	_meter_write_from(mono_out, p_length);
+
+	// // Debug: inspect edge discontinuities at buffer boundaries to diagnose
+	// // clicky artefacts when new voices start (e.g. during voice stealing).
+	// if (mono_out) {
+	// 	// Read first and last sample in this block.
+	// 	int first_sample = mono_out->value;
+	// 	int last_sample = first_sample;
+	// 	SinglyLinkedList<int>::Element *cursor = mono_out;
+	// 	for (int i = 1; i < p_length && cursor; i++) {
+	// 		cursor = cursor->next();
+	// 		if (!cursor) {
+	// 			break;
+	// 		}
+	// 		if (i == p_length - 1) {
+	// 			last_sample = cursor->value;
+	// 		}
+	// 	}
+	
+	// 	if (_debug_have_last_sample) {
+	// 		int prev = (int)_debug_last_mono_sample;
+	// 		int delta = first_sample - prev;
+	// 		// Only log suspiciously large steps to avoid flooding the console.
+	// 		if (delta > 1024 || delta < -1024) {
+	// 			UtilityFunctions::print(
+	// 				"FM_EDGE_JUMP",
+	// 				" chan_ptr=", (int64_t)this,
+	// 				" first=", first_sample,
+	// 				" prev=", prev,
+	// 				" delta=", delta,
+	// 				" len=", p_length
+	// 			);
+	// 		}
+	// 	}
+	
+	// 	// Scan for intra-buffer discontinuities
+	// 	cursor = mono_out;
+	// 	int prev_sample = cursor->value;
+		
+	// 	for (int i = 1; i < p_length && cursor; i++) {
+	// 		cursor = cursor->next();
+	// 		if (!cursor) break;
+			
+	// 		int curr_sample = cursor->value;
+	// 		int delta = curr_sample - prev_sample;
+			
+	// 		// Detect large intra-buffer jumps
+	// 		if (delta > 256 || delta < -256) {
+	// 			UtilityFunctions::print(
+	// 				"FM_INTRA_BUFFER_JUMP",
+	// 				" chan_ptr=", (int64_t)this,
+	// 				" sample_idx=", i,
+	// 				" curr=", curr_sample,
+	// 				" prev=", prev_sample,
+	// 				" delta=", delta
+	// 			);
+	// 		}
+	// 		prev_sample = curr_sample;
+	// 	}
+
+	// 	int prev = mono_out->value;
+	// 	int prev_delta = 0;
+	// 	cursor = mono_out->next();
+
+	// 	for (int i = 1; i < p_length && cursor; i++) {
+	// 		int curr = cursor->value;
+	// 		int delta = curr - prev;
+	// 		int accel = delta - prev_delta;
+
+	// 		if (abs(accel) > 128) {
+	// 			// Diagnostic only: do NOT modify audio here, just log enough
+	// 			// context to correlate audible clicks with operator EG state.
+	// 			if (_active_operator) {
+	// 				UtilityFunctions::print(
+	// 					"FM_CURVATURE_SPIKE",
+	// 					" idx=", i,
+	// 					" accel=", accel,
+	// 					" delta=", delta,
+	// 					" eg_state=", (int)_active_operator->get_eg_state(),
+	// 					" eg_out=", _active_operator->get_eg_output()
+	// 				);
+	// 			} else {
+	// 				UtilityFunctions::print(
+	// 					"FM_CURVATURE_SPIKE",
+	// 					" idx=", i,
+	// 					" accel=", accel,
+	// 					" delta=", delta
+	// 				);
+	// 			}
+	// 		}
+
+	// 		prev_delta = delta;
+	// 		prev = curr;
+	// 		cursor = cursor->next();
+	// 	}
+
+		
+	// 	_debug_last_mono_sample = (double)last_sample;
+	// 	_debug_have_last_sample = true;
+	// }
 
 	_buffer_index += p_length;
 }
