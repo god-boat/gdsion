@@ -1735,11 +1735,25 @@ SiONDriver::~SiONDriver() {
 	memdelete(_fader);
 	memdelete(_background_fader);
 
-	_clear_track_effect_streams(true);
+	// CRITICAL: Acquire the audio state mutex before destroying audio processing objects.
+	// This prevents the audio thread from accessing these objects while they're being destroyed.
+	// ALL teardown of data touched by generate_audio() must be inside this mutex.
+	{
+		std::lock_guard<std::mutex> lock(_audio_state_mutex);
 
-	memdelete(sequencer);
-	memdelete(effector);
-	memdelete(sound_chip);
+		// Clear track effect streams (touches data used by begin_process)
+		_clear_track_effect_streams(true);
+
+		// Delete audio processing objects
+		memdelete(sequencer);
+		memdelete(effector);
+		memdelete(sound_chip);
+
+		// Set pointers to nullptr so generate_audio() can detect deletion
+		sequencer = nullptr;
+		effector = nullptr;
+		sound_chip = nullptr;
+	}
 }
 
 int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
@@ -1749,6 +1763,12 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 
     // Protect audio processing from concurrent state modifications (play/stop/reset).
     std::lock_guard<std::mutex> lock(_audio_state_mutex);
+
+    // Check if audio objects are still valid (may be null during destruction)
+    if (!effector || !sequencer || !sound_chip) {
+        memset(p_buffer, 0, sizeof(AudioFrame) * p_frames);
+        return p_frames;
+    }
 
     int frames_generated = 0;
     const int block = _buffer_length; // internal SiON processing block
