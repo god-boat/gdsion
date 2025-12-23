@@ -31,18 +31,38 @@ void SiOPMOperator::set_attack_rate(int p_value) {
 	} else {
 		_eg_ssgec_attack_rate = (_attack_rate >= 60) ? 1 : 0;
 	}
+	
+	// Update active envelope if currently in ATTACK state
+	if (_eg_state == EG_ATTACK) {
+		update_active_eg_timer();
+	}
 }
 
 void SiOPMOperator::set_decay_rate(int p_value) {
 	_decay_rate = p_value & 63;
+	
+	// Update active envelope if currently in DECAY state
+	if (_eg_state == EG_DECAY) {
+		update_active_eg_timer();
+	}
 }
 
 void SiOPMOperator::set_sustain_rate(int p_value) {
 	_sustain_rate = p_value & 63;
+	
+	// Update active envelope if currently in SUSTAIN state
+	if (_eg_state == EG_SUSTAIN) {
+		update_active_eg_timer();
+	}
 }
 
 void SiOPMOperator::set_release_rate(int p_value) {
 	_release_rate = p_value & 63;
+	
+	// Update active envelope if currently in RELEASE state
+	if (_eg_state == EG_RELEASE) {
+		update_active_eg_timer();
+	}
 }
 
 void SiOPMOperator::set_sustain_level(int p_value) {
@@ -452,11 +472,11 @@ void SiOPMOperator::_shift_eg_state(EGState p_state) {
 					_eg_level = SiOPMRefTable::ENV_BOTTOM;
 				}
 				_eg_state = EG_ATTACK;
-				_eg_level_table = make_vector<int>(_table->eg_level_tables[0]);
+			_eg_level_table = make_vector<int>(_table->eg_level_tables[0]);
 
-				const int index = (_attack_rate != 0) ? (_attack_rate + _eg_key_scale_rate) : 96;
-				_eg_increment_table = make_vector<int>(_table->eg_increment_tables_attack[_table->eg_table_selector[index]]);
-				_eg_timer_step = _table->eg_timer_steps[index];
+			const int index = _eg_rate_to_index(_attack_rate);
+			_eg_increment_table = make_vector<int>(_table->eg_increment_tables_attack[_table->eg_table_selector[index]]);
+			_eg_timer_step = _table->eg_timer_steps[index];
 				break;
 			}
 		}
@@ -480,12 +500,12 @@ void SiOPMOperator::_shift_eg_state(EGState p_state) {
 				} else {
 					_eg_level = 0;
 					_eg_state_shift_level = _eg_sustain_level;
-					_eg_level_table = make_vector<int>(_table->eg_level_tables[0]);
-				}
+			_eg_level_table = make_vector<int>(_table->eg_level_tables[0]);
+		}
 
-				int index = (_decay_rate != 0) ? (_decay_rate + _eg_key_scale_rate) : 96;
-				_eg_increment_table = make_vector<int>(_table->eg_increment_tables[_table->eg_table_selector[index]]);
-				_eg_timer_step = _table->eg_timer_steps[index];
+		int index = _eg_rate_to_index(_decay_rate);
+		_eg_increment_table = make_vector<int>(_table->eg_increment_tables[_table->eg_table_selector[index]]);
+		_eg_timer_step = _table->eg_timer_steps[index];
 				break;
 			}
 		}
@@ -504,12 +524,12 @@ void SiOPMOperator::_shift_eg_state(EGState p_state) {
 			} else {
 				_eg_level = _eg_sustain_level;
 				_eg_state_shift_level = SiOPMRefTable::ENV_BOTTOM;
-				_eg_level_table = make_vector<int>(_table->eg_level_tables[0]);
-			}
+		_eg_level_table = make_vector<int>(_table->eg_level_tables[0]);
+	}
 
-			const int index = (_sustain_rate != 0) ? (_sustain_rate + _eg_key_scale_rate) : 96;
-			_eg_increment_table = make_vector<int>(_table->eg_increment_tables[_table->eg_table_selector[index]]);
-			_eg_timer_step = _table->eg_timer_steps[index];
+	const int index = _eg_rate_to_index(_sustain_rate);
+	_eg_increment_table = make_vector<int>(_table->eg_increment_tables[_table->eg_table_selector[index]]);
+	_eg_timer_step = _table->eg_timer_steps[index];
 		} break;
 
 		case EG_RELEASE: {
@@ -529,13 +549,13 @@ void SiOPMOperator::_shift_eg_state(EGState p_state) {
 				// Fast release is implicit when _deferred_attack_target != EG_OFF.
 				if (_deferred_attack_target != EG_OFF) {
 					// Table 16 = fastest (increment by 8 per cycle), with fastest timer.
-					_eg_increment_table = make_vector<int>(_table->eg_increment_tables[16]);
-					_eg_timer_step = _table->eg_timer_steps[63]; // Maximum timer step
-				} else {
-					const int index = _release_rate + _eg_key_scale_rate;
-					_eg_increment_table = make_vector<int>(_table->eg_increment_tables[_table->eg_table_selector[index]]);
-					_eg_timer_step = _table->eg_timer_steps[index];
-				}
+				_eg_increment_table = make_vector<int>(_table->eg_increment_tables[16]);
+				_eg_timer_step = _table->eg_timer_steps[63]; // Maximum timer step
+			} else {
+				const int index = _eg_rate_to_index(_release_rate);
+				_eg_increment_table = make_vector<int>(_table->eg_increment_tables[_table->eg_table_selector[index]]);
+				_eg_timer_step = _table->eg_timer_steps[index];
+			}
 				break;
 			}
 		}
@@ -682,6 +702,46 @@ void SiOPMOperator::update_eg_output_from(SiOPMOperator *p_other) {
 	if (unlikely(idx < 0)) idx = 0;
 	else if (unlikely(idx >= size)) idx = size - 1;
 	_eg_output = (other_tbl[idx] + _eg_total_level) << 3;
+}
+
+void SiOPMOperator::update_active_eg_timer() {
+	// Only update if envelope is actively running (not OFF)
+	if (_eg_state == EG_OFF) {
+		return;
+	}
+	
+	// Recalculate timer step and increment table based on current state
+	int rate = 0;
+	switch (_eg_state) {
+		case EG_ATTACK:
+			rate = _attack_rate;
+			break;
+		case EG_DECAY:
+			rate = _decay_rate;
+			break;
+		case EG_SUSTAIN:
+			rate = _sustain_rate;
+			break;
+		case EG_RELEASE:
+			// Skip if in fast-release mode (voice stealing)
+			if (_deferred_attack_target != EG_OFF) {
+				return;
+			}
+			rate = _release_rate;
+			break;
+		default:
+			return;
+	}
+	
+	const int index = _eg_rate_to_index(rate);
+	
+	if (_eg_state == EG_ATTACK) {
+		_eg_increment_table = make_vector<int>(_table->eg_increment_tables_attack[_table->eg_table_selector[index]]);
+	} else {
+		_eg_increment_table = make_vector<int>(_table->eg_increment_tables[_table->eg_table_selector[index]]);
+	}
+	
+	_eg_timer_step = _table->eg_timer_steps[index];
 }
 
 // Pipes.

@@ -166,6 +166,10 @@ private:
 
 	void _shift_eg_state(EGState p_state);
 
+	inline int _eg_rate_to_index(int p_rate) const {
+		return (p_rate != 0) ? (p_rate + _eg_key_scale_rate) : 96;
+	}
+
 	// PCM wave.
 
 	int _pcm_channel_num = 0;
@@ -328,6 +332,7 @@ public:
 	void tick_eg(int p_timer_initial);
 	void update_eg_output();
 	void update_eg_output_from(SiOPMOperator *p_other);
+	void update_active_eg_timer();
 
 	// PCM wave.
 
