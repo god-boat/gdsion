@@ -123,6 +123,10 @@ SiOPMOperator *SiOPMChannelFM::_alloc_operator() {
 		SiOPMOperator *op = _operator_pool.back()->get();
 		_operator_pool.pop_back();
 		if (op != nullptr) {
+			// CRITICAL: Update the sound chip pointer when reusing from pool.
+			// After a buffer size change, the old sound chip is destroyed
+			// and a new one is created, so pooled operators have stale pointers.
+			op->update_sound_chip(_sound_chip);
 			return op;
 		}
 		// If the stored pointer was null just continue the loop to fetch the next

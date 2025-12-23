@@ -701,6 +701,11 @@ void SiOPMOperator::set_operator_params(const Ref<SiOPMOperatorParams> &p_params
 	// Some code here is duplicated from respective setters to avoid calling them
 	// and triggering side effects. Modify with care.
 
+	// Defensive check: ensure params reference is valid.
+	if (unlikely(p_params.is_null())) {
+		ERR_FAIL_MSG("SiOPMOperator::set_operator_params() called with null params. This indicates a lifecycle or initialization bug.");
+	}
+
 	set_pulse_generator_type(p_params->get_pulse_generator_type());
 	set_pitch_table_type(p_params->get_pitch_table_type());
 
@@ -863,6 +868,13 @@ void SiOPMOperator::note_off() {
 //
 
 void SiOPMOperator::initialize() {
+	// Defensive check: ensure sound chip pointer is valid.
+	// This should not happen in normal operation, but protects against
+	// edge cases during driver reconstruction or pool reuse issues.
+	if (unlikely(_sound_chip == nullptr)) {
+		ERR_FAIL_MSG("SiOPMOperator::initialize() called with null sound chip pointer. This indicates a lifecycle bug.");
+	}
+
 	// Reset operator connections.
 	_final = true;
 	_in_pipe   = _sound_chip->get_zero_buffer();
@@ -870,7 +882,11 @@ void SiOPMOperator::initialize() {
 	_feed_pipe->get()->value = 0;
 
 	// Reset all parameters.
-	set_operator_params(_sound_chip->get_init_operator_params());
+	Ref<SiOPMOperatorParams> init_params = _sound_chip->get_init_operator_params();
+	if (unlikely(init_params.is_null())) {
+		ERR_FAIL_MSG("SiOPMOperator::initialize() called but sound chip has null init operator params.");
+	}
+	set_operator_params(init_params);
 
 	// Reset some other parameters.
 

@@ -362,6 +362,8 @@ public:
 
 	//
 
+	void update_sound_chip(SiOPMSoundChip *p_chip) { _sound_chip = p_chip; }
+
 	void initialize();
 	void reset();
 
