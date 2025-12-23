@@ -14,6 +14,7 @@
 #include "chip/wave/siopm_wave_sampler_data.h"
 #include "chip/wave/siopm_wave_sampler_table.h"
 #include <godot_cpp/core/math.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 #include <cmath>
 
 // Convert AM delta (log-table index domain) into a linear gain multiplier.
@@ -99,7 +100,8 @@ void SiOPMChannelSampler::set_channel_params(const Ref<SiOPMChannelParams> &p_pa
 
 void SiOPMChannelSampler::set_wave_data(const Ref<SiOPMWaveBase> &p_wave_data) {
 	_sampler_table = p_wave_data;
-	_sample_data = p_wave_data;
+	// NOTE: Don't set _sample_data here - it should only hold individual samples from get_sample(),
+	// not the table itself. This is critical for voice stealing declick to work correctly.
 }
 
 void SiOPMChannelSampler::set_types(int p_pg_type, SiONPitchTableType p_pt_type) {
@@ -207,6 +209,31 @@ void SiOPMChannelSampler::note_on() {
 		return;
 	}
 
+	// Voice-stealing declick: defer note_on if we're currently playing audible audio.
+	// Check both envelope state and sample data validity to avoid clicks.
+	const bool envelope_audible = (_amp_stage != AMP_STAGE_IDLE && _amp_level > 0.1);
+	const bool treat_as_voice_steal = envelope_audible && _sample_data.is_valid();
+
+	if (treat_as_voice_steal) {
+		// Store the new note parameters for later execution.
+		_has_deferred_note_on = true;
+		_deferred_wave_number = _wave_number;
+		_deferred_sample_start_phase = _sample_start_phase;
+		_deferred_pitch_step = _pitch_step;
+
+		// Trigger fast release to fade out current sample.
+		if (_amp_stage != AMP_STAGE_RELEASE) {
+			_begin_amp_release();
+		}
+		_configure_amp_stage(0.0, 63); // Rate 63 = fastest
+		return;
+	}
+
+	// Not voice stealing - execute immediately.
+	_execute_note_on_immediate();
+}
+
+void SiOPMChannelSampler::_execute_note_on_immediate() {
 	_stop_click_guard();
 	_reset_amp_envelope();
 
@@ -385,6 +412,23 @@ void SiOPMChannelSampler::buffer(int p_length) {
 }
 
 void SiOPMChannelSampler::buffer_no_process(int p_length) {
+	// If we have a deferred note_on waiting, continue updating the amp envelope
+	// even without sample data. Otherwise the amp level never decreases and the
+	// deferred note_on never executes.
+	if (_has_deferred_note_on) {
+		for (int i = 0; i < p_length; i++) {
+			_update_amp_envelope();
+			if (!_has_deferred_note_on) {
+				break;
+			}
+		}
+		
+		// If the deferred note_on was executed, the channel state has changed.
+		if (!_has_deferred_note_on) {
+			return;
+		}
+	}
+	
 	// Rotate the output buffers similarly to PCM to keep both pipes aligned.
 	int pipe_index = (_buffer_index + p_length) & (_sound_chip->get_buffer_length() - 1);
 	if (_output_mode == OutputMode::OUTPUT_STANDARD) {
@@ -437,7 +481,7 @@ void SiOPMChannelSampler::reset() {
 	_expression = 1;
 
 	_sampler_table = _table->sampler_tables[0];
-	_sample_data = Ref<SiOPMWaveSamplerData>();
+	// NOTE: Don't clear _sample_data here - preserve it across resets for voice stealing declick.
 
 	_sample_start_phase = 0;
 	_sample_index = 0;
@@ -448,6 +492,12 @@ void SiOPMChannelSampler::reset() {
 	_sample_index_fp = 0.0;
 	_stop_click_guard();
 	_reset_amp_envelope();
+
+	// Clear voice-stealing deferred state.
+	_has_deferred_note_on = false;
+	_deferred_wave_number = -1;
+	_deferred_sample_start_phase = 0;
+	_deferred_pitch_step = 1.0;
 }
 
 void SiOPMChannelSampler::set_amp_attack_rate(int p_value) {
@@ -523,6 +573,8 @@ void SiOPMChannelSampler::_begin_amp_release() {
 }
 
 void SiOPMChannelSampler::_advance_amp_stage() {
+	AmplitudeStage old_stage = _amp_stage;
+	
 	switch (_amp_stage) {
 		case AMP_STAGE_ATTACK: {
 			// Skip decay if sustain is full scale and decay rate is zero.
@@ -547,6 +599,7 @@ void SiOPMChannelSampler::_advance_amp_stage() {
 
 void SiOPMChannelSampler::_set_amp_stage(AmplitudeStage p_stage) {
 	_amp_stage = p_stage;
+	
 	switch (p_stage) {
 		case AMP_STAGE_ATTACK: {
 			_is_idling = false;
@@ -664,6 +717,21 @@ void SiOPMChannelSampler::_update_amp_envelope() {
 			if (_amp_stage_samples_left > 0) {
 				_amp_level += _amp_stage_increment;
 				_amp_stage_samples_left--;
+				
+				// Check if we have a deferred note_on waiting and we're quiet enough.
+				// Must check BEFORE _advance_amp_stage() which transitions to IDLE.
+				if (_has_deferred_note_on && _amp_stage == AMP_STAGE_RELEASE && _amp_level < 0.1) {
+					// Restore deferred parameters.
+					_wave_number = _deferred_wave_number;
+					_sample_start_phase = _deferred_sample_start_phase;
+					_pitch_step = _deferred_pitch_step;
+					_has_deferred_note_on = false;
+
+					// Now execute the actual note_on.
+					_execute_note_on_immediate();
+					return; // Early return since envelope state was reset
+				}
+				
 				if (_amp_stage_samples_left <= 0) {
 					_amp_level = _amp_stage_target_level;
 					_advance_amp_stage();
@@ -679,6 +747,16 @@ void SiOPMChannelSampler::_update_amp_envelope() {
 		case AMP_STAGE_IDLE:
 		default:
 			_amp_level = 0.0;
+			// Safety net: if we somehow ended up in IDLE with a deferred note_on still pending,
+			// execute it now to prevent permanent silence.
+			if (_has_deferred_note_on) {
+				_wave_number = _deferred_wave_number;
+				_sample_start_phase = _deferred_sample_start_phase;
+				_pitch_step = _deferred_pitch_step;
+				_has_deferred_note_on = false;
+				_execute_note_on_immediate();
+				return;
+			}
 			break;
 	}
 

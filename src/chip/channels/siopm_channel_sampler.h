@@ -61,6 +61,12 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 	double _click_guard_level = 1.0;
 	static const int RELEASE_SAMPLES = 512; // ≈ 512 / 48 000 Hz ≈ 10.7 ms at 48 kHz.
 
+	// Voice stealing declick: defer sample/envelope changes until quiet.
+	bool _has_deferred_note_on = false;
+	int _deferred_wave_number = -1;
+	int _deferred_sample_start_phase = 0;
+	double _deferred_pitch_step = 1.0;
+
 	// LFO (AM/PM) state mirrored from PCM behavior.
 	int _amplitude_modulation_depth = 0; // = chip.amd << (ams - 1)
 	int _amplitude_modulation_output_level = 0;
@@ -91,6 +97,9 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 	void _update_amp_envelope();
 	void _begin_click_guard();
 	void _stop_click_guard();
+
+	// Voice stealing declick helper.
+	void _execute_note_on_immediate();
 
 	// Stream writers (mirror PCM).
 	void _write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length);
