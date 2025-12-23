@@ -159,6 +159,8 @@ void SiOPMChannelKS::note_on() {
 void SiOPMChannelKS::note_off() {
 	_decay_lpf = _ks_mute_decay_lpf;
 	_decay     = _ks_mute_decay;
+	
+	SiOPMChannelFM::note_off();
 }
 
 void SiOPMChannelKS::reset_channel_buffer_status() {
