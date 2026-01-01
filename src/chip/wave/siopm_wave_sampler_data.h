@@ -25,13 +25,15 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
     int _sample_rate = 48000;
     // This flag is only available for non-loop samples.
 	bool _ignore_note_off = false;
-	// When true, playback is forced at original pitch regardless of note input.
+    // When true, playback is forced at original pitch regardless of note input.
 	bool _fixed_pitch = false;
-    // Additional per-sample pitch offset (in semitones). Used when _fixed_pitch
-    // is enabled to allow global transposition independent from the incoming
-    // MIDI note number. Positive values raise the pitch, negative values lower
-    // it. A value of 0 preserves the original pitch.
-    double _pitch_offset = 0.0;
+    
+    // Performance-layer pitch offsets (per-sample, mailbox-driven).
+    // In multi-sample mode, each pad has its own offsets.
+    // In melodic mode, there's only one sample, so these are effectively "global".
+    int _root_offset = 0;      // -48..+48 semitones
+    int _coarse_offset = 0;    // -24..+24 semitones
+    int _fine_offset = 0;      // -100..+100 cents
 
 	// Track the last applied fade so we can efficiently undo it.
 	int _prev_fade_start = -1;
@@ -68,12 +70,18 @@ public:
 	void set_pan(int p_pan);
 	int get_length() const;
 
-	bool is_ignoring_note_off() const { return _ignore_note_off; }
+	bool get_ignore_note_off() const { return _ignore_note_off; }
 	void set_ignore_note_off(bool p_ignore);
 	bool is_fixed_pitch() const { return _fixed_pitch; }
 	void set_fixed_pitch(bool p_fixed) { _fixed_pitch = p_fixed; }
-	double get_pitch_offset() const { return _pitch_offset; }
-	void set_pitch_offset(double p_offset) { _pitch_offset = p_offset; }
+	
+	// Performance offset getters/setters
+	int get_root_offset() const { return _root_offset; }
+	int get_coarse_offset() const { return _coarse_offset; }
+	int get_fine_offset() const { return _fine_offset; }
+	void set_root_offset(int p_semitones);
+	void set_coarse_offset(int p_semitones);
+	void set_fine_offset(int p_cents);
 
 	//
 

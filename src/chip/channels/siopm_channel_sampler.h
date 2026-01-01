@@ -100,6 +100,9 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 
 	// Voice stealing declick helper.
 	void _execute_note_on_immediate();
+	
+	// Unified pitch calculation.
+	void _recalc_pitch_step();
 
 	// Stream writers (mirror PCM).
 	void _write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length);
@@ -150,6 +153,21 @@ public:
 	void set_amp_decay_rate(int p_value);
 	void set_amp_sustain_level(int p_value);
 	void set_amp_release_rate(int p_value);
+
+	// Sampler-specific live param setters/getters (update active sample data).
+	void set_sampler_start_point(int p_start);
+	void set_sampler_end_point(int p_end);
+	void set_sampler_loop_point(int p_loop);
+	void set_sampler_ignore_note_off(bool p_ignore);
+	void set_sampler_pan(int p_pan);
+	
+	// Performance pitch offset setters/getters (delegate to current _sample_data).
+	void set_sampler_root_offset(int p_semitones);
+	void set_sampler_coarse_offset(int p_semitones);
+	void set_sampler_fine_offset(int p_cents);
+	int get_sampler_root_offset() const;
+	int get_sampler_coarse_offset() const;
+	int get_sampler_fine_offset() const;
 
 	SiOPMChannelSampler(SiOPMSoundChip *p_chip = nullptr);
 };

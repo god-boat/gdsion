@@ -299,13 +299,25 @@ void SiOPMWaveSamplerData::set_loop_point(int p_loop) {
 	_slice();
 }
 
+void SiOPMWaveSamplerData::set_root_offset(int p_semitones) {
+	_root_offset = CLAMP(p_semitones, -48, 48);
+}
+
+void SiOPMWaveSamplerData::set_coarse_offset(int p_semitones) {
+	_coarse_offset = CLAMP(p_semitones, -24, 24);
+}
+
+void SiOPMWaveSamplerData::set_fine_offset(int p_cents) {
+	_fine_offset = CLAMP(p_cents, -100, 100);
+}
+
 // ---------------------------------------------------------------------------
 
 void SiOPMWaveSamplerData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_pan", "pan"), &SiOPMWaveSamplerData::set_pan);
 	ClassDB::bind_method(D_METHOD("get_pan"), &SiOPMWaveSamplerData::get_pan);
 	ClassDB::bind_method(D_METHOD("set_ignore_note_off", "ignore"), &SiOPMWaveSamplerData::set_ignore_note_off);
-	ClassDB::bind_method(D_METHOD("is_ignoring_note_off"), &SiOPMWaveSamplerData::is_ignoring_note_off);
+	ClassDB::bind_method(D_METHOD("get_ignore_note_off"), &SiOPMWaveSamplerData::get_ignore_note_off);
 	ClassDB::bind_method(D_METHOD("set_start_point", "start"), &SiOPMWaveSamplerData::set_start_point);
 	ClassDB::bind_method(D_METHOD("get_start_point"), &SiOPMWaveSamplerData::get_start_point);
 	ClassDB::bind_method(D_METHOD("set_end_point", "end"), &SiOPMWaveSamplerData::set_end_point);
@@ -316,8 +328,12 @@ void SiOPMWaveSamplerData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_length"), &SiOPMWaveSamplerData::get_length);
 	ClassDB::bind_method(D_METHOD("set_fixed_pitch", "fixed"), &SiOPMWaveSamplerData::set_fixed_pitch);
 	ClassDB::bind_method(D_METHOD("is_fixed_pitch"), &SiOPMWaveSamplerData::is_fixed_pitch);
-	ClassDB::bind_method(D_METHOD("get_pitch_offset"), &SiOPMWaveSamplerData::get_pitch_offset);
-	ClassDB::bind_method(D_METHOD("set_pitch_offset", "offset"), &SiOPMWaveSamplerData::set_pitch_offset);
+	ClassDB::bind_method(D_METHOD("get_root_offset"), &SiOPMWaveSamplerData::get_root_offset);
+	ClassDB::bind_method(D_METHOD("set_root_offset", "semitones"), &SiOPMWaveSamplerData::set_root_offset);
+	ClassDB::bind_method(D_METHOD("get_coarse_offset"), &SiOPMWaveSamplerData::get_coarse_offset);
+	ClassDB::bind_method(D_METHOD("set_coarse_offset", "semitones"), &SiOPMWaveSamplerData::set_coarse_offset);
+	ClassDB::bind_method(D_METHOD("get_fine_offset"), &SiOPMWaveSamplerData::get_fine_offset);
+	ClassDB::bind_method(D_METHOD("set_fine_offset", "cents"), &SiOPMWaveSamplerData::set_fine_offset);
 	ClassDB::bind_method(D_METHOD("duplicate"), &SiOPMWaveSamplerData::duplicate);
 
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "pan"), "set_pan", "get_pan");
@@ -325,8 +341,7 @@ void SiOPMWaveSamplerData::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "end_point"), "set_end_point", "get_end_point");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "loop_point"), "set_loop_point", "get_loop_point");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "fixed_pitch"), "set_fixed_pitch", "is_fixed_pitch");
-	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pitch_offset", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_EDITOR), "set_pitch_offset", "get_pitch_offset");
-	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ignore_note_off"), "set_ignore_note_off", "is_ignoring_note_off");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ignore_note_off"), "set_ignore_note_off", "get_ignore_note_off");
 }
 
 // ---------------------------------------------------------------------------
@@ -411,7 +426,10 @@ Ref<SiOPMWaveSamplerData> SiOPMWaveSamplerData::duplicate() const {
     copy->_sample_rate         = _sample_rate;
     copy->_ignore_note_off     = _ignore_note_off;
     copy->_fixed_pitch         = _fixed_pitch;
-    copy->_pitch_offset        = _pitch_offset;
+    
+    copy->_root_offset         = _root_offset;
+    copy->_coarse_offset       = _coarse_offset;
+    copy->_fine_offset         = _fine_offset;
 
     copy->_start_point         = _start_point;
     copy->_end_point           = _end_point;

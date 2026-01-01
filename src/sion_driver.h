@@ -385,6 +385,27 @@ private:
 		int amp_sustain = 128;
 		bool has_amp_release = false;
 		int amp_release = 0;
+		// Sampler-specific params (apply to SiOPMWaveSamplerData on playing channels)
+		bool has_sampler_start_point = false;
+		int sampler_start_point = 0;
+		bool has_sampler_end_point = false;
+		int sampler_end_point = 0;
+		bool has_sampler_loop_point = false;
+		int sampler_loop_point = -1;
+		bool has_sampler_root_offset = false;
+		int sampler_root_offset = 0;
+		bool has_sampler_coarse_offset = false;
+		int sampler_coarse_offset = 0;
+		bool has_sampler_fine_offset = false;
+		int sampler_fine_offset = 0;
+		bool has_sampler_coarse_pitch = false;
+		int sampler_coarse_pitch = 0;
+		bool has_sampler_fine_pitch = false;
+		int sampler_fine_pitch = 0;
+		bool has_sampler_ignore_note_off = false;
+		bool sampler_ignore_note_off = false;
+		bool has_sampler_pan = false;
+		int sampler_pan = 0;
 		// FM operator fields (one flag per message; separate messages for separate params)
 		bool has_fm_op_tl = false;
 		bool has_fm_op_mul = false;
@@ -698,6 +719,15 @@ public:
 	void mailbox_set_track_amp_decay_rate(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
 	void mailbox_set_track_amp_sustain_level(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
 	void mailbox_set_track_amp_release_rate(int p_track_id, int p_value, int64_t p_voice_scope_id = -1);
+	// Sampler-specific params (apply to active sampler data on playing channels)
+	void mailbox_set_sampler_start_point(int p_track_id, int p_start, int64_t p_voice_scope_id = -1);
+	void mailbox_set_sampler_end_point(int p_track_id, int p_end, int64_t p_voice_scope_id = -1);
+	void mailbox_set_sampler_loop_point(int p_track_id, int p_loop, int64_t p_voice_scope_id = -1);
+	void mailbox_set_sampler_root_offset(int p_track_id, int p_semitones, int64_t p_voice_scope_id = -1);
+	void mailbox_set_sampler_coarse_offset(int p_track_id, int p_semitones, int64_t p_voice_scope_id = -1);
+	void mailbox_set_sampler_fine_offset(int p_track_id, int p_cents, int64_t p_voice_scope_id = -1);
+	void mailbox_set_sampler_ignore_note_off(int p_track_id, bool p_ignore, int64_t p_voice_scope_id = -1);
+	void mailbox_set_sampler_pan(int p_track_id, int p_pan, int64_t p_voice_scope_id = -1);
 	// FM operator params (by operator index)
 	void mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value);
 	void mailbox_set_fm_op_multiple(int p_track_id, int p_op_index, int p_value);

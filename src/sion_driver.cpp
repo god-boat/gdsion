@@ -1403,6 +1403,14 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_amp_decay_rate", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_amp_decay_rate, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_amp_sustain_level", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_amp_sustain_level, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_amp_release_rate", "track_id", "value", "voice_scope_id"), &SiONDriver::mailbox_set_track_amp_release_rate, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_start_point", "track_id", "start", "voice_scope_id"), &SiONDriver::mailbox_set_sampler_start_point, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_end_point", "track_id", "end", "voice_scope_id"), &SiONDriver::mailbox_set_sampler_end_point, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_loop_point", "track_id", "loop", "voice_scope_id"), &SiONDriver::mailbox_set_sampler_loop_point, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_root_offset", "track_id", "semitones", "voice_scope_id"), &SiONDriver::mailbox_set_sampler_root_offset, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_coarse_offset", "track_id", "semitones", "voice_scope_id"), &SiONDriver::mailbox_set_sampler_coarse_offset, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_fine_offset", "track_id", "cents", "voice_scope_id"), &SiONDriver::mailbox_set_sampler_fine_offset, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_ignore_note_off", "track_id", "ignore", "voice_scope_id"), &SiONDriver::mailbox_set_sampler_ignore_note_off, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_pan", "track_id", "pan", "voice_scope_id"), &SiONDriver::mailbox_set_sampler_pan, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_total_level", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_total_level);
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_multiple", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_multiple);
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_fine_multiple", "track_id", "op_index", "value"), &SiONDriver::mailbox_set_fm_op_fine_multiple);
@@ -2216,6 +2224,78 @@ void SiONDriver::mailbox_set_track_amp_release_rate(int p_track_id, int p_value,
 	_mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_sampler_start_point(int p_track_id, int p_start, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_sampler_start_point = true;
+	u.sampler_start_point = p_start;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_sampler_end_point(int p_track_id, int p_end, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_sampler_end_point = true;
+	u.sampler_end_point = p_end;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_sampler_loop_point(int p_track_id, int p_loop, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_sampler_loop_point = true;
+	u.sampler_loop_point = p_loop;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_sampler_root_offset(int p_track_id, int p_semitones, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_sampler_root_offset = true;
+	u.sampler_root_offset = p_semitones;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_sampler_coarse_offset(int p_track_id, int p_semitones, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_sampler_coarse_offset = true;
+	u.sampler_coarse_offset = p_semitones;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_sampler_fine_offset(int p_track_id, int p_cents, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_sampler_fine_offset = true;
+	u.sampler_fine_offset = p_cents;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_sampler_ignore_note_off(int p_track_id, bool p_ignore, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_sampler_ignore_note_off = true;
+	u.sampler_ignore_note_off = p_ignore;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_sampler_pan(int p_track_id, int p_pan, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_sampler_pan = true;
+	u.sampler_pan = p_pan;
+	_mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -2621,6 +2701,31 @@ void SiONDriver::_drain_track_mailbox() {
 				}
 				if (u.has_amp_release) {
 					sampler->set_amp_release_rate(u.amp_release);
+				}
+				// Sampler-specific params (apply to active sample data).
+				if (u.has_sampler_start_point) {
+					sampler->set_sampler_start_point(u.sampler_start_point);
+				}
+				if (u.has_sampler_end_point) {
+					sampler->set_sampler_end_point(u.sampler_end_point);
+				}
+			if (u.has_sampler_loop_point) {
+				sampler->set_sampler_loop_point(u.sampler_loop_point);
+			}
+			if (u.has_sampler_root_offset) {
+				sampler->set_sampler_root_offset(u.sampler_root_offset);
+			}
+			if (u.has_sampler_coarse_offset) {
+				sampler->set_sampler_coarse_offset(u.sampler_coarse_offset);
+			}
+			if (u.has_sampler_fine_offset) {
+				sampler->set_sampler_fine_offset(u.sampler_fine_offset);
+			}
+			if (u.has_sampler_ignore_note_off) {
+				sampler->set_sampler_ignore_note_off(u.sampler_ignore_note_off);
+			}
+				if (u.has_sampler_pan) {
+					sampler->set_sampler_pan(u.sampler_pan);
 				}
 			}
             // FM operator updates and Analog-Like live params

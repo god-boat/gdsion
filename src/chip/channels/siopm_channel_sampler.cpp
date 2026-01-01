@@ -244,12 +244,9 @@ void SiOPMChannelSampler::_execute_note_on_immediate() {
 		_sample_index = _sample_data->get_initial_sample_index(_sample_start_phase * 0.00390625); // 1/256
 		_sample_index_fp = (double)_sample_index;
 		_sample_pan = _sample_data->get_pan();
-		// If the sample is marked as fixed_pitch (slice mode), disable pitch shifting.
-		if (_sample_data->is_fixed_pitch()) {
-			// Apply global pitch offset (in semitones) instead of note-based transposition.
-			double offset_semitones = _sample_data->get_pitch_offset();
-			_pitch_step = std::pow(2.0, offset_semitones / 12.0);
-		}
+		
+		// Use unified pitch calculation
+		_recalc_pitch_step();
 	}
 
 	_is_idling = (_sample_data == nullptr);
@@ -263,7 +260,7 @@ void SiOPMChannelSampler::_execute_note_on_immediate() {
 }
 
 void SiOPMChannelSampler::note_off() {
-	if (_sample_data.is_null() || _sample_data->is_ignoring_note_off()) {
+	if (_sample_data.is_null() || _sample_data->get_ignore_note_off()) {
 		return;
 	}
 
@@ -830,6 +827,94 @@ String SiOPMChannelSampler::_to_string() const {
 	params += "pan=" + itos(_pan - 64) + "";
 
 	return "SiOPMChannelSampler: " + params;
+}
+
+// Sampler-specific live param setters.
+
+void SiOPMChannelSampler::_recalc_pitch_step() {
+	if (!_sample_data.is_valid()) {
+		return;
+	}
+	
+	// Layer 1: MIDI note transposition (ignored if fixed_pitch)
+	double note_transposition = 0.0;
+	if (!_sample_data->is_fixed_pitch()) {
+		note_transposition = (double)(_wave_number - 60);
+	}
+	
+	// Layer 2: User pitch adjustments from SamplerData (set via param system)
+	double user_offset = (double)_sample_data->get_root_offset() 
+	                   + (double)_sample_data->get_coarse_offset() 
+	                   + ((double)_sample_data->get_fine_offset() / 100.0);
+	
+	// Combine all layers
+	double total_pitch = note_transposition + user_offset;
+	_pitch_step = std::pow(2.0, total_pitch / 12.0);
+}
+
+void SiOPMChannelSampler::set_sampler_start_point(int p_start) {
+	if (_sample_data.is_valid()) {
+		_sample_data->set_start_point(p_start);
+	}
+}
+
+void SiOPMChannelSampler::set_sampler_end_point(int p_end) {
+	if (_sample_data.is_valid()) {
+		_sample_data->set_end_point(p_end);
+	}
+}
+
+void SiOPMChannelSampler::set_sampler_loop_point(int p_loop) {
+	if (_sample_data.is_valid()) {
+		_sample_data->set_loop_point(p_loop);
+	}
+}
+
+void SiOPMChannelSampler::set_sampler_ignore_note_off(bool p_ignore) {
+	if (_sample_data.is_valid()) {
+		_sample_data->set_ignore_note_off(p_ignore);
+	}
+}
+
+void SiOPMChannelSampler::set_sampler_pan(int p_pan) {
+	if (_sample_data.is_valid()) {
+		_sample_data->set_pan(p_pan);
+		// Update the channel's sample pan immediately.
+		_sample_pan = p_pan;
+	}
+}
+
+void SiOPMChannelSampler::set_sampler_root_offset(int p_semitones) {
+	if (_sample_data.is_valid()) {
+		_sample_data->set_root_offset(p_semitones);
+		_recalc_pitch_step();
+	}
+}
+
+void SiOPMChannelSampler::set_sampler_coarse_offset(int p_semitones) {
+	if (_sample_data.is_valid()) {
+		_sample_data->set_coarse_offset(p_semitones);
+		_recalc_pitch_step();
+	}
+}
+
+void SiOPMChannelSampler::set_sampler_fine_offset(int p_cents) {
+	if (_sample_data.is_valid()) {
+		_sample_data->set_fine_offset(p_cents);
+		_recalc_pitch_step();
+	}
+}
+
+int SiOPMChannelSampler::get_sampler_root_offset() const {
+	return _sample_data.is_valid() ? _sample_data->get_root_offset() : 0;
+}
+
+int SiOPMChannelSampler::get_sampler_coarse_offset() const {
+	return _sample_data.is_valid() ? _sample_data->get_coarse_offset() : 0;
+}
+
+int SiOPMChannelSampler::get_sampler_fine_offset() const {
+	return _sample_data.is_valid() ? _sample_data->get_fine_offset() : 0;
 }
 
 SiOPMChannelSampler::SiOPMChannelSampler(SiOPMSoundChip *p_chip) : SiOPMChannelBase(p_chip) {
