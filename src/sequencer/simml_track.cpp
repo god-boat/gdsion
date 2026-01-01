@@ -1098,6 +1098,10 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_track_type_id"), &SiMMLTrack::get_track_type_id);
 	ClassDB::bind_method(D_METHOD("get_channel"), &SiMMLTrack::get_channel);
 	ClassDB::bind_method(D_METHOD("get_program_number"), &SiMMLTrack::get_program_number);
+	
+	// Voice scope for pad-scoped mailbox updates
+	ClassDB::bind_method(D_METHOD("get_voice_scope_id"), &SiMMLTrack::get_voice_scope_id);
+	ClassDB::bind_method(D_METHOD("set_voice_scope_id", "id"), &SiMMLTrack::set_voice_scope_id);
 
 	// Track lifetime
 	ClassDB::bind_method(D_METHOD("set_disposable"), &SiMMLTrack::set_disposable);

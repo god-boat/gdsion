@@ -175,7 +175,11 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 		p_track->set_note_envelope(0, note_off_note_envelope, note_off_note_envelope_step);
 	}
 
-	// Stamp the applied voice's ObjectID to enable scoped realtime updates on the driver side
+
+	// Default voice scope stamping: use this voice's instance ID.
+	// This provides scope isolation for direct engine calls (fallback behavior).
+	// GDScript Voice wrappers override this with their own instance ID for
+	// finer-grained control (e.g., per-pad isolation in multi-sample instruments).
 	p_track->set_voice_scope_id((int64_t)get_instance_id());
 }
 
