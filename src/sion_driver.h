@@ -190,6 +190,11 @@ private:
 	Vector<float> _capture_buffer;  // Interleaved stereo float32
 	size_t _capture_write_pos = 0;
 
+	// --- Residual buffer (for proper buffer size handling) ---
+	Vector<double> _residual_buffer;        // Interleaved stereo float64 (matches sound_chip output)
+	int _residual_buffer_frame_count = 0;  // Number of frames currently in residual buffer
+	int _residual_frame_offset = 0;        // Current read position in frames (not samples)
+
 	// --- Professional audio metering infrastructure ---
 public:
 	// Meter data snapshot (cache-line friendly, lock-free readable)

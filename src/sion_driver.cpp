@@ -578,6 +578,10 @@ void SiONDriver::_prepare_stream(const Variant &p_data, bool p_reset_effector) {
 	_is_paused = false;
 	_is_finish_sequence_dispatched = (p_data.get_type() == Variant::NIL);
 
+	// Clear residual buffer when starting new playback
+	_residual_buffer_frame_count = 0;
+	_residual_frame_offset = 0;
+
 	// Start streaming.
 	_is_streaming = true;
 	_audio_player->play();
@@ -624,6 +628,10 @@ void SiONDriver::stop() {
 	_update_volume();
 	sequencer->stop_sequence();
 
+	// Clear residual buffer to ensure clean state
+	_residual_buffer_frame_count = 0;
+	_residual_frame_offset = 0;
+
 	_dispatch_event(memnew(SiONEvent(SiONEvent::STREAM_STOPPED, this)));
 
 	_performance_stats.streaming_latency = 0;
@@ -634,6 +642,10 @@ void SiONDriver::reset() {
 	std::lock_guard<std::mutex> lock(_audio_state_mutex);
 
 	sequencer->reset_all_tracks();
+
+	// Clear residual buffer to ensure clean state
+	_residual_buffer_frame_count = 0;
+	_residual_frame_offset = 0;
 }
 
 void SiONDriver::pause() {
@@ -1757,82 +1769,107 @@ SiONDriver::~SiONDriver() {
 }
 
 int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
-    if (p_frames <= 0) {
-        return 0;
-    }
+	if (p_frames <= 0) {
+		return 0;
+	}
 
-    // Protect audio processing from concurrent state modifications (play/stop/reset).
-    std::lock_guard<std::mutex> lock(_audio_state_mutex);
+	// Protect audio processing from concurrent state modifications (play/stop/reset).
+	std::lock_guard<std::mutex> lock(_audio_state_mutex);
 
-    // Check if audio objects are still valid (may be null during destruction)
-    if (!effector || !sequencer || !sound_chip) {
-        memset(p_buffer, 0, sizeof(AudioFrame) * p_frames);
-        return p_frames;
-    }
+	// Check if audio objects are still valid (may be null during destruction)
+	if (!effector || !sequencer || !sound_chip) {
+		memset(p_buffer, 0, sizeof(AudioFrame) * p_frames);
+		return p_frames;
+	}
 
-    int frames_generated = 0;
-    const int block = _buffer_length; // internal SiON processing block
+	int frames_generated = 0;
+	const int block = _buffer_length; // internal SiON processing block (in frames)
 
-    while (frames_generated < p_frames) {
-        // Process one internal block to ensure sound_chip output is ready.
-        _drain_track_mailbox();
-        sound_chip->begin_process();
-        effector->begin_process();
-        sequencer->process(); // generates _buffer_length stereo samples
-        effector->end_process();
-        sound_chip->end_process();
+	while (frames_generated < p_frames) {
+		// Drain mailbox on every iteration to minimize parameter change latency
+		// This ensures key_on, volume, filter, etc. are applied ASAP
+		_drain_track_mailbox();
 
-        Vector<double> *out_buf = sound_chip->get_output_buffer_ptr();
+		// Only process audio if we need more samples than we have buffered
+		// This prevents the sequencer from advancing faster than real-time
+		if (_residual_buffer_frame_count == 0) {
+			// Process one internal block to ensure sound_chip output is ready.
+			sound_chip->begin_process();
+			effector->begin_process();
+			sequencer->process(); // generates _buffer_length stereo samples
+			effector->end_process();
+			sound_chip->end_process();
 
-        // Process post-effects audio (metering)
-        if (_metering_enabled.load(std::memory_order_relaxed)) {
-            if (++_meter_downsample_counter >= _meter_downsample_factor.load(std::memory_order_relaxed)) {
-                _meter_downsample_counter = 0;
+			Vector<double> *out_buf = sound_chip->get_output_buffer_ptr();
 
-                // Meter per-track outputs (post track-effects, pre-master)
-                _meter_all_track_outputs(block);
+			// Process post-effects audio (metering)
+			if (_metering_enabled.load(std::memory_order_relaxed)) {
+				if (++_meter_downsample_counter >= _meter_downsample_factor.load(std::memory_order_relaxed)) {
+					_meter_downsample_counter = 0;
 
-                // Meter master output (post-master effects)
-                _update_batch_meters(out_buf, block);
-            }
-        }
+					// Meter per-track outputs (post track-effects, pre-master)
+					_meter_all_track_outputs(block);
 
-        int frames_to_copy = std::min(block, p_frames - frames_generated);
-        // Copy left/right pairs into AudioFrame array with hard clamping.
-        // prevents overflow/wrapping regardless of what happens during mixing.
-        for (int i = 0; i < frames_to_copy; ++i) {
-            int src_index = i * 2; // stereo in SiON buffer
-            p_buffer[frames_generated + i].left  = std::clamp((float)(*out_buf)[src_index], -1.0f, 1.0f);
-            p_buffer[frames_generated + i].right = std::clamp((float)(*out_buf)[src_index + 1], -1.0f, 1.0f);
-        }
+					// Meter master output (post-master effects)
+					_update_batch_meters(out_buf, block);
+				}
+			}
 
-        // Capture output at unity gain if active (for export/resampling)
-        if (_capture_active) {
+			// Copy generated audio to residual buffer (buffer contains stereo samples)
+			_residual_buffer_frame_count = block;
+			_residual_frame_offset = 0;
+			int sample_count = block * 2; // stereo: 2 samples per frame
+			if (_residual_buffer.size() < sample_count) {
+				_residual_buffer.resize(sample_count);
+			}
+			for (int i = 0; i < sample_count; ++i) {
+				_residual_buffer.write[i] = (*out_buf)[i];
+			}
+		}
 
-            for (int i = 0; i < frames_to_copy; ++i) {
-                int src_index = i * 2;
+		// Calculate how many frames we can copy from the residual buffer
+		int frames_available = _residual_buffer_frame_count - _residual_frame_offset;
+		int frames_to_copy = std::min(frames_available, p_frames - frames_generated);
 
-                // Clamp before storing to prevent any overflow in captured audio
-                float left = std::clamp((float)(*out_buf)[src_index], -1.0f, 1.0f);
-                float right = std::clamp((float)(*out_buf)[src_index + 1], -1.0f, 1.0f);
+		// Copy left/right pairs from residual buffer into output with hard clamping
+		for (int i = 0; i < frames_to_copy; ++i) {
+			int sample_index = (_residual_frame_offset + i) * 2; // convert frame offset to sample index
+			p_buffer[frames_generated + i].left  = std::clamp((float)_residual_buffer[sample_index], -1.0f, 1.0f);
+			p_buffer[frames_generated + i].right = std::clamp((float)_residual_buffer[sample_index + 1], -1.0f, 1.0f);
+		}
 
-                // Append to capture buffer (grow if needed)
-                if (_capture_write_pos + 2 > (size_t)_capture_buffer.size()) {
-                    _capture_buffer.resize(_capture_write_pos + frames_to_copy * 2);
-                }
+		// Capture output at unity gain if active (for export/resampling)
+		if (_capture_active) {
+			// Pre-check capacity and resize once before loop to avoid multiple audio thread allocations
+			size_t needed_size = _capture_write_pos + (frames_to_copy * 2);
+			if (needed_size > (size_t)_capture_buffer.size()) {
+				_capture_buffer.resize(needed_size);
+			}
 
-                _capture_buffer.write[_capture_write_pos++] = left;
-                _capture_buffer.write[_capture_write_pos++] = right;
-            }
-        }
+			for (int i = 0; i < frames_to_copy; ++i) {
+				int sample_index = (_residual_frame_offset + i) * 2;
 
-        frames_generated += frames_to_copy;
+				// Clamp before storing to prevent any overflow in captured audio
+				float left = std::clamp((float)_residual_buffer[sample_index], -1.0f, 1.0f);
+				float right = std::clamp((float)_residual_buffer[sample_index + 1], -1.0f, 1.0f);
 
-        // If we copied less than a full block, keep residual samples for next pull (TODO: implement ring if needed)
-        // Simplification: we discard extra samples beyond frames_to_copy.
-    }
+				_capture_buffer.write[_capture_write_pos++] = left;
+				_capture_buffer.write[_capture_write_pos++] = right;
+			}
+		}
 
-    return frames_generated;
+		// Update buffer state (all in frame units)
+		_residual_frame_offset += frames_to_copy;
+		frames_generated += frames_to_copy;
+
+		// If we've consumed all residual frames, mark buffer as empty
+		if (_residual_frame_offset >= _residual_buffer_frame_count) {
+			_residual_buffer_frame_count = 0;
+			_residual_frame_offset = 0;
+		}
+	}
+
+	return frames_generated;
 }
 
 // Pull model: _streaming() is obsolete, kept as no-op for notification hook compatibility.
