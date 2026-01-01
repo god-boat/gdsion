@@ -84,12 +84,18 @@ private:
 
 	void _update_key_code(int p_value);
 	void _update_total_level();
+	void _update_wave_table_cache();
 
 	// Pulse generator.
 
 	int _pg_type = SiONPulseGeneratorType::PULSE_SINE;
 	SiONPitchTableType _pt_type = SiONPitchTableType::PITCH_TABLE_OPM;
 	Vector<int> _wave_table;
+	// Cached raw pointer to wave table data for fast audio-thread access.
+	// Updated whenever _wave_table changes. We keep a reference to the Vector
+	// to prevent COW from freeing the backing data.
+	const int *_wave_table_ptr = nullptr;
+	int _wave_table_size = 0;
 	// Phase shift.
 	int _wave_fixed_bits = 0;
 	// Phase step shift.

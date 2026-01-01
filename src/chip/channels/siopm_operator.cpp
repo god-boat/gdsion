@@ -200,12 +200,23 @@ void SiOPMOperator::_update_phase_step(int p_step) {
 	_phase_step >>= (7 - _table->sample_rate_pitch_shift);  // 44kHz:1/128, 22kHz:1/256
 }
 
+void SiOPMOperator::_update_wave_table_cache() {
+	if (_wave_table.size() > 0) {
+		_wave_table_ptr = _wave_table.ptr();
+		_wave_table_size = _wave_table.size();
+	} else {
+		_wave_table_ptr = nullptr;
+		_wave_table_size = 0;
+	}
+}
+
 void SiOPMOperator::set_pulse_generator_type(int p_type) {
 	_pg_type = p_type & SiOPMRefTable::PG_FILTER;
 
 	Ref<SiOPMWaveTable> wave_table = _table->get_wave_table(_pg_type);
 	_wave_table = wave_table->get_wavelet();
 	_wave_fixed_bits = wave_table->get_fixed_bits();
+	_update_wave_table_cache();
 }
 
 void SiOPMOperator::set_pitch_table_type(SiONPitchTableType p_type) {
@@ -217,19 +228,18 @@ void SiOPMOperator::set_pitch_table_type(SiONPitchTableType p_type) {
 }
 
 int SiOPMOperator::get_wave_value(int p_index) const {
-	// Snapshot the current wave table to avoid torn reads if another thread swaps
-	// the table concurrently. Vector<T> in Godot is copy-on-write, so this is a
-	// cheap refcount bump and guarantees a stable backing store for the duration
-	// of this call.
-	Vector<int> wave = _wave_table;
+	// Use cached raw pointer to avoid refcount overhead. The cache is updated
+	// whenever _wave_table changes, and the Vector keeps the backing data alive.
+	const int *wave = _wave_table_ptr;
+	int table_len = _wave_table_size;
 
-	// Some wave tables (e.g. noise waves) can be very small (2 samples) while the
-	// phase accumulator can easily exceed that length. Instead of triggering a
-	// fatal bounds error we wrap the index so it always stays inside the vector.
-	int table_len = wave.size();
-	if (table_len == 0) {
+	if (unlikely(table_len == 0 || wave == nullptr)) {
 		return 0; // silent safeguard – should not happen in normal operation
 	}
+
+	// Some wave tables (e.g. noise waves) can be very small (2 samples) while the
+	// phase accumulator can easily exceed that length. Wrap the index so it always
+	// stays inside the array.
 	// Fast wrap: if length is power-of-two use bitmask, otherwise modulo.
 	int idx;
 	if ((table_len & (table_len - 1)) == 0) {
@@ -238,10 +248,7 @@ int SiOPMOperator::get_wave_value(int p_index) const {
 		idx = p_index % table_len;
 		if (idx < 0) idx += table_len; // ensure positive
 	}
-	// Belt-and-suspenders: guard against any pathological races.
-	if (unlikely(idx < 0 || idx >= table_len)) {
-		idx = (idx % table_len + table_len) % table_len;
-	}
+
 	return wave[idx];
 }
 
@@ -843,6 +850,7 @@ void SiOPMOperator::set_wave_table(const Ref<SiOPMWaveTable> &p_wave_table) {
 
 	_wave_table = p_wave_table->get_wavelet();
 	_wave_fixed_bits = p_wave_table->get_fixed_bits();
+	_update_wave_table_cache();
 }
 
 void SiOPMOperator::set_pcm_data(const Ref<SiOPMWavePCMData> &p_pcm_data) {
@@ -852,6 +860,7 @@ void SiOPMOperator::set_pcm_data(const Ref<SiOPMWavePCMData> &p_pcm_data) {
 
 		_wave_table = p_pcm_data->get_wavelet();
 		_wave_fixed_bits = PCM_WAVE_FIXED_BITS;
+		_update_wave_table_cache();
 
 		_pcm_channel_num = p_pcm_data->get_channel_count();
 		_pcm_start_point = p_pcm_data->get_start_point();
