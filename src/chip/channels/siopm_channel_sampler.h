@@ -160,6 +160,8 @@ public:
 	void set_sampler_loop_point(int p_loop);
 	void set_sampler_ignore_note_off(bool p_ignore);
 	void set_sampler_pan(int p_pan);
+	void set_sampler_gain_db(int p_db);
+	int get_sampler_gain_db() const;
 	
 	// Performance pitch offset setters/getters (delegate to current _sample_data).
 	void set_sampler_root_offset(int p_semitones);

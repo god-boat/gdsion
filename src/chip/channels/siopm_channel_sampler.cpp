@@ -281,6 +281,7 @@ void SiOPMChannelSampler::buffer(int p_length) {
 	int channels = _sample_data->get_channel_count();
 	int end_point = _sample_data->get_end_point();
 	int loop_point = _sample_data->get_loop_point();
+	double sample_gain = _sample_data->get_gain_linear();
 
 	// Preserve the start of output pipes.
 	SinglyLinkedList<int>::Element *left_start = _out_pipe->get();
@@ -359,8 +360,8 @@ void SiOPMChannelSampler::buffer(int p_length) {
 
 		// Apply channel ADSR + AM depth.
 		double env = _envelope_level;
-		double outL = sampleL * env * _amplitude_modulation_gain;
-		double outR = sampleR * env * _amplitude_modulation_gain;
+		double outL = sampleL * env * _amplitude_modulation_gain * sample_gain;
+		double outR = sampleR * env * _amplitude_modulation_gain * sample_gain;
 
 		// Convert to engine int domain and write.
 		int vL = CLAMP((int)(outL * 8192.0), -8192, 8191);
@@ -882,6 +883,16 @@ void SiOPMChannelSampler::set_sampler_pan(int p_pan) {
 		// Update the channel's sample pan immediately.
 		_sample_pan = p_pan;
 	}
+}
+
+void SiOPMChannelSampler::set_sampler_gain_db(int p_db) {
+	if (_sample_data.is_valid()) {
+		_sample_data->set_gain_db(p_db);
+	}
+}
+
+int SiOPMChannelSampler::get_sampler_gain_db() const {
+	return _sample_data.is_valid() ? _sample_data->get_gain_db() : 0;
 }
 
 void SiOPMChannelSampler::set_sampler_root_offset(int p_semitones) {

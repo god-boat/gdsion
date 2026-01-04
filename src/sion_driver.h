@@ -406,6 +406,8 @@ private:
 		bool sampler_ignore_note_off = false;
 		bool has_sampler_pan = false;
 		int sampler_pan = 0;
+		bool has_sampler_gain_db = false;
+		int sampler_gain_db = 0;
 		// FM operator fields (one flag per message; separate messages for separate params)
 		bool has_fm_op_tl = false;
 		bool has_fm_op_mul = false;
@@ -728,6 +730,7 @@ public:
 	void mailbox_set_sampler_fine_offset(int p_track_id, int p_cents, int64_t p_voice_scope_id = -1);
 	void mailbox_set_sampler_ignore_note_off(int p_track_id, bool p_ignore, int64_t p_voice_scope_id = -1);
 	void mailbox_set_sampler_pan(int p_track_id, int p_pan, int64_t p_voice_scope_id = -1);
+	void mailbox_set_sampler_gain_db(int p_track_id, int p_db, int64_t p_voice_scope_id = -1);
 	// FM operator params (by operator index)
 	void mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value);
 	void mailbox_set_fm_op_multiple(int p_track_id, int p_op_index, int p_value);

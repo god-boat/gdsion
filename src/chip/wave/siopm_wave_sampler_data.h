@@ -21,6 +21,8 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
 	Vector<double> _original_wave_data;
 	int _channel_count = 0;
 	int _pan = 0;
+	int _gain_db = 0;
+	double _gain_linear = 1.0;
     // Source sample rate of the decoded audio (Hz). Default sampler target is 48000 Hz.
     int _sample_rate = 48000;
     // This flag is only available for non-loop samples.
@@ -66,8 +68,11 @@ public:
 	Vector<double> get_wave_data() const { return _wave_data; }
 	int get_channel_count() const { return _channel_count; }
 	int get_pan() const { return _pan; }
+	int get_gain_db() const { return _gain_db; }
+	double get_gain_linear() const { return _gain_linear; }
 	int get_sample_rate() const { return _sample_rate; }
 	void set_pan(int p_pan);
+	void set_gain_db(int p_db);
 	int get_length() const;
 
 	bool get_ignore_note_off() const { return _ignore_note_off; }

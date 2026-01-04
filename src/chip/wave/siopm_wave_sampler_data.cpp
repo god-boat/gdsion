@@ -21,6 +21,8 @@ using namespace godot;
 
 // Target sample rate that GDSiON operates at.
 static constexpr int kTARGET_SR = 48000;
+static constexpr int kSAMPLER_GAIN_MIN_DB = -36;
+static constexpr int kSAMPLER_GAIN_MAX_DB = 36;
 
 // ---------------------------------------------------------------------------
 // Helper: simple linear resampler for mono/stereo interleaved PCM in [-1, 1]
@@ -284,6 +286,12 @@ void SiOPMWaveSamplerData::set_pan(int p_pan) {
 	_pan = CLAMP(p_pan, -64, 63);
 }
 
+void SiOPMWaveSamplerData::set_gain_db(int p_db) {
+	int clamped = CLAMP(p_db, kSAMPLER_GAIN_MIN_DB, kSAMPLER_GAIN_MAX_DB);
+	_gain_db = clamped;
+	_gain_linear = std::pow(2.0, (double)clamped / 6.0);
+}
+
 void SiOPMWaveSamplerData::set_start_point(int p_start) {
 	_start_point = p_start;
 	_slice();
@@ -316,6 +324,8 @@ void SiOPMWaveSamplerData::set_fine_offset(int p_cents) {
 void SiOPMWaveSamplerData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_pan", "pan"), &SiOPMWaveSamplerData::set_pan);
 	ClassDB::bind_method(D_METHOD("get_pan"), &SiOPMWaveSamplerData::get_pan);
+	ClassDB::bind_method(D_METHOD("set_gain_db", "db"), &SiOPMWaveSamplerData::set_gain_db);
+	ClassDB::bind_method(D_METHOD("get_gain_db"), &SiOPMWaveSamplerData::get_gain_db);
 	ClassDB::bind_method(D_METHOD("set_ignore_note_off", "ignore"), &SiOPMWaveSamplerData::set_ignore_note_off);
 	ClassDB::bind_method(D_METHOD("get_ignore_note_off"), &SiOPMWaveSamplerData::get_ignore_note_off);
 	ClassDB::bind_method(D_METHOD("set_start_point", "start"), &SiOPMWaveSamplerData::set_start_point);
@@ -423,6 +433,8 @@ Ref<SiOPMWaveSamplerData> SiOPMWaveSamplerData::duplicate() const {
     copy->_original_wave_data  = _original_wave_data; // Shared buffer as well
     copy->_channel_count       = _channel_count;
     copy->_pan                 = _pan;
+    copy->_gain_db             = _gain_db;
+    copy->_gain_linear         = _gain_linear;
     copy->_sample_rate         = _sample_rate;
     copy->_ignore_note_off     = _ignore_note_off;
     copy->_fixed_pitch         = _fixed_pitch;
