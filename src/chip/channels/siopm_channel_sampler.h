@@ -33,6 +33,8 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 
 	// Pitching support.
 	int _fine_pitch = 0; // Fine pitch (0-63).
+	int _note_on_pitch = 0; // Base pitch at note-on (fixed-point, 64 steps per semitone).
+	bool _has_note_on_pitch = false;
 	double _pitch_step = 1.0; // Playback rate step per output sample.
 	double _sample_index_fp = 0.0; // Fractional sample position.
 

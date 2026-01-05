@@ -116,10 +116,24 @@ void SiOPMChannelSampler::set_pitch(int p_value) {
 	_wave_number = p_value >> 6;
 	_fine_pitch = p_value & 0x3F; // lower 6 bits
 
-	// Calculate pitch ratio relative to middle C (note 60).
-	int note_number = _wave_number;
-	double delta_semitones = (double)(note_number - 60) + (_fine_pitch / 64.0); // 64 fine steps per semitone
-	_pitch_step = std::pow(2.0, delta_semitones / 12.0);
+	double delta_semitones = 0.0;
+	if (_sample_data.is_valid() && _sample_data->is_fixed_pitch() && _has_note_on_pitch) {
+		// For fixed-pitch samples, preserve envelope deltas but ignore base note transposition.
+		delta_semitones = ((double)(p_value - _note_on_pitch)) / 64.0;
+	} else {
+		// Calculate pitch ratio relative to middle C (note 60).
+		delta_semitones = (double)(_wave_number - 60) + ((double)_fine_pitch / 64.0); // 64 fine steps per semitone
+	}
+
+	double user_offset = 0.0;
+	if (_sample_data.is_valid()) {
+		user_offset = (double)_sample_data->get_root_offset()
+			+ (double)_sample_data->get_coarse_offset()
+			+ ((double)_sample_data->get_fine_offset() / 100.0);
+	}
+
+	double total_pitch = delta_semitones + user_offset;
+	_pitch_step = std::pow(2.0, total_pitch / 12.0);
 }
 
 void SiOPMChannelSampler::set_phase(int p_value) {
@@ -246,6 +260,8 @@ void SiOPMChannelSampler::_execute_note_on_immediate() {
 		_sample_pan = _sample_data->get_pan();
 		
 		// Use unified pitch calculation
+		_note_on_pitch = get_pitch();
+		_has_note_on_pitch = true;
 		_recalc_pitch_step();
 	}
 
@@ -486,6 +502,8 @@ void SiOPMChannelSampler::reset() {
 	_sample_pan = 0;
 
 	_fine_pitch = 0;
+	_note_on_pitch = 0;
+	_has_note_on_pitch = false;
 	_pitch_step = 1.0;
 	_sample_index_fp = 0.0;
 	_stop_click_guard();
