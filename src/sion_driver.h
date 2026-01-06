@@ -698,10 +698,6 @@ public:
 	   Returns the number of frames written (always p_frames on success). */
 	int32_t generate_audio(godot::AudioFrame *p_buffer, int32_t p_frames);
 
-	// Per-track metering helper: returns Vector2(rms, peak) for a given SiMMLTrack
-	// If p_window_length <= 0, the driver's buffer length is used.
-	godot::Vector2 track_get_level(Object *p_track_obj, int p_window_length = 0);
-
 	// --- Mailbox API (call from main thread) -------------------------------------
 	void mailbox_set_track_volume(int p_track_id, double p_linear_volume, int64_t p_voice_scope_id = -1);
 	void mailbox_set_track_pan(int p_track_id, int p_pan, int64_t p_voice_scope_id = -1);

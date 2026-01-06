@@ -10,7 +10,6 @@
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/callable.hpp>
-#include <godot_cpp/variant/vector2.hpp>
 #include "sion_enums.h"
 #include "chip/channels/siopm_channel_manager.h"
 #include "chip/siopm_ref_table.h"
@@ -93,16 +92,6 @@ protected:
 	SinglyLinkedList<int> *_base_pipe = nullptr;
 	SinglyLinkedList<int> *_out_pipe = nullptr;
 
-	// Per-channel metering scratch ring separate from shared output pipes.
-	static const int METER_RMS_WINDOW_MS = 200;
-	static const int METER_FALLBACK_SAMPLES = 2048;
-	SinglyLinkedList<int> *_meter_pipe = nullptr;
-	int _meter_write_index = 0;
-	int _meter_ring_length = 0;
-	int _meter_window_samples = 0;
-	// Persistent write cursor to avoid re-seeking on each write.
-	SinglyLinkedList<int>::Element *_meter_write_elem = nullptr;
-
 	// Volume and stream.
 
 	Vector<SiOPMStream *> _streams;
@@ -147,12 +136,6 @@ protected:
 	void _reset_sv_filter_state();
 	bool _try_shift_sv_filter_state(int p_state);
 	void _shift_sv_filter_state(int p_state);
-	// Meter helpers: copy current channel output into the per-channel meter ring
-	void _meter_write_from(SinglyLinkedList<int>::Element *p_src_start, int p_length);
-	void _meter_write_silence(int p_length);
-	int _compute_meter_window_samples() const;
-	void _ensure_meter_ring(int p_min_size = 0);
-
 public:
 	SiOPMChannelManager::ChannelType get_channel_type() const { return _channel_type; }
 
@@ -258,9 +241,6 @@ public:
 		_resonance = _resonance + (target_q - _resonance) * 0.25;
 	}
 
-	// Returns (rms, peak) for the most recent samples written by this channel.
-	// If p_length <= 0, uses the sound chip's buffer length.
-	Vector2 get_recent_level(int p_length = 0);
 };
 
 #endif // SIOPM_CHANNEL_BASE_H

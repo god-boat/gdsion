@@ -414,8 +414,6 @@ void SiOPMChannelSampler::buffer(int p_length) {
 	}
 
 	// Metering: copy post-filter mono lane (or left) into meter ring.
-	_meter_write_from(left_start, p_length);
-
 	// Advance pipe cursors for next buffer.
 	_out_pipe->set(left_write);
 	if (channels == 2 && right_write) {
@@ -470,8 +468,6 @@ void SiOPMChannelSampler::buffer_no_process(int p_length) {
 	}
 
 	// Maintain meter ring position even if idling or no processing.
-	_meter_write_silence(p_length);
-
 	_buffer_index += p_length;
 }
 

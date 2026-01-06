@@ -1840,8 +1840,6 @@ void SiOPMChannelFM::buffer(int p_length) {
 			mono_elem = mono_elem->next();
 		}
 	}
-	_meter_write_from(mono_out, p_length);
-
 	// // Debug: inspect edge discontinuities at buffer boundaries to diagnose
 	// // clicky artefacts when new voices start (e.g. during voice stealing).
 	// if (mono_out) {

@@ -10,7 +10,6 @@
 #include "chip/siopm_sound_chip.h"
 #include "chip/siopm_stream.h"
 #include <cstring>
-#include <godot_cpp/variant/vector2.hpp>
 
 #define COPY_TL_TABLE(m_target, m_source)                        \
 	for (int _i = 0; _i < SiOPMRefTable::TL_TABLE_SIZE; _i++) {  \
@@ -287,8 +286,6 @@ void SiOPMChannelBase::_no_process(int p_length) {
 		_ring_pipe->advance(p_length);
 	}
 
-	// Maintain meter ring position even if idling or no processing
-	_meter_write_silence(p_length);
 }
 
 void SiOPMChannelBase::reset_channel_buffer_status() {
@@ -308,52 +305,6 @@ void SiOPMChannelBase::reset_channel_buffer_status() {
 	}
 	if (_out_pipe) {
 		_out_pipe->front();
-	}
-	// Reset meter ring as well
-	if (_meter_pipe) {
-		_meter_pipe->front();
-		_meter_write_index = 0;
-		_meter_write_elem = _meter_pipe->get();
-	}
-}
-
-int SiOPMChannelBase::_compute_meter_window_samples() const {
-	int base_len = _sound_chip ? _sound_chip->get_buffer_length() : 0;
-	int desired = base_len;
-	if (_table && _table->sampling_rate > 0) {
-		int sr = _table->sampling_rate;
-		int target = (sr * METER_RMS_WINDOW_MS + 999) / 1000;
-		if (target > desired) {
-			desired = target;
-		}
-	}
-	if (desired <= 0) {
-		desired = METER_FALLBACK_SAMPLES;
-	}
-	return desired;
-}
-
-void SiOPMChannelBase::_ensure_meter_ring(int p_min_size) {
-	int desired = _meter_window_samples;
-	if (desired <= 0) {
-		desired = _compute_meter_window_samples();
-		_meter_window_samples = desired;
-	}
-	if (p_min_size > desired) {
-		desired = p_min_size;
-		_meter_window_samples = desired;
-	}
-	if (desired <= 0) {
-		desired = METER_FALLBACK_SAMPLES;
-	}
-	if (!_meter_pipe || desired != _meter_ring_length) {
-		if (_meter_pipe) {
-			memdelete(_meter_pipe);
-		}
-		_meter_pipe = memnew(SinglyLinkedList<int>(desired, 0, true));
-		_meter_ring_length = desired;
-		_meter_write_index = 0;
-		_meter_write_elem = _meter_pipe->get();
 	}
 }
 
@@ -455,9 +406,6 @@ void SiOPMChannelBase::buffer(int p_length) {
 		}
 	}
 
-	// Copy the channel's post-filtered mono output into the private meter ring.
-	_meter_write_from(mono_out, p_length);
-
 	_buffer_index += p_length;
 }
 
@@ -521,15 +469,6 @@ void SiOPMChannelBase::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) 
 	set_sv_filter();
 	_shift_sv_filter_state(EG_OFF);
 
-	// Meter ring sizing follows desired RMS window; reallocate on init to pick up new buffer sizes.
-	_meter_window_samples = _compute_meter_window_samples();
-	if (_meter_pipe) {
-		memdelete(_meter_pipe);
-		_meter_pipe = nullptr;
-	}
-	_meter_ring_length = 0;
-	_meter_write_elem = nullptr;
-	_meter_write_index = 0;
 }
 
 void SiOPMChannelBase::reset() {
@@ -560,8 +499,6 @@ void SiOPMChannelBase::_bind_methods() {
 	// Volume getters/setters
 	ClassDB::bind_method(D_METHOD("get_master_volume"), &SiOPMChannelBase::get_master_volume);
 	ClassDB::bind_method(D_METHOD("set_master_volume", "value"), &SiOPMChannelBase::set_master_volume);
-	// Meter helper
-	ClassDB::bind_method(D_METHOD("get_recent_level", "length"), &SiOPMChannelBase::get_recent_level, DEFVAL(0));
 }
 
 SiOPMChannelBase::SiOPMChannelBase(SiOPMSoundChip *p_chip) {
@@ -576,143 +513,6 @@ SiOPMChannelBase::SiOPMChannelBase(SiOPMSoundChip *p_chip) {
 }
 
 SiOPMChannelBase::~SiOPMChannelBase() {
-	if (_meter_pipe) {
-		memdelete(_meter_pipe);
-		_meter_pipe = nullptr;
-	}
-	_meter_ring_length = 0;
-	_meter_write_elem = nullptr;
-}
-
-Vector2 SiOPMChannelBase::get_recent_level(int p_length) {
-	// Only use the per-channel meter ring to ensure independent metering
-	SinglyLinkedList<int> *src_pipe = _meter_pipe;
-	if (src_pipe == nullptr || _sound_chip == nullptr) {
-		return Vector2(0.0, 0.0);
-	}
-	int buffer_len = _meter_ring_length > 0 ? _meter_ring_length : _sound_chip->get_buffer_length();
-	if (buffer_len <= 0) {
-		return Vector2(0.0, 0.0);
-	}
-	int length = p_length <= 0 ? buffer_len : (p_length > buffer_len ? buffer_len : p_length);
-	if (length <= 0) {
-		return Vector2(0.0, 0.0);
-	}
-
-	// Window ending at current write head.
-	int write_index = _meter_write_index;
-	// Determine start index in the ring: (write_index - length) modulo buffer_len
-	int start_index = write_index - length;
-	if (start_index < 0) {
-		start_index += buffer_len;
-	}
-
-	SinglyLinkedList<int>::Element *elem = src_pipe->front();
-	if (!elem) {
-		return Vector2(0.0, 0.0);
-	}
-	// Advance to start_index within the ring
-	for (int i = 0; i < start_index; i++) {
-		elem = elem->next();
-		if (!elem) {
-			// If somehow not ringed, restart safely
-			elem = src_pipe->front();
-			if (!elem) {
-				return Vector2(0.0, 0.0);
-			}
-		}
-	}
-
-	double i2n = SiOPMRefTable::get_instance()->i2n;
-	double rms_accum = 0.0;
-	double peak = 0.0;
-	int count = 0;
-	SinglyLinkedList<int>::Element *cur = elem;
-	while (cur && count < length) {
-		double s = cur->value * i2n;
-		double a = Math::abs(s);
-		if (a > peak) peak = a;
-		rms_accum += s * s;
-		cur = cur->next();
-		count++;
-		if (!cur) {
-			cur = src_pipe->front();
-		}
-	}
-	if (count == 0) {
-		return Vector2(0.0, 0.0);
-	}
-	double rms = Math::sqrt(rms_accum / (double)count);
-	return Vector2((float)rms, (float)peak);
-}
-
-void SiOPMChannelBase::_meter_write_from(SinglyLinkedList<int>::Element *p_src_start, int p_length) {
-	_ensure_meter_ring();
-	if (!_meter_pipe) {
-		return;
-	}
-	if (!_meter_write_elem) {
-		SinglyLinkedList<int>::Element *head = _meter_pipe->front();
-		_meter_write_elem = head ? head : _meter_pipe->get();
-		if (!_meter_write_elem) {
-			return;
-		}
-	}
-	SinglyLinkedList<int>::Element *dst = _meter_write_elem;
-	SinglyLinkedList<int>::Element *src = p_src_start;
-	const int ring_len = _meter_ring_length > 0 ? _meter_ring_length : (_sound_chip ? _sound_chip->get_buffer_length() : 0);
-	for (int i = 0; i < p_length; i++) {
-		if (!dst) {
-			SinglyLinkedList<int>::Element *head = _meter_pipe->front();
-			dst = head ? head : _meter_pipe->get();
-			if (!dst) {
-				break;
-			}
-		}
-		if (!src) {
-			break;
-		}
-		dst->value = src->value;
-		dst = dst->next();
-		src = src->next();
-		_meter_write_index++;
-		if (ring_len > 0 && _meter_write_index >= ring_len) {
-			_meter_write_index -= ring_len;
-		}
-	}
-	_meter_write_elem = dst;
-}
-
-void SiOPMChannelBase::_meter_write_silence(int p_length) {
-	_ensure_meter_ring();
-	if (!_meter_pipe) {
-		return;
-	}
-	if (!_meter_write_elem) {
-		SinglyLinkedList<int>::Element *head = _meter_pipe->front();
-		_meter_write_elem = head ? head : _meter_pipe->get();
-		if (!_meter_write_elem) {
-			return;
-		}
-	}
-	SinglyLinkedList<int>::Element *dst = _meter_write_elem;
-	const int ring_len = _meter_ring_length > 0 ? _meter_ring_length : (_sound_chip ? _sound_chip->get_buffer_length() : 0);
-	for (int i = 0; i < p_length; i++) {
-		if (!dst) {
-			SinglyLinkedList<int>::Element *head = _meter_pipe->front();
-			dst = head ? head : _meter_pipe->get();
-			if (!dst) {
-				break;
-			}
-		}
-		dst->value = 0;
-		dst = dst->next();
-		_meter_write_index++;
-		if (ring_len > 0 && _meter_write_index >= ring_len) {
-			_meter_write_index -= ring_len;
-		}
-	}
-	_meter_write_elem = dst;
 }
 
 #undef COPY_TL_TABLE
