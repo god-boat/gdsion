@@ -169,7 +169,7 @@ public:
 	void set_operator_super_count(int p_value);
 	void set_operator_super_spread(int p_value);
 	void set_operator_super_stereo_spread(int p_value);
-	void set_mute(bool p_mute);
+	void set_mute(bool p_mute) override;
 	void set_envelope_reset_on_attack(bool p_reset);
 	virtual void set_phase(int p_value) override;
 	virtual void set_detune(int p_value) override;
