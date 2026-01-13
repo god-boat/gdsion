@@ -325,6 +325,7 @@ void SiOPMOperator::set_fnumber(int p_value) {
 void SiOPMOperator::set_super_wave(int p_count, int p_spread) {
 	_super_count = (p_count < 1) ? 1 : ((p_count > MAX_SUPER_VOICES) ? MAX_SUPER_VOICES : p_count);
 	_super_spread = (p_spread < 0) ? 0 : ((p_spread > 1000) ? 1000 : p_spread);
+	_super_norm_inv = (_super_count > 1) ? (1.0 / sqrt((double)_super_count)) : 1.0;
 	_update_super_phase_steps();
 	_update_super_pan_values();
 }
@@ -432,9 +433,8 @@ bool SiOPMOperator::get_super_output_stereo(int p_fm_input, int p_input_level, i
 	}
 
 	// Normalize by sqrt(n) to maintain consistent perceived loudness.
-	double norm = sqrt((double)_super_count);
-	r_left = (int)(sum_left / norm);
-	r_right = (int)(sum_right / norm);
+	r_left = (int)(sum_left * _super_norm_inv);
+	r_right = (int)(sum_right * _super_norm_inv);
 
 	return true; // Stereo output
 }
@@ -950,6 +950,7 @@ void SiOPMOperator::initialize() {
 	_super_count = 1;
 	_super_spread = 0;
 	_super_stereo_spread = 0;
+	_super_norm_inv = 1.0;
 	for (int i = 0; i < MAX_SUPER_VOICES; i++) {
 		_super_phases[i] = 0;
 		_super_phase_steps[i] = 0;

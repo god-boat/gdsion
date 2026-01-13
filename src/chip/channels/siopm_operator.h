@@ -210,6 +210,8 @@ private:
 	int _super_phase_steps[MAX_SUPER_VOICES] = {};
 	int _super_count = 1;
 	int _super_spread = 0;
+	// Cached normalization factor for super voices (1 / sqrt(count)).
+	double _super_norm_inv = 1.0;
 	// Stereo spread [0-100]. 0 = mono, 100 = full stereo spread across voices.
 	int _super_stereo_spread = 0;
 	// Precomputed per-voice pan values [0-128] for stereo spread. 64 = center.
