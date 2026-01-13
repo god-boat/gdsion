@@ -203,6 +203,8 @@ public:
 	void set_max_track_count(int p_value) { _max_track_count = p_value; }
 
 	Vector<SiMMLTrack *> get_tracks() const { return _tracks; }
+	// Audio-thread safe: returns const reference to avoid vector copy allocation
+	const Vector<SiMMLTrack *>& get_tracks_ref() const { return _tracks; }
 	SiMMLTrack *get_current_track() const { return _current_track; }
 	void reset_all_tracks();
 

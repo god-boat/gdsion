@@ -2589,7 +2589,9 @@ void SiONDriver::_drain_track_mailbox() {
         const _TrackUpdate &u = _mb_ring[tail];
         tail = (tail + 1) & (_MB_CAPACITY - 1);
         // Apply to all live tracks that match this track_id (and optional voice scope)
-        for (SiMMLTrack *trk : sequencer->get_tracks()) {
+        // AUDIO THREAD SAFETY: Use get_tracks_ref() to avoid vector copy allocation
+        const Vector<SiMMLTrack *>& tracks = sequencer->get_tracks_ref();
+        for (SiMMLTrack *trk : tracks) {
             if (!trk) continue;
             if (trk->get_track_id() != u.track_id) continue;
             if (u.voice_scope_id != -1) {
