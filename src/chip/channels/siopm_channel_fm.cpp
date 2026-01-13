@@ -1458,7 +1458,7 @@ void SiOPMChannelFM::_process_pcm_lfo_off(int p_length) {
 				}
 			}
 
-			int log_idx = ope0->get_wave_value(t);
+			int log_idx = ope0->get_wave_value_fast(t);
 			log_idx += ope0->get_eg_output();
 			output = _safe_log_lookup(_table, log_idx);
 
@@ -1520,7 +1520,7 @@ void SiOPMChannelFM::_process_pcm_lfo_on(int p_length) {
 				}
 			}
 
-			int log_idx = ope0->get_wave_value(t);
+			int log_idx = ope0->get_wave_value_fast(t);
 			log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level>>ope0->get_amplitude_modulation_shift());
 			output = _safe_log_lookup(_table, log_idx);
 
@@ -1619,7 +1619,7 @@ void SiOPMChannelFM::_process_ring(int p_length) {
 			{
 				ope0->tick_pulse_generator();
 				int t = ((ope0->get_phase() + (in_pipe->value << _input_level)) & SiOPMRefTable::PHASE_FILTER) >> ope0->get_wave_fixed_bits();
-				log_idx = ope0->get_wave_value(t);
+				log_idx = ope0->get_wave_value_fast(t);
 			}
 
 			// Operator 1 (w/ operator0's envelope and AMS).
@@ -1627,7 +1627,7 @@ void SiOPMChannelFM::_process_ring(int p_length) {
 				ope1->tick_pulse_generator();
 				int t = (ope1->get_phase() & SiOPMRefTable::PHASE_FILTER) >> ope1->get_wave_fixed_bits();
 
-				log_idx += ope1->get_wave_value(t);
+				log_idx += ope1->get_wave_value_fast(t);
 				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
 				output = _safe_log_lookup(_table, log_idx);
 			}
@@ -1684,7 +1684,7 @@ void SiOPMChannelFM::_process_sync(int p_length) {
 				ope1->tick_pulse_generator();
 				int t = (ope1->get_phase() & SiOPMRefTable::PHASE_FILTER) >> ope1->get_wave_fixed_bits();
 
-				int log_idx = ope1->get_wave_value(t);
+				int log_idx = ope1->get_wave_value_fast(t);
 				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
 				output = _safe_log_lookup(_table, log_idx);
 			}

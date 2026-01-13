@@ -85,6 +85,24 @@ private:
 	void _update_key_code(int p_value);
 	void _update_total_level();
 	void _update_wave_table_cache();
+	_FORCE_INLINE_ int _get_wave_value_fast(int p_index) const {
+		// Fast wave lookup for audio thread with wrapping.
+		const int *wave = _wave_table_ptr;
+		int size = _wave_table_size;
+		if (size <= 0 || wave == nullptr) {
+			return 0;
+		}
+		int idx;
+		if (_wave_table_is_pow2) {
+			idx = p_index & _wave_table_mask;
+		} else {
+			idx = p_index % size;
+			if (idx < 0) {
+				idx += size;
+			}
+		}
+		return wave[idx];
+	}
 
 	// Pulse generator.
 
@@ -96,6 +114,8 @@ private:
 	// to prevent COW from freeing the backing data.
 	const int *_wave_table_ptr = nullptr;
 	int _wave_table_size = 0;
+	int _wave_table_mask = 0;
+	bool _wave_table_is_pow2 = false;
 	// Phase shift.
 	int _wave_fixed_bits = 0;
 	// Phase step shift.
@@ -280,6 +300,8 @@ public:
 	void set_pitch_table_type(SiONPitchTableType p_type);
 
 	int get_wave_value(int p_index) const;
+	// Fast wave lookup for audio thread; no bounds checks.
+	_FORCE_INLINE_ int get_wave_value_fast(int p_index) const { return _get_wave_value_fast(p_index); }
 	int get_wave_fixed_bits() const { return _wave_fixed_bits; }
 
 	int get_phase() const { return _phase; }

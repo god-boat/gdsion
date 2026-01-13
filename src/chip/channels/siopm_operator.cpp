@@ -201,12 +201,17 @@ void SiOPMOperator::_update_phase_step(int p_step) {
 }
 
 void SiOPMOperator::_update_wave_table_cache() {
-	if (_wave_table.size() > 0) {
+	const int size = _wave_table.size();
+	if (size > 0) {
 		_wave_table_ptr = _wave_table.ptr();
-		_wave_table_size = _wave_table.size();
+		_wave_table_size = size;
+		_wave_table_is_pow2 = (size & (size - 1)) == 0;
+		_wave_table_mask = size - 1;
 	} else {
 		_wave_table_ptr = nullptr;
 		_wave_table_size = 0;
+		_wave_table_is_pow2 = false;
+		_wave_table_mask = 0;
 	}
 }
 
@@ -228,28 +233,8 @@ void SiOPMOperator::set_pitch_table_type(SiONPitchTableType p_type) {
 }
 
 int SiOPMOperator::get_wave_value(int p_index) const {
-	// Use cached raw pointer to avoid refcount overhead. The cache is updated
-	// whenever _wave_table changes, and the Vector keeps the backing data alive.
-	const int *wave = _wave_table_ptr;
-	int table_len = _wave_table_size;
-
-	if (unlikely(table_len == 0 || wave == nullptr)) {
-		return 0; // silent safeguard – should not happen in normal operation
-	}
-
-	// Some wave tables (e.g. noise waves) can be very small (2 samples) while the
-	// phase accumulator can easily exceed that length. Wrap the index so it always
-	// stays inside the array.
-	// Fast wrap: if length is power-of-two use bitmask, otherwise modulo.
-	int idx;
-	if ((table_len & (table_len - 1)) == 0) {
-		idx = p_index & (table_len - 1);
-	} else {
-		idx = p_index % table_len;
-		if (idx < 0) idx += table_len; // ensure positive
-	}
-
-	return wave[idx];
+	ERR_FAIL_INDEX_V(p_index, _wave_table.size(), -1);
+	return _wave_table[p_index];
 }
 
 void SiOPMOperator::set_fixed_pitch_index(int p_value) {
@@ -391,7 +376,7 @@ void SiOPMOperator::_update_super_phase_steps() {
 int SiOPMOperator::get_super_output(int p_fm_input, int p_input_level, int p_am_level) {
 	if (_super_count <= 1) {
 		int t = ((_phase + (p_fm_input << p_input_level)) & SiOPMRefTable::PHASE_FILTER) >> _wave_fixed_bits;
-		int log_idx = get_wave_value(t) + _eg_output + p_am_level;
+		int log_idx = _get_wave_value_fast(t) + _eg_output + p_am_level;
 		if (log_idx < 0) {
 			log_idx = 0;
 		} else if (log_idx > SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1) {
@@ -403,7 +388,7 @@ int SiOPMOperator::get_super_output(int p_fm_input, int p_input_level, int p_am_
 	int sum = 0;
 	for (int i = 0; i < _super_count; i++) {
 		int t = ((_super_phases[i] + (p_fm_input << p_input_level)) & SiOPMRefTable::PHASE_FILTER) >> _wave_fixed_bits;
-		int log_idx = get_wave_value(t) + _eg_output + p_am_level;
+		int log_idx = _get_wave_value_fast(t) + _eg_output + p_am_level;
 		if (log_idx < 0) {
 			log_idx = 0;
 		} else if (log_idx > SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1) {
@@ -414,7 +399,7 @@ int SiOPMOperator::get_super_output(int p_fm_input, int p_input_level, int p_am_
 	// Normalize by sqrt(n) to maintain roughly consistent perceived loudness.
 	// With random phases, RMS power grows as sqrt(n), so this keeps the level
 	// stable while preserving the thickness from additional voices.
-	return (int)(sum / sqrt((double)_super_count));
+	return (int)(sum * _super_norm_inv);
 }
 
 bool SiOPMOperator::get_super_output_stereo(int p_fm_input, int p_input_level, int p_am_level, int &r_left, int &r_right) {
@@ -432,7 +417,7 @@ bool SiOPMOperator::get_super_output_stereo(int p_fm_input, int p_input_level, i
 
 	for (int i = 0; i < _super_count; i++) {
 		int t = ((_super_phases[i] + (p_fm_input << p_input_level)) & SiOPMRefTable::PHASE_FILTER) >> _wave_fixed_bits;
-		int log_idx = get_wave_value(t) + _eg_output + p_am_level;
+		int log_idx = _get_wave_value_fast(t) + _eg_output + p_am_level;
 		if (log_idx < 0) {
 			log_idx = 0;
 		} else if (log_idx > SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1) {

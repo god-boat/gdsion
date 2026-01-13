@@ -347,7 +347,7 @@ void SiOPMChannelPCM::_process_operator_mono(int p_length, bool p_mix) {
 				}
 			}
 
-			int log_idx = ope0->get_wave_value(t);
+			int log_idx = ope0->get_wave_value_fast(t);
 			log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
 			output = _table->log_table[log_idx];
 		}
@@ -427,7 +427,7 @@ void SiOPMChannelPCM::_process_operator_stereo(int p_length, bool p_mix) {
 			// Left output.
 			{
 				t <<= 1;
-				int log_idx = ope0->get_wave_value(t);
+				int log_idx = ope0->get_wave_value_fast(t);
 				log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
 				output_left = _table->log_table[log_idx];
 			}
@@ -435,7 +435,7 @@ void SiOPMChannelPCM::_process_operator_stereo(int p_length, bool p_mix) {
 			// Right output.
 			{
 				t++;
-				int log_idx = ope0->get_wave_value(t);
+				int log_idx = ope0->get_wave_value_fast(t);
 				log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
 				output_right = _table->log_table[log_idx];
 			}
