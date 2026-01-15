@@ -170,6 +170,7 @@ void SiOPMChannelParams::initialize() {
 		master_volumes.write[i] = 0;
 	}
 	master_volumes.write[0] = 0.5;
+	instrument_gain_db = 0;
 	pan = 64;
 
 	carrier_mask.clear();
@@ -224,6 +225,7 @@ void SiOPMChannelParams::copy_from(const Ref<SiOPMChannelParams> &p_params) {
 	for (int i = 1; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
 		master_volumes.write[i] = p_params->master_volumes[i];
 	}
+	instrument_gain_db = p_params->instrument_gain_db;
 	pan = p_params->pan;
 
 	carrier_mask = p_params->carrier_mask;
@@ -266,6 +268,7 @@ String SiOPMChannelParams::_to_string() const {
 	params += "amp=" + itos(amplitude_modulation_depth) + ", ";
 	params += "pitch=" + itos(pitch_modulation_depth) + ", ";
 	params += "vol=" + rtos(master_volumes[0]) + ", ";
+	params += "inst_gain_db=" + itos(instrument_gain_db) + ", ";
 	params += "pan=" + itos(pan - 64) + ", ";
 
 	params += "filter=(" + itos(filter_type) + ", " + itos(filter_cutoff) + ", " + itos(filter_resonance) + "), ";
@@ -307,6 +310,8 @@ void SiOPMChannelParams::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("get_master_volume", "index"), &SiOPMChannelParams::get_master_volume);
 	ClassDB::bind_method(D_METHOD("set_master_volume", "index", "value"), &SiOPMChannelParams::set_master_volume);
+	ClassDB::bind_method(D_METHOD("get_instrument_gain_db"), &SiOPMChannelParams::get_instrument_gain_db);
+	ClassDB::bind_method(D_METHOD("set_instrument_gain_db", "value"), &SiOPMChannelParams::set_instrument_gain_db);
 
 	ClassDB::bind_method(D_METHOD("get_pan"), &SiOPMChannelParams::get_pan);
 	ClassDB::bind_method(D_METHOD("set_pan", "value"), &SiOPMChannelParams::set_pan);
@@ -351,6 +356,7 @@ void SiOPMChannelParams::_bind_methods() {
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "amplitude_modulation_depth"), "set_amplitude_modulation_depth", "get_amplitude_modulation_depth");
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "pitch_modulation_depth"), "set_pitch_modulation_depth", "get_pitch_modulation_depth");
 
+	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "instrument_gain_db"), "set_instrument_gain_db", "get_instrument_gain_db");
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "pan"), "set_pan", "get_pan");
 
 	ClassDB::bind_method(D_METHOD("get_carrier_mask"), &SiOPMChannelParams::get_carrier_mask);

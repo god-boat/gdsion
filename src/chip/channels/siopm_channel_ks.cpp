@@ -246,13 +246,13 @@ void SiOPMChannelKS::buffer(int p_length) {
 				if (_volumes[i] > 0) {
 					SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 					if (stream) {
-						stream->write(mono_out, _buffer_index, p_length, _volumes[i] * _expression, _pan);
+						stream->write(mono_out, _buffer_index, p_length, _volumes[i] * _expression * _instrument_gain, _pan);
 					}
 				}
 			}
 		} else {
 			SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-			stream->write(mono_out, _buffer_index, p_length, _volumes[0] * _expression, _pan);
+			stream->write(mono_out, _buffer_index, p_length, _volumes[0] * _expression * _instrument_gain, _pan);
 		}
 	}
 

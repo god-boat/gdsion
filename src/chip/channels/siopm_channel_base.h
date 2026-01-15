@@ -96,6 +96,8 @@ protected:
 
 	Vector<SiOPMStream *> _streams;
 	Vector<double> _volumes;
+	double _instrument_gain = 1.0;
+	int _instrument_gain_db = 0;
 	bool _is_idling = true;
 	int _pan = 64;
 	bool _has_effect_send = false;
@@ -155,6 +157,8 @@ public:
 
 	virtual int get_master_volume() const;
 	virtual void set_master_volume(int p_value);
+	virtual int get_instrument_gain_db() const { return _instrument_gain_db; }
+	virtual void set_instrument_gain_db(int p_db);
 
 	virtual int get_pan() const;
 	virtual void set_pan(int p_value);

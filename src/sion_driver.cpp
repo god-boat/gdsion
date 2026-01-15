@@ -1384,6 +1384,7 @@ void SiONDriver::_bind_methods() {
 
 	// Mailbox bindings
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_volume", "track_id", "linear_volume", "voice_scope_id"), &SiONDriver::mailbox_set_track_volume, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_instrument_gain_db", "track_id", "db", "voice_scope_id"), &SiONDriver::mailbox_set_track_instrument_gain_db, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_pan", "track_id", "pan", "voice_scope_id"), &SiONDriver::mailbox_set_track_pan, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter", "track_id", "cutoff", "resonance", "type", "attack_rate", "decay_rate1", "decay_rate2", "release_rate", "decay_cutoff1", "decay_cutoff2", "sustain_cutoff", "release_cutoff", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter, DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_filter_type", "track_id", "type", "voice_scope_id"), &SiONDriver::mailbox_set_track_filter_type, DEFVAL(-1));
@@ -2107,6 +2108,15 @@ void SiONDriver::mailbox_set_track_volume(int p_track_id, double p_linear_volume
     _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_track_instrument_gain_db(int p_track_id, int p_db, int64_t p_voice_scope_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.voice_scope_id = p_voice_scope_id;
+    u.has_inst_gain = true;
+    u.inst_gain_db = p_db;
+    _mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_track_pan(int p_track_id, int p_pan, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -2608,6 +2618,9 @@ void SiONDriver::_drain_track_mailbox() {
                 // to prevent actual clipping at the DAC. This matches Audacity's approach.
                 int vol128 = (int)Math::round(CLAMP(u.vol_linear, 0.0, 2.0) * 128.0);
                 ch->set_master_volume(vol128);
+            }
+            if (u.has_inst_gain) {
+                ch->set_instrument_gain_db(u.inst_gain_db);
             }
             if (u.has_pan) {
                 ch->set_pan(CLAMP(u.pan, -64, 64));

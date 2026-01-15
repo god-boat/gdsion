@@ -31,6 +31,7 @@ void SiOPMChannelPCM::get_channel_params(const Ref<SiOPMChannelParams> &p_params
 	for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
 		p_params->set_master_volume(i, _volumes[i]);
 	}
+	p_params->set_instrument_gain_db(get_instrument_gain_db());
 	p_params->set_pan(_pan);
 
 	_operator->get_operator_params(p_params->get_operator_params(0));
@@ -69,6 +70,7 @@ void SiOPMChannelPCM::set_channel_params(const Ref<SiOPMChannelParams> &p_params
 
 		_pan = p_params->get_pan();
 	}
+	set_instrument_gain_db(p_params->get_instrument_gain_db());
 
 	_filter_type = p_params->get_filter_type();
 	{
@@ -458,7 +460,7 @@ void SiOPMChannelPCM::_process_operator_stereo(int p_length, bool p_mix) {
 }
 
 void SiOPMChannelPCM::_write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length) {
-	double volume_coef = _sample_volume * _sound_chip->get_pcm_volume();
+	double volume_coef = _sample_volume * _sound_chip->get_pcm_volume() * _instrument_gain;
 	int pan = CLAMP(_pan + _sample_pan, 0, 128);
 
 	if (_has_effect_send) {
@@ -477,7 +479,7 @@ void SiOPMChannelPCM::_write_stream_mono(SinglyLinkedList<int>::Element *p_outpu
 }
 
 void SiOPMChannelPCM::_write_stream_stereo(SinglyLinkedList<int>::Element *p_output_left, SinglyLinkedList<int>::Element *p_output_right, int p_length) {
-	double volume_coef = _sample_volume * _sound_chip->get_pcm_volume();
+	double volume_coef = _sample_volume * _sound_chip->get_pcm_volume() * _instrument_gain;
 	int pan = CLAMP(_pan + _sample_pan, 0, 128);
 
 	if (_has_effect_send) {

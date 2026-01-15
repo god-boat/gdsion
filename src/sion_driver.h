@@ -350,6 +350,8 @@ private:
 		int64_t voice_scope_id = -1;
 		bool has_vol = false;
 		double vol_linear = 1.0;
+		bool has_inst_gain = false;
+		int inst_gain_db = 0;
 		bool has_pan = false;
 		int pan = 0;
 		bool has_filter = false;
@@ -700,6 +702,7 @@ public:
 
 	// --- Mailbox API (call from main thread) -------------------------------------
 	void mailbox_set_track_volume(int p_track_id, double p_linear_volume, int64_t p_voice_scope_id = -1);
+	void mailbox_set_track_instrument_gain_db(int p_track_id, int p_db, int64_t p_voice_scope_id = -1);
 	void mailbox_set_track_pan(int p_track_id, int p_pan, int64_t p_voice_scope_id = -1);
 	void mailbox_set_track_filter(int p_track_id, int p_cutoff, int p_resonance, int p_type = -1, int p_attack_rate = -1, int p_decay_rate1 = -1, int p_decay_rate2 = -1, int p_release_rate = -1, int p_decay_cutoff1 = -1, int p_decay_cutoff2 = -1, int p_sustain_cutoff = -1, int p_release_cutoff = -1, int64_t p_voice_scope_id = -1);
 	void mailbox_set_track_filter_type(int p_track_id, int p_type, int64_t p_voice_scope_id = -1);

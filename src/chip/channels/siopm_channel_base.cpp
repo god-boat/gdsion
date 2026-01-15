@@ -16,6 +16,15 @@
 		m_target[_i] = m_source[_i];                             \
 	}
 
+static const int kInstrumentGainDbMin = -70;
+static const int kInstrumentGainDbMax = 6;
+static const int kInstrumentGainDbDefault = 0;
+
+static inline double _db_to_linear(double p_db) {
+	return std::pow(10.0, p_db / 20.0);
+}
+
+
 int SiOPMChannelBase::get_master_volume() const {
 	return _volumes[0] * 128;
 }
@@ -23,6 +32,16 @@ int SiOPMChannelBase::get_master_volume() const {
 void SiOPMChannelBase::set_master_volume(int p_value) {
 	int value = CLAMP(p_value, 0, 256);
 	_volumes.write[0] = value * 0.0078125; // 0.0078125 = 1/128
+}
+
+void SiOPMChannelBase::set_instrument_gain_db(int p_db) {
+	int value = CLAMP(p_db, kInstrumentGainDbMin, kInstrumentGainDbMax);
+	_instrument_gain_db = value;
+	if (value <= kInstrumentGainDbMin) {
+		_instrument_gain = 0.0;
+		return;
+	}
+	_instrument_gain = _db_to_linear((double)value);
 }
 
 // External value is in the -64 to 64 range (from all the way to the left,
@@ -396,13 +415,13 @@ void SiOPMChannelBase::buffer(int p_length) {
 				if (_volumes[i] > 0) {
 					SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 					if (stream) {
-						stream->write(mono_out, _buffer_index, p_length, _volumes[i], _pan);
+						stream->write(mono_out, _buffer_index, p_length, _volumes[i] * _instrument_gain, _pan);
 					}
 				}
 			}
 		} else {
 			SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-			stream->write(mono_out, _buffer_index, p_length, _volumes[0], _pan);
+			stream->write(mono_out, _buffer_index, p_length, _volumes[0] * _instrument_gain, _pan);
 		}
 	}
 
@@ -425,6 +444,8 @@ void SiOPMChannelBase::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) 
 			_streams.write[i] = p_prev->_streams[i];
 		}
 
+		_instrument_gain = p_prev->_instrument_gain;
+		_instrument_gain_db = p_prev->_instrument_gain_db;
 		_pan = p_prev->_pan;
 		_has_effect_send = p_prev->_has_effect_send;
 		_mute = p_prev->_mute;
@@ -438,6 +459,7 @@ void SiOPMChannelBase::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) 
 			_streams.write[i] = nullptr;
 		}
 
+		set_instrument_gain_db(kInstrumentGainDbDefault);
 		_pan = 64;
 		_has_effect_send = false;
 		_mute = false;
@@ -481,6 +503,7 @@ String SiOPMChannelBase::_to_string() const {
 
 	params += "feedback=" + itos(_input_level - 6) + ", ";
 	params += "vol=" + rtos(_volumes[0]) + ", ";
+	params += "inst_gain_db=" + itos(_instrument_gain_db) + ", ";
 	params += "pan=" + itos(_pan - 64) + "";
 
 	return "SiOPMChannelBase: " + params;
@@ -510,6 +533,7 @@ SiOPMChannelBase::SiOPMChannelBase(SiOPMSoundChip *p_chip) {
 	_streams.resize_zeroed(SiOPMSoundChip::STREAM_SEND_SIZE);
 	_volumes.clear();
 	_volumes.resize_zeroed(SiOPMSoundChip::STREAM_SEND_SIZE);
+	set_instrument_gain_db(kInstrumentGainDbDefault);
 }
 
 SiOPMChannelBase::~SiOPMChannelBase() {

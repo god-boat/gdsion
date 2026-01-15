@@ -51,6 +51,7 @@ private:
 	int amplitude_modulation_depth = 0;
 	int pitch_modulation_depth = 0;
 	Vector<double> master_volumes;
+	int instrument_gain_db = 0;
 	int pan = 0;
 	// 1 = carrier, 0 = modulator; sized to operator_count
 	PackedInt32Array carrier_mask;
@@ -111,6 +112,8 @@ public:
 
 	double get_master_volume(int p_index) const;
 	void set_master_volume(int p_index, double p_value);
+	int get_instrument_gain_db() const { return instrument_gain_db; }
+	void set_instrument_gain_db(int p_value) { instrument_gain_db = p_value; }
 
 	int get_pan() const { return pan; }
 	void set_pan(int p_value) { pan = p_value; }

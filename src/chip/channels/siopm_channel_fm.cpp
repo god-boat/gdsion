@@ -210,6 +210,7 @@ void SiOPMChannelFM::get_channel_params(const Ref<SiOPMChannelParams> &p_params)
 	for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
 		p_params->set_master_volume(i, _volumes[i]);
 	}
+	p_params->set_instrument_gain_db(get_instrument_gain_db());
 	p_params->set_pan(_pan);
 
 	for (int i = 0; i < _operator_count; i++) {
@@ -280,6 +281,7 @@ void SiOPMChannelFM::set_channel_params(const Ref<SiOPMChannelParams> &p_params,
 
 		_pan = p_params->get_pan();
 	}
+	set_instrument_gain_db(p_params->get_instrument_gain_db());
 
 	_filter_type = p_params->get_filter_type();
 	{
@@ -1801,13 +1803,13 @@ void SiOPMChannelFM::buffer(int p_length) {
 					if (_volumes[i] > 0) {
 						SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 						if (stream) {
-							stream->write_stereo(left_start, right_start, _buffer_index, p_length, _volumes[i], _pan);
+							stream->write_stereo(left_start, right_start, _buffer_index, p_length, _volumes[i] * _instrument_gain, _pan);
 						}
 					}
 				}
 			} else {
 				SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-				stream->write_stereo(left_start, right_start, _buffer_index, p_length, _volumes[0], _pan);
+				stream->write_stereo(left_start, right_start, _buffer_index, p_length, _volumes[0] * _instrument_gain, _pan);
 			}
 		} else {
 			// Standard mono mode.
@@ -1816,13 +1818,13 @@ void SiOPMChannelFM::buffer(int p_length) {
 					if (_volumes[i] > 0) {
 						SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 						if (stream) {
-							stream->write(mono_out, _buffer_index, p_length, _volumes[i], _pan);
+							stream->write(mono_out, _buffer_index, p_length, _volumes[i] * _instrument_gain, _pan);
 						}
 					}
 				}
 			} else {
 				SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-				stream->write(mono_out, _buffer_index, p_length, _volumes[0], _pan);
+				stream->write(mono_out, _buffer_index, p_length, _volumes[0] * _instrument_gain, _pan);
 			}
 		}
 	}
