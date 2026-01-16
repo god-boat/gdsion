@@ -123,6 +123,25 @@ protected:
 
 	// Low frequency oscillator (LFO).
 
+public:
+	enum LFOTimeMode {
+		LFO_TIME_MODE_RATE = 0,    // Raw timer step value (current behavior)
+		LFO_TIME_MODE_TIME = 1,    // Time in milliseconds
+		LFO_TIME_MODE_SYNCED = 2,  // BPM-synced straight notes
+		LFO_TIME_MODE_DOTTED = 3,  // BPM-synced dotted notes (1.5x period)
+		LFO_TIME_MODE_TRIPLET = 4  // BPM-synced triplet notes (2/3 period)
+	};
+
+	enum LFOBeatDivision {
+		LFO_BEAT_1_1 = 0,   // Whole note
+		LFO_BEAT_1_2 = 1,   // Half note
+		LFO_BEAT_1_4 = 2,   // Quarter note
+		LFO_BEAT_1_8 = 3,   // Eighth note
+		LFO_BEAT_1_16 = 4,  // Sixteenth note
+		LFO_BEAT_1_32 = 5   // Thirty-second note
+	};
+
+protected:
 	int _frequency_ratio = 0;
 	int _lfo_on = 0; // Treated as a boolean flag.
 	int _lfo_timer = 0;
@@ -131,6 +150,9 @@ protected:
 	int _lfo_phase = 0;
 	Vector<int> _lfo_wave_table;
 	int _lfo_wave_shape = 0;
+	int _lfo_time_mode = LFO_TIME_MODE_RATE;
+	int _lfo_beat_division = LFO_BEAT_1_4;
+	double _get_lfo_bpm() const;
 
 	void _apply_ring_modulation(SinglyLinkedList<int>::Element *p_buffer_start, int p_length);
 	// NOTE: Original code would implicitly use the filter variables if nothing was passed as the 3rd argument. We make this explicit.
@@ -200,7 +222,10 @@ public:
 	virtual void set_frequency_ratio(int p_ratio) { _frequency_ratio = p_ratio; }
 	virtual void initialize_lfo(int p_waveform, Vector<int> p_custom_wave_table = Vector<int>());
 	virtual void set_lfo_cycle_time(double p_ms);
-	virtual void set_lfo_frequency_step(int p_value) { _lfo_timer = (p_value > 0 ? 1 : 0); _lfo_timer_step = p_value; _lfo_timer_step_buffer = p_value; }
+	virtual void set_lfo_frequency_step(int p_value);
+	virtual void set_lfo_time_mode(int p_mode);
+	virtual int get_lfo_time_mode() const { return _lfo_time_mode; }
+	virtual void update_lfo_for_bpm();
 	virtual void set_amplitude_modulation(int p_depth) {}
 	virtual void set_pitch_modulation(int p_depth) {}
 

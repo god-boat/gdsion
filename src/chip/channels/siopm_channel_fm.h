@@ -97,11 +97,6 @@ class SiOPMChannelFM : public SiOPMChannelBase {
 	virtual void _set_lfo_state(bool p_enabled);
 	void _set_lfo_timer(int p_value);
 
-	// LFO time mode state (stored for BPM recalculation).
-	int _lfo_time_mode = 0;
-	int _lfo_beat_division = 2;
-	double _lfo_bpm = 120.0;
-
 	// Processing.
 
 	void _update_lfo(int p_op_count);
@@ -188,13 +183,7 @@ public:
 	virtual void set_amplitude_modulation(int p_depth) override;
 	virtual void set_pitch_modulation(int p_depth) override;
 
-	// LFO time mode methods.
-	void set_lfo_time_mode(int p_mode);
-	int get_lfo_time_mode() const { return _lfo_time_mode; }
-	void update_lfo_for_bpm(double p_bpm);
-
-	// Override to handle time mode conversion for real-time updates.
-	virtual void set_lfo_frequency_step(int p_value) override;
+	// LFO time mode methods are provided by SiOPMChannelBase.
 
 	// Processing.
 

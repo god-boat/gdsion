@@ -30,6 +30,7 @@ void SiOPMChannelSampler::get_channel_params(const Ref<SiOPMChannelParams> &p_pa
 
 	p_params->set_lfo_wave_shape(_lfo_wave_shape);
 	p_params->set_lfo_frequency_step(_lfo_timer_step_buffer);
+	p_params->set_lfo_time_mode(get_lfo_time_mode());
 
 	p_params->set_amplitude_modulation_depth(_amplitude_modulation_depth);
 	p_params->set_pitch_modulation_depth(_pitch_modulation_depth);
@@ -55,7 +56,8 @@ void SiOPMChannelSampler::set_channel_params(const Ref<SiOPMChannelParams> &p_pa
 	set_frequency_ratio(p_params->get_envelope_frequency_ratio());
 	if (p_with_modulation) {
 		initialize_lfo(p_params->get_lfo_wave_shape());
-		_set_lfo_timer(p_params->get_lfo_frequency_step());
+		set_lfo_time_mode(p_params->get_lfo_time_mode());
+		set_lfo_frequency_step(p_params->get_lfo_frequency_step());
 
 		set_amplitude_modulation(p_params->get_amplitude_modulation_depth());
 		set_pitch_modulation(p_params->get_pitch_modulation_depth());
