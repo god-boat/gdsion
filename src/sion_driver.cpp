@@ -396,7 +396,7 @@ void SiONDriver::_prepare_render(const Variant &p_data, int p_buffer_size, int p
 
 bool SiONDriver::_rendering() {
 	// Protect audio processing from concurrent state modifications.
-	std::lock_guard<std::mutex> lock(_audio_state_mutex);
+	// std::lock_guard<std::mutex> lock(_audio_state_mutex);
 
 	// Processing.
 	_drain_track_mailbox();
@@ -596,7 +596,7 @@ void SiONDriver::stop() {
 	}
 
 	// Protect state modification from concurrent audio processing.
-	std::lock_guard<std::mutex> lock(_audio_state_mutex);
+	// std::lock_guard<std::mutex> lock(_audio_state_mutex);
 
 	_preserve_stop = false;
 	_is_paused = false;
@@ -624,7 +624,7 @@ void SiONDriver::stop() {
 
 void SiONDriver::reset() {
 	// Protect state modification from concurrent audio processing.
-	std::lock_guard<std::mutex> lock(_audio_state_mutex);
+	// std::lock_guard<std::mutex> lock(_audio_state_mutex);
 
 	sequencer->reset_all_tracks();
 
@@ -851,7 +851,7 @@ void SiONDriver::_clear_processing() {
 
 void SiONDriver::_prepare_process(const Variant &p_data, bool p_reset_effector) {
 	// Protect state modification from concurrent audio processing.
-	std::lock_guard<std::mutex> lock(_audio_state_mutex);
+	// std::lock_guard<std::mutex> lock(_audio_state_mutex);
 
 	Variant::Type data_type = p_data.get_type();
 	switch (data_type) {
@@ -1229,7 +1229,7 @@ bool SiONDriver::begin_output_capture(int p_max_seconds, bool p_post_master) {
 		return false;
 	}
 
-	std::lock_guard<std::mutex> lock(_capture_mutex);
+	// std::lock_guard<std::mutex> lock(_capture_mutex);
 	_capture_buffer.clear();
 	if (p_max_seconds > 0) {
 		// Reserve for stereo float samples: seconds * sample_rate * 2 channels
@@ -1247,7 +1247,7 @@ PackedFloat32Array SiONDriver::end_output_capture() {
 		return PackedFloat32Array();
 	}
 
-	std::lock_guard<std::mutex> lock(_capture_mutex);
+	// std::lock_guard<std::mutex> lock(_capture_mutex);
 	_capture_active = false;
 
 	// Return captured samples (up to write position)
@@ -1267,7 +1267,7 @@ void SiONDriver::abort_output_capture() {
 		return;
 	}
 
-	std::lock_guard<std::mutex> lock(_capture_mutex);
+	// std::lock_guard<std::mutex> lock(_capture_mutex);
 	_capture_active = false;
 	_capture_buffer.clear();
 	_capture_write_pos = 0;
@@ -1282,7 +1282,7 @@ PackedFloat32Array SiONDriver::poll_output_capture_chunk(int p_max_frames) {
 		return PackedFloat32Array();
 	}
 
-	std::lock_guard<std::mutex> lock(_capture_mutex);
+	// std::lock_guard<std::mutex> lock(_capture_mutex);
 
 	size_t available_floats = _capture_write_pos;
 	size_t frames_available = available_floats / 2;  // stereo
@@ -1758,7 +1758,7 @@ SiONDriver::~SiONDriver() {
 	// This prevents the audio thread from accessing these objects while they're being destroyed.
 	// ALL teardown of data touched by generate_audio() must be inside this mutex.
 	{
-		std::lock_guard<std::mutex> lock(_audio_state_mutex);
+		// std::lock_guard<std::mutex> lock(_audio_state_mutex);
 
 		// Clear track effect streams (touches data used by begin_process)
 		_clear_track_effect_streams(true);
@@ -1781,7 +1781,7 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 	}
 
 	// Protect audio processing from concurrent state modifications (play/stop/reset).
-	std::lock_guard<std::mutex> lock(_audio_state_mutex);
+	// std::lock_guard<std::mutex> lock(_audio_state_mutex);
 
 	// Check if audio objects are still valid (may be null during destruction)
 	if (!effector || !sequencer || !sound_chip) {
@@ -1920,7 +1920,7 @@ void SiONDriver::_update_batch_meters(const Vector<double> *out_buf, int frames)
 
 	// Store master meter (thread-safe)
 	{
-		std::lock_guard<std::mutex> lock(_master_meter_mutex);
+		// std::lock_guard<std::mutex> lock(_master_meter_mutex);
 		_master_meter = master;
 	}
 
@@ -1939,7 +1939,7 @@ void SiONDriver::_meter_track_output(int track_id, const Vector<double> *track_b
 
 	// Check if track is registered for metering
 	{
-		std::lock_guard<std::mutex> lock(_track_meters_mutex);
+		// std::lock_guard<std::mutex> lock(_track_meters_mutex);
 		if (!_track_meters.has(track_id)) {
 			return;
 		}
@@ -1968,7 +1968,7 @@ void SiONDriver::_meter_track_output(int track_id, const Vector<double> *track_b
 
 	// Store track meter (thread-safe)
 	{
-		std::lock_guard<std::mutex> lock(_track_meters_mutex);
+		// std::lock_guard<std::mutex> lock(_track_meters_mutex);
 		_track_meters[track_id] = snapshot;
 	}
 }
@@ -2043,7 +2043,7 @@ Dictionary SiONDriver::get_master_meter_snapshot() const {
 
 	MeterSnapshot snapshot;
 	{
-		std::lock_guard<std::mutex> lock(_master_meter_mutex);
+		// std::lock_guard<std::mutex> lock(_master_meter_mutex);
 		snapshot = _master_meter;
 	}
 
@@ -2064,7 +2064,7 @@ Dictionary SiONDriver::get_track_meter_snapshot(int p_track_id) const {
 	bool found = false;
 
 	{
-		std::lock_guard<std::mutex> lock(_track_meters_mutex);
+		// std::lock_guard<std::mutex> lock(_track_meters_mutex);
 		if (_track_meters.has(p_track_id)) {
 			snapshot = _track_meters[p_track_id];
 			found = true;
@@ -2086,14 +2086,14 @@ Dictionary SiONDriver::get_track_meter_snapshot(int p_track_id) const {
 }
 
 void SiONDriver::register_track_for_metering(int p_track_id) {
-	std::lock_guard<std::mutex> lock(_track_meters_mutex);
+	// std::lock_guard<std::mutex> lock(_track_meters_mutex);
 	if (!_track_meters.has(p_track_id)) {
 		_track_meters[p_track_id] = MeterSnapshot();
 	}
 }
 
 void SiONDriver::unregister_track_for_metering(int p_track_id) {
-	std::lock_guard<std::mutex> lock(_track_meters_mutex);
+	// std::lock_guard<std::mutex> lock(_track_meters_mutex);
 	_track_meters.erase(p_track_id);
 }
 
