@@ -222,8 +222,9 @@ private:
 	MeterSnapshot _master_meter;
 	mutable std::mutex _master_meter_mutex;
 
-	// Metering settings
-	std::atomic<bool> _metering_enabled{true};
+	// Metering settings - DISABLED BY DEFAULT for real-time safety
+	// Time::get_singleton() calls from audio thread can block on main thread!
+	std::atomic<bool> _metering_enabled{false};
 	std::atomic<int> _meter_downsample_factor{4};  // Process every Nth buffer
 	int _meter_downsample_counter = 0;
 
