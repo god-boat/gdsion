@@ -328,21 +328,6 @@ void SiONDriver::set_bpm(double p_value) {
 	ERR_FAIL_COND_MSG(p_value < 1 || p_value > 4000, "SiONDriver: BPM must be between 1 and 4000 (inclusive).");
 
 	sequencer->set_effective_bpm(p_value);
-
-	// Update LFO timer for all tracks in BPM-synced modes.
-	for (SiMMLTrack *trk : sequencer->get_tracks()) {
-		if (!trk) {
-			continue;
-		}
-		SiOPMChannelBase *ch = trk->get_channel();
-		if (!ch) {
-			continue;
-		}
-		SiOPMChannelFM *fm = Object::cast_to<SiOPMChannelFM>(ch);
-		if (fm) {
-			fm->update_lfo_for_bpm(p_value);
-		}
-	}
 }
 
 // Streaming and rendering.
@@ -1174,6 +1159,19 @@ void SiONDriver::_publish_note_event(SiMMLTrack *p_track, int p_type, String p_f
 }
 
 void SiONDriver::_tempo_changed_callback(int p_buffer_index, bool p_dummy) {
+	if (sound_chip && sequencer) {
+		for (SiMMLTrack *trk : sequencer->get_tracks()) {
+			if (!trk) {
+				continue;
+			}
+			SiOPMChannelBase *ch = trk->get_channel();
+			if (!ch) {
+				continue;
+			}
+			ch->update_lfo_for_bpm();
+		}
+	}
+
 	Ref<SiONTrackEvent> event = memnew(SiONTrackEvent(SiONTrackEvent::BPM_CHANGED, this, nullptr, p_buffer_index));
 
 	if (p_dummy && _notify_change_bpm_on_position_changed) {
@@ -1691,6 +1689,7 @@ SiONDriver::SiONDriver(int p_buffer_length, int p_channel_num, int p_sample_rate
 	sound_chip = memnew(SiOPMSoundChip);
 	effector = memnew(SiEffector(sound_chip));
 	sequencer = memnew(SiMMLSequencer(sound_chip));
+	sound_chip->set_sequencer(sequencer);
 	sequencer->set_note_on_callback(Callable(this, "_note_on_callback"));
 	sequencer->set_note_off_callback(Callable(this, "_note_off_callback"));
 	sequencer->set_tempo_changed_callback(Callable(this, "_tempo_changed_callback"));

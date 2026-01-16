@@ -10,6 +10,7 @@
 #include "chip/channels/siopm_channel_manager.h"
 #include "chip/siopm_operator_params.h"
 #include "chip/siopm_stream.h"
+#include "sequencer/simml_sequencer.h"
 
 Vector<double> *SiOPMSoundChip::get_output_buffer_ptr() {
 	return output_stream->get_buffer_ptr();
@@ -82,6 +83,14 @@ void SiOPMSoundChip::initialize(int p_channel_count, int p_bitrate, int p_buffer
 
 void SiOPMSoundChip::reset() {
 	SiOPMChannelManager::reset_all_channels();
+}
+
+double SiOPMSoundChip::get_bpm() const {
+	return _sequencer ? _sequencer->get_effective_bpm() : 120.0;
+}
+
+void SiOPMSoundChip::set_sequencer(SiMMLSequencer *p_sequencer) {
+	_sequencer = p_sequencer;
 }
 
 void SiOPMSoundChip::_bind_methods() {

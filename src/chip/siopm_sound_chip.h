@@ -16,6 +16,7 @@
 using namespace godot;
 
 class SiOPMStream;
+class SiMMLSequencer;
 
 class SiOPMSoundChip : public Object {
 	GDCLASS(SiOPMSoundChip, Object)
@@ -28,6 +29,7 @@ class SiOPMSoundChip : public Object {
 	Vector<SiOPMStream *> stream_slot;
 	double pcm_volume = 4;
 	double sampler_volume = 2;
+	SiMMLSequencer *_sequencer = nullptr;
 
 	int _buffer_length = 0;
 	int _bitrate = 0;
@@ -57,6 +59,8 @@ public:
 
 	int get_buffer_length() const { return _buffer_length; }
 	int get_bitrate() const { return _bitrate; }
+	double get_bpm() const;
+	void set_sequencer(SiMMLSequencer *p_sequencer);
 
 	SinglyLinkedList<int> *get_pipe(int p_pipe_num, int p_index = 0);
 
