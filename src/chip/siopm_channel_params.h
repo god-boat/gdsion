@@ -36,6 +36,8 @@ private:
 
 	// Algorithm [0,15]
 	int algorithm = 0;
+
+	void _update_carrier_mask();
 	// Feedback [0,7]
 	int feedback = 0;
 	// Feedback connection [0,3]
@@ -88,7 +90,7 @@ public:
 	void set_analog_like(bool p_value) { analog_like = p_value; }
 
 	int get_algorithm() const { return algorithm; }
-	void set_algorithm(int p_value) { algorithm = p_value; }
+	void set_algorithm(int p_value);
 	int get_feedback() const { return feedback; }
 	void set_feedback(int p_value) { feedback = p_value; }
 	int get_feedback_connection() const { return feedback_connection; }

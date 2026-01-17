@@ -25,14 +25,95 @@ void SiOPMChannelParams::set_operator_count(int p_value) {
 	ERR_FAIL_COND(p_value > MAX_OPERATORS);
 
 	operator_count = p_value;
+	_update_carrier_mask();
+}
 
-	// Keep carrier mask in sync with operator count to avoid UI range errors.
-	if (carrier_mask.size() != operator_count) {
-		int old_size = carrier_mask.size();
-		carrier_mask.resize(operator_count);
-		for (int i = old_size; i < operator_count; i++) {
-			carrier_mask.set(i, 0);
-		}
+void SiOPMChannelParams::set_algorithm(int p_value) {
+	algorithm = p_value;
+	_update_carrier_mask();
+}
+
+void SiOPMChannelParams::_update_carrier_mask() {
+	// Carrier mask lookup tables derived from SiOPMChannelFM algorithm routing.
+	// Each entry is a bitmask where bit i = 1 means operator i is a carrier.
+	// Index by algorithm number (0-15).
+
+	// 1-operator: always carrier
+	static const int CARRIER_MASK_1OP[16] = {
+		0b0001, 0b0001, 0b0001, 0b0001, 0b0001, 0b0001, 0b0001, 0b0001,
+		0b0001, 0b0001, 0b0001, 0b0001, 0b0001, 0b0001, 0b0001, 0b0001
+	};
+
+	// 2-operator algorithms (from _set_algorithm_operator2):
+	// alg 0: o1(o0) -> only op1 is carrier
+	// alg 1: o0+o1 -> both carriers
+	// alg 2: o0+o1(o0) -> both carriers
+	// default: o0+o1 -> both carriers
+	static const int CARRIER_MASK_2OP[16] = {
+		0b0010, 0b0011, 0b0011, 0b0011, 0b0011, 0b0011, 0b0011, 0b0011,
+		0b0011, 0b0011, 0b0011, 0b0011, 0b0011, 0b0011, 0b0011, 0b0011
+	};
+
+	// 3-operator algorithms (from _set_algorithm_operator3):
+	// alg 0: o2(o1(o0)) -> only op2 carrier
+	// alg 1: o2(o0+o1) -> only op2 carrier
+	// alg 2: o0+o2(o1) -> op0, op2 carriers
+	// alg 3: o1(o0)+o2 -> op1, op2 carriers
+	// alg 4: o1(o0)+o2(o0) -> op1, op2 carriers
+	// alg 5: o0+o1+o2 -> all carriers
+	// alg 6: o0+o1(o0)+o2 -> op1, op2 carriers (op0 feeds op1, op1 outputs to mix)
+	// default: o0+o1+o2 -> all carriers
+	static const int CARRIER_MASK_3OP[16] = {
+		0b0100, 0b0100, 0b0101, 0b0110, 0b0110, 0b0111, 0b0110, 0b0111,
+		0b0111, 0b0111, 0b0111, 0b0111, 0b0111, 0b0111, 0b0111, 0b0111
+	};
+
+	// 4-operator algorithms (from _set_algorithm_operator4):
+	// alg 0: o3(o2(o1(o0))) -> only op3 carrier
+	// alg 1: o3(o2(o0+o1)) -> only op3 carrier
+	// alg 2: o3(o0+o2(o1)) -> only op3 carrier
+	// alg 3: o3(o1(o0)+o2) -> only op3 carrier
+	// alg 4: o1(o0)+o3(o2) -> op1, op3 carriers
+	// alg 5: o1(o0)+o2(o0)+o3(o0) -> op1, op2, op3 carriers
+	// alg 6: o1(o0)+o2+o3 -> op1, op2, op3 carriers
+	// alg 7: o0+o1+o2+o3 -> all carriers
+	// alg 8: o0+o3(o2(o1)) -> op0, op3 carriers
+	// alg 9: o0+o2(o1)+o3 -> op0, op2, op3 carriers
+	// alg 10: o3(o0+o1+o2) -> only op3 carrier
+	// alg 11: o0+o3(o1+o2) -> op0, op3 carriers
+	// alg 12: o0+o1(o0)+o3(o2) -> op1, op3 carriers
+	// default: o0+o1+o2+o3 -> all carriers
+	static const int CARRIER_MASK_4OP[16] = {
+		0b1000, 0b1000, 0b1000, 0b1000, 0b1010, 0b1110, 0b1110, 0b1111,
+		0b1001, 0b1101, 0b1000, 0b1001, 0b1010, 0b1111, 0b1111, 0b1111
+	};
+
+	carrier_mask.resize(operator_count);
+
+	int alg = (algorithm >= 0 && algorithm < 16) ? algorithm : 0;
+	int mask_bits = 0;
+
+	switch (operator_count) {
+		case 1:
+			mask_bits = CARRIER_MASK_1OP[alg];
+			break;
+		case 2:
+			mask_bits = CARRIER_MASK_2OP[alg];
+			break;
+		case 3:
+			mask_bits = CARRIER_MASK_3OP[alg];
+			break;
+		case 4:
+			mask_bits = CARRIER_MASK_4OP[alg];
+			break;
+		default:
+			// For 0 operators or invalid count, clear the mask
+			carrier_mask.clear();
+			return;
+	}
+
+	for (int i = 0; i < operator_count; i++) {
+		carrier_mask.set(i, (mask_bits >> i) & 1);
 	}
 }
 
@@ -173,9 +254,7 @@ void SiOPMChannelParams::initialize() {
 	instrument_gain_db = 0;
 	pan = 64;
 
-	carrier_mask.clear();
-	carrier_mask.resize(1);
-	carrier_mask.set(0, 1);
+	_update_carrier_mask();
 
 	filter_type = 0;
 	filter_cutoff = 128;
