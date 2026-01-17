@@ -188,7 +188,10 @@ void SiOPMOperator::set_ssg_type(int p_value) {
 // Pulse generator.
 
 void SiOPMOperator::_update_pitch() {
-	int index = (_pitch_index + _pitch_index_shift + _pitch_index_shift2) & _pitch_table_filter;
+	int raw_index = _pitch_index + _pitch_index_shift + _pitch_index_shift2;
+	// Clamp to valid range before masking to prevent negative values wrapping
+	// to extremely high pitches due to bitwise AND operation.
+	int index = CLAMP(raw_index, 0, _pitch_table_filter);
 	_update_phase_step(_pitch_table[index] >> _wave_phase_step_shift);
 	_update_super_phase_steps();
 }
