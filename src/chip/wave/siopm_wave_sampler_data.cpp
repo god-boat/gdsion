@@ -86,7 +86,7 @@ void SiOPMWaveSamplerData::_prepare_wave_data(const Variant &p_data, int p_src_c
 		case Variant::OBJECT: {
 			Ref<AudioStream> audio_stream = p_data;
 			if (audio_stream.is_valid()) {
-				Vector<double> raw_data = _extract_wave_data(audio_stream, &source_channels);
+				Vector<double> raw_data = SiOPMWaveBase::extract_wave_data(audio_stream, &source_channels);
 
                 // --- Sample-rate handling -----------------------------------
                 int src_rate = kTARGET_SR;

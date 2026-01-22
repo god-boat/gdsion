@@ -25,6 +25,8 @@ protected:
 	Vector<double> _extract_wave_data(const Ref<AudioStream> &p_stream, int *r_channel_count);
 
 public:
+	static Vector<double> extract_wave_data(const Ref<AudioStream> &p_stream, int *r_channel_count);
+
 	SiONModuleType get_module_type() const { return _module_type; }
 
 	SiOPMWaveBase(SiONModuleType p_module_type = SiONModuleType::MODULE_MAX);

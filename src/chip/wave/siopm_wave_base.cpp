@@ -12,7 +12,7 @@ SiOPMWaveBase::SiOPMWaveBase(SiONModuleType p_module_type) {
 	_module_type = p_module_type;
 }
 
-Vector<double> SiOPMWaveBase::_extract_wave_data(const Ref<AudioStream> &p_stream, int *r_channel_count) {
+Vector<double> SiOPMWaveBase::extract_wave_data(const Ref<AudioStream> &p_stream, int *r_channel_count) {
 	if (p_stream.is_null()) {
 		return Vector<double>();
 	}
@@ -57,4 +57,8 @@ Vector<double> SiOPMWaveBase::_extract_wave_data(const Ref<AudioStream> &p_strea
 	}
 
 	ERR_FAIL_V_MSG(Vector<double>(), "SiOPMWaveBase: Unsupported audio stream format.");
+}
+
+Vector<double> SiOPMWaveBase::_extract_wave_data(const Ref<AudioStream> &p_stream, int *r_channel_count) {
+	return extract_wave_data(p_stream, r_channel_count);
 }
