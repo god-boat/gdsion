@@ -29,6 +29,8 @@ void SiEffectCompressor::set_params(double p_threshold, double p_window_time, do
 		memdelete(_window_rms_list);
 	}
 	_window_rms_list = memnew(SinglyLinkedList<double>(_window_samples, 0.0, true));
+	_window_rms_list->reset();
+	_window_rms_total = 0.0;
 
 	_attack_rate = 0.5;
 	if (p_attack_time != 0) {
@@ -47,7 +49,8 @@ void SiEffectCompressor::set_params(double p_threshold, double p_window_time, do
 	}
 
 	_max_gain = Math::pow(2, -p_max_gain / 6.0);
-	_mixing_level = p_mixing_level;
+	_mixing_level = CLAMP(p_mixing_level, 0.0, 1.0);
+	_gain = _max_gain;
 }
 
 int SiEffectCompressor::prepare_process() {
@@ -77,6 +80,8 @@ int SiEffectCompressor::process(int p_channels, Vector<double> *r_buffer, int p_
 	for (int i = start_index; i < (start_index + length); i += 2) {
 		double value_left = (*r_buffer)[i];
 		double value_right = (*r_buffer)[i + 1];
+		double dry_left = value_left;
+		double dry_right = value_right;
 
 		_window_rms_list->next();
 		_window_rms_total -= _window_rms_list->get()->value;
@@ -92,8 +97,8 @@ int SiEffectCompressor::process(int p_channels, Vector<double> *r_buffer, int p_
 		value_left = CLAMP(value_left * _gain, -1, 1);
 		value_right = CLAMP(value_right * _gain, -1, 1);
 
-		r_buffer->write[i] = value_left * _mixing_level;
-		r_buffer->write[i + 1] = value_right * _mixing_level;
+		r_buffer->write[i] = Math::lerp(dry_left, value_left, _mixing_level);
+		r_buffer->write[i + 1] = Math::lerp(dry_right, value_right, _mixing_level);
 	}
 
 	return p_channels;
