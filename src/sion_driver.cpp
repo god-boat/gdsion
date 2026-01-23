@@ -1906,7 +1906,10 @@ void SiONDriver::_update_batch_meters(const Vector<double> *out_buf, int frames)
 	}
 
 	MeterSnapshot master;
-	master.timestamp_us = Time::get_singleton()->get_ticks_usec();
+	// AUDIO THREAD SAFETY: Use monotonic counter instead of Time::get_singleton()
+	// which can block on main thread. Counter increments with each metering call.
+	static std::atomic<uint64_t> meter_counter{0};
+	master.timestamp_us = meter_counter.fetch_add(1, std::memory_order_relaxed);
 	master.sample_count = frames;
 
 	double sum_sq_left = 0.0;
@@ -1960,7 +1963,9 @@ void SiONDriver::_meter_track_output(int track_id, const Vector<double> *track_b
 	}
 
 	MeterSnapshot snapshot;
-	snapshot.timestamp_us = Time::get_singleton()->get_ticks_usec();
+	// AUDIO THREAD SAFETY: Use monotonic counter instead of Time::get_singleton()
+	static std::atomic<uint64_t> track_meter_counter{0};
+	snapshot.timestamp_us = track_meter_counter.fetch_add(1, std::memory_order_relaxed);
 	snapshot.sample_count = frames;
 
 	double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
