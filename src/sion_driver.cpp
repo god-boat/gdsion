@@ -1742,6 +1742,17 @@ SiONDriver::SiONDriver(int p_buffer_length, int p_channel_num, int p_sample_rate
 
 	_performance_stats.processing_time_data = memnew(SinglyLinkedList<int>(TIME_AVERAGING_COUNT, 0, true));
 	_performance_stats.total_processing_time_ratio = _sample_rate / (_buffer_length * TIME_AVERAGING_COUNT);
+
+	// AUDIO THREAD SAFETY: Preallocate buffers to avoid dynamic allocation in generate_audio()
+	// Residual buffer needs to hold one full processing block (stereo samples)
+	_residual_buffer.resize(_buffer_length * 2);
+	_residual_buffer_frame_count = 0;
+	_residual_frame_offset = 0;
+	
+	// Capture buffer: preallocate for 10 seconds max (or configurable max)
+	// 10 seconds * sample_rate * 2 channels = reasonable upper bound
+	_capture_buffer.resize(10 * _sample_rate * 2);
+	_capture_write_pos = 0;
 }
 
 SiONDriver::~SiONDriver() {
@@ -1829,9 +1840,7 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 			_residual_buffer_frame_count = block;
 			_residual_frame_offset = 0;
 			int sample_count = block * 2; // stereo: 2 samples per frame
-			if (_residual_buffer.size() < sample_count) {
-				_residual_buffer.resize(sample_count);
-			}
+			// Buffer is pre-allocated in constructor, no resize needed
 			for (int i = 0; i < sample_count; ++i) {
 				_residual_buffer.write[i] = (*out_buf)[i];
 			}
@@ -1841,32 +1850,33 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 		int frames_available = _residual_buffer_frame_count - _residual_frame_offset;
 		int frames_to_copy = std::min(frames_available, p_frames - frames_generated);
 
-		// Copy left/right pairs from residual buffer into output with hard clamping
+		// Copy left/right pairs from residual buffer into output.
 		for (int i = 0; i < frames_to_copy; ++i) {
 			int sample_index = (_residual_frame_offset + i) * 2; // convert frame offset to sample index
-			p_buffer[frames_generated + i].left  = std::clamp((float)_residual_buffer[sample_index], -1.0f, 1.0f);
-			p_buffer[frames_generated + i].right = std::clamp((float)_residual_buffer[sample_index + 1], -1.0f, 1.0f);
+			p_buffer[frames_generated + i].left  = (float)_residual_buffer[sample_index];
+			p_buffer[frames_generated + i].right = (float)_residual_buffer[sample_index + 1];
 		}
 
 		// Capture output at unity gain if active (for export/resampling)
 		if (_capture_active) {
-			// Pre-check capacity and resize once before loop to avoid multiple audio thread allocations
+			// Buffer is pre-allocated, check if we have space
 			size_t needed_size = _capture_write_pos + (frames_to_copy * 2);
 			if (needed_size > (size_t)_capture_buffer.size()) {
-				_capture_buffer.resize(needed_size);
-			}
-
+				// Buffer overflow - this shouldn't happen with proper pre-allocation
+				// Silently skip capture to avoid audio thread allocation
+				ERR_PRINT_ONCE("SiONDriver: Capture buffer overflow! Increase pre-allocation size.");
+			} else {
 			for (int i = 0; i < frames_to_copy; ++i) {
 				int sample_index = (_residual_frame_offset + i) * 2;
 
-				// Clamp before storing to prevent any overflow in captured audio
-				float left = std::clamp((float)_residual_buffer[sample_index], -1.0f, 1.0f);
-				float right = std::clamp((float)_residual_buffer[sample_index + 1], -1.0f, 1.0f);
+				float left = (float)_residual_buffer[sample_index];
+				float right = (float)_residual_buffer[sample_index + 1];
 
 				_capture_buffer.write[_capture_write_pos++] = left;
 				_capture_buffer.write[_capture_write_pos++] = right;
 			}
 		}
+	}
 
 		// Update buffer state (all in frame units)
 		_residual_frame_offset += frames_to_copy;
