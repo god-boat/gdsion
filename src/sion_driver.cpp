@@ -403,6 +403,7 @@ bool SiONDriver::_rendering() {
 	sound_chip->begin_process();
 	effector->begin_process();
 	sequencer->process();
+	_update_track_effect_post_fader();
 	effector->end_process();
 	sound_chip->end_process();
 
@@ -1804,23 +1805,25 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 			sound_chip->begin_process();
 			effector->begin_process();
 			sequencer->process(); // generates _buffer_length stereo samples
+			_update_track_effect_post_fader();
 			effector->end_process();
 			sound_chip->end_process();
 
 			Vector<double> *out_buf = sound_chip->get_output_buffer_ptr();
 
-			// Process post-effects audio (metering)
+			// Process post-effects audio (metering) - expensive, skip if disabled
 			if (_metering_enabled.load(std::memory_order_relaxed)) {
 				if (++_meter_downsample_counter >= _meter_downsample_factor.load(std::memory_order_relaxed)) {
 					_meter_downsample_counter = 0;
 
 					// Meter per-track outputs (post track-effects, pre-master)
+					// NOTE: This iterates all track effect streams - can be expensive with many tracks
 					_meter_all_track_outputs(block);
 
-					// Meter master output (post-master effects)
-					_update_batch_meters(out_buf, block);
-				}
+				// Meter master output (post-master effects)
+				_update_batch_meters(out_buf, block);
 			}
+		}
 
 			// Copy generated audio to residual buffer (buffer contains stereo samples)
 			_residual_buffer_frame_count = block;
@@ -2013,7 +2016,7 @@ void SiONDriver::_meter_all_track_outputs(int frames) {
 		}
 
 		// Meter this track's post-effects output
-		_meter_track_output(track_id, track_buf, frames);
+		_meter_track_output(track_id, track_buf, frames, stream->get_post_fader_gain(), stream->get_post_pan());
 	}
 }
 
@@ -2897,7 +2900,28 @@ void SiONDriver::_bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id) 
 	if (!channel) {
 		return;
 	}
+	_track_effect_channels[p_track_id] = channel;
+	stream->set_post_fader_gain(channel->get_stream_send(0));
+	stream->set_post_pan(CLAMP(channel->get_pan(), -64, 64) + 64);
 	channel->set_stream_buffer(0, stream->get_stream());
+}
+
+void SiONDriver::_update_track_effect_post_fader() {
+	for (const KeyValue<int, SiEffectStream *> &entry : _track_effect_streams) {
+		SiEffectStream *stream = entry.value;
+		if (!stream) {
+			continue;
+		}
+
+		SiOPMChannelBase **channel_ptr = _track_effect_channels.getptr(entry.key);
+		if (!channel_ptr || !*channel_ptr) {
+			continue;
+		}
+
+		SiOPMChannelBase *channel = *channel_ptr;
+		stream->set_post_fader_gain(channel->get_stream_send(0));
+		stream->set_post_pan(CLAMP(channel->get_pan(), -64, 64) + 64);
+	}
 }
 
 void SiONDriver::_clear_track_effect_streams(bool p_delete_streams) {
@@ -2909,6 +2933,7 @@ void SiONDriver::_clear_track_effect_streams(bool p_delete_streams) {
 		}
 	}
 	_track_effect_streams.clear();
+	_track_effect_channels.clear();
 }
 
 Vector<double> SiONDriver::_args_from_variant(const Variant &p_value) const {

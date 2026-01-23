@@ -24,6 +24,8 @@ class SiEffectStream {
 	Vector<bool> _bypassed;
 
 	SiOPMStream *_stream = nullptr;
+	double _post_fader_gain = 1.0;
+	int _post_pan = 64; // 0-128
 	// Deeper streams execute first.
 	int _depth = 0;
 	int _pan = 64;
@@ -48,6 +50,9 @@ public:
 	void set_effect_args(int p_index, Vector<double> p_args);
 	void set_effect_bypass(int p_index, bool p_bypassed);
 
+	double get_post_fader_gain() const { return _post_fader_gain; }
+	int get_post_pan() const { return _post_pan; }
+
 	int get_depth() const { return _depth; }
 	int get_pan() const;
 	void set_pan(int p_value);
@@ -62,6 +67,8 @@ public:
 	double get_stream_send(int p_stream_num);
 
 	void connect(SiOPMStream *p_output = nullptr);
+	void set_post_fader_gain(double p_gain);
+	void set_post_pan(int p_pan);
 	int prepare_process();
 	int process(int p_start_idx, int p_length, bool p_write_in_stream = true);
 

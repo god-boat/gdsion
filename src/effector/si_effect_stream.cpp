@@ -8,9 +8,18 @@
 
 #include <godot_cpp/classes/reg_ex.hpp>
 #include <godot_cpp/classes/reg_ex_match.hpp>
+#include <algorithm>
 #include "chip/siopm_sound_chip.h"
 #include "chip/siopm_stream.h"
 #include "effector/si_effector.h"
+
+void SiEffectStream::set_post_fader_gain(double p_gain) {
+	_post_fader_gain = std::max(p_gain, 0.0);
+}
+
+void SiEffectStream::set_post_pan(int p_pan) {
+	_post_pan = CLAMP(p_pan, 0, 128);
+}
 
 int SiEffectStream::get_pan() const {
 	return _pan - 64;
@@ -18,6 +27,7 @@ int SiEffectStream::get_pan() const {
 
 void SiEffectStream::set_pan(int p_value) {
 	_pan = CLAMP(p_value + 64, 0, 128);
+	_post_pan = _pan;
 }
 
 bool SiEffectStream::is_outputting_directly() const {
@@ -157,7 +167,7 @@ int SiEffectStream::process(int p_start_idx, int p_length, bool p_write_in_strea
 						stream = _sound_chip->get_stream_slot(i);
 					}
 					if (stream) {
-						stream->write_from_vector(buffer, p_start_idx, p_start_idx, p_length, _volumes[i], _pan, 2);
+						stream->write_from_vector(buffer, p_start_idx, p_start_idx, p_length, _volumes[i] * _post_fader_gain, _post_pan, 2);
 					}
 				}
 			}
@@ -166,7 +176,7 @@ int SiEffectStream::process(int p_start_idx, int p_length, bool p_write_in_strea
 			if (!stream) {
 				stream = _sound_chip->get_output_stream();
 			}
-			stream->write_from_vector(buffer, p_start_idx, p_start_idx, p_length, _volumes[0], _pan, 2);
+			stream->write_from_vector(buffer, p_start_idx, p_start_idx, p_length, _volumes[0] * _post_fader_gain, _post_pan, 2);
 		}
 	}
 
@@ -305,6 +315,8 @@ void SiEffectStream::initialize(int p_depth) {
 
 	_volumes.write[0] = 1;
 	_pan = 64;
+	_post_fader_gain = 1.0;
+	_post_pan = _pan;
 	_has_effect_send = false;
 	_depth = p_depth;
 }
