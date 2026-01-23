@@ -239,6 +239,9 @@ void SiOPMChannelKS::buffer(int p_length) {
 	if (_filter_on) {
 		_apply_sv_filter(mono_out, p_length, _filter_variables);
 	}
+	if (_kill_fade_remaining_samples > 0) {
+		_apply_kill_fade(mono_out, p_length);
+	}
 
 	if (_output_mode == OutputMode::OUTPUT_STANDARD && !_mute) {
 		if (_has_effect_send) {

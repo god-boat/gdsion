@@ -80,6 +80,13 @@ protected:
 
 	bool _is_note_on = false;
 
+	// Click-safe hard stop ramp ("immediate key off").
+	// When active, the channel output is faded to 0 over a short number of samples,
+	// and then the channel is reset. This prevents clicks caused by resetting DSP
+	// state at a non-zero sample.
+	int _kill_fade_total_samples = 0;
+	int _kill_fade_remaining_samples = 0;
+
 	// Pipe buffer.
 
 	int _buffer_index = 0;
@@ -160,6 +167,8 @@ protected:
 	void _reset_sv_filter_state();
 	bool _try_shift_sv_filter_state(int p_state);
 	void _shift_sv_filter_state(int p_state);
+	void _apply_kill_fade(SinglyLinkedList<int>::Element *p_buffer_start, int p_length);
+	void _apply_kill_fade_stereo(SinglyLinkedList<int>::Element *p_left_start, SinglyLinkedList<int>::Element *p_right_start, int p_length);
 public:
 	SiOPMChannelManager::ChannelType get_channel_type() const { return _channel_type; }
 
@@ -246,6 +255,10 @@ public:
 
 	virtual void note_on();
 	virtual void note_off();
+	// Start a click-safe hard stop fade. p_samples < 0 uses a small default (ms-based) duration.
+	virtual void start_kill_fade(int p_samples = -1);
+	// Cancel any pending hard-stop fade (e.g. when reusing a channel for a new note).
+	virtual void cancel_kill_fade();
 
 	virtual void reset_channel_buffer_status();
 	virtual void buffer(int p_length);

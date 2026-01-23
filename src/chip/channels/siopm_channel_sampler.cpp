@@ -805,6 +805,10 @@ void SiOPMChannelSampler::_write_stream_mono(SinglyLinkedList<int>::Element *p_o
 	double volume_coef = _expression * _sound_chip->get_sampler_volume() * _instrument_gain;
 	int pan = CLAMP(_pan + _sample_pan, 0, 128);
 
+	if (_kill_fade_remaining_samples > 0) {
+		_apply_kill_fade(p_output, p_length);
+	}
+
 	if (_has_effect_send) {
 		for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
 			if (_volumes[i] > 0) {
@@ -823,6 +827,10 @@ void SiOPMChannelSampler::_write_stream_mono(SinglyLinkedList<int>::Element *p_o
 void SiOPMChannelSampler::_write_stream_stereo(SinglyLinkedList<int>::Element *p_output_left, SinglyLinkedList<int>::Element *p_output_right, int p_length) {
 	double volume_coef = _expression * _sound_chip->get_sampler_volume() * _instrument_gain;
 	int pan = CLAMP(_pan + _sample_pan, 0, 128);
+
+	if (_kill_fade_remaining_samples > 0) {
+		_apply_kill_fade_stereo(p_output_left, p_output_right, p_length);
+	}
 
 	if (_has_effect_send) {
 		for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {

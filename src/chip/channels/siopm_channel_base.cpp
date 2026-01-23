@@ -386,6 +386,11 @@ void SiOPMChannelBase::_shift_sv_filter_state(int p_state) {
 }
 
 void SiOPMChannelBase::note_on() {
+	// If this channel was in the middle of a click-safe hard stop fade (e.g. due to
+	// voice stealing), cancel it. Otherwise the fade would attenuate or even reset
+	// the channel while the new note is starting, causing missing attacks/dropped notes.
+	cancel_kill_fade();
+
 	_lfo_phase = 0; // Reset.
 	if (_filter_on) {
 		_reset_sv_filter_state();
@@ -399,6 +404,11 @@ void SiOPMChannelBase::note_off() {
 		_shift_sv_filter_state(EG_RELEASE);
 	}
 	_is_note_on = false;
+}
+
+void SiOPMChannelBase::cancel_kill_fade() {
+	_kill_fade_total_samples = 0;
+	_kill_fade_remaining_samples = 0;
 }
 
 void SiOPMChannelBase::_no_process(int p_length) {
@@ -503,6 +513,98 @@ void SiOPMChannelBase::_apply_sv_filter(SinglyLinkedList<int>::Element *p_buffer
 	_filter_eg_residue = _filter_eg_step - length;
 }
 
+void SiOPMChannelBase::start_kill_fade(int p_samples) {
+	// If we can't compute a sensible fade, fall back to immediate reset.
+	if (p_samples == 0) {
+		reset();
+		_kill_fade_total_samples = 0;
+		_kill_fade_remaining_samples = 0;
+		return;
+	}
+
+	int samples = p_samples;
+	if (samples < 0) {
+		// Default: a very short fade (in samples) to avoid clicks.
+		// Use the engine sampling rate when available.
+		const int sr = (_table ? _table->sampling_rate : 0);
+		// 2ms is typically enough to remove hard discontinuities without sounding like a fade-out.
+		samples = (sr > 0) ? (int)(sr * 0.002) : 96;
+	}
+	// Clamp to a sane range (>=1).
+	if (samples < 1) {
+		samples = 1;
+	}
+
+	_kill_fade_total_samples = samples;
+	_kill_fade_remaining_samples = samples;
+	// Ensure we process at least until the fade completes.
+	_is_idling = false;
+}
+
+void SiOPMChannelBase::_apply_kill_fade(SinglyLinkedList<int>::Element *p_buffer_start, int p_length) {
+	if (_kill_fade_remaining_samples <= 0 || _kill_fade_total_samples <= 0) {
+		return;
+	}
+
+	SinglyLinkedList<int>::Element *target = p_buffer_start;
+	for (int i = 0; i < p_length; i++) {
+		double gain = 0.0;
+		if (_kill_fade_remaining_samples > 0) {
+			if (_kill_fade_total_samples <= 1) {
+				// Single-sample fade: set output to 0 immediately (no time for a ramp).
+				gain = 0.0;
+			} else {
+				// Make the last sample exactly 0: remaining==1 -> gain==0, remaining==total -> gain==1.
+				gain = (double)(_kill_fade_remaining_samples - 1) / (double)(_kill_fade_total_samples - 1);
+				gain = CLAMP(gain, 0.0, 1.0);
+			}
+			_kill_fade_remaining_samples -= 1;
+		}
+
+		target->value = (int)((double)target->value * gain);
+		target = target->next();
+	}
+
+	if (_kill_fade_remaining_samples <= 0) {
+		_kill_fade_remaining_samples = 0;
+		_kill_fade_total_samples = 0;
+		// Fade complete: now it's safe to reset DSP state without clicking.
+		reset();
+	}
+}
+
+void SiOPMChannelBase::_apply_kill_fade_stereo(SinglyLinkedList<int>::Element *p_left_start, SinglyLinkedList<int>::Element *p_right_start, int p_length) {
+	if (_kill_fade_remaining_samples <= 0 || _kill_fade_total_samples <= 0) {
+		return;
+	}
+
+	SinglyLinkedList<int>::Element *left = p_left_start;
+	SinglyLinkedList<int>::Element *right = p_right_start;
+	for (int i = 0; i < p_length; i++) {
+		double gain = 0.0;
+		if (_kill_fade_remaining_samples > 0) {
+			if (_kill_fade_total_samples <= 1) {
+				gain = 0.0;
+			} else {
+				gain = (double)(_kill_fade_remaining_samples - 1) / (double)(_kill_fade_total_samples - 1);
+				gain = CLAMP(gain, 0.0, 1.0);
+			}
+			_kill_fade_remaining_samples -= 1;
+		}
+
+		left->value = (int)((double)left->value * gain);
+		right->value = (int)((double)right->value * gain);
+		left = left->next();
+		right = right->next();
+	}
+
+	if (_kill_fade_remaining_samples <= 0) {
+		_kill_fade_remaining_samples = 0;
+		_kill_fade_total_samples = 0;
+		reset();
+	}
+}
+
 void SiOPMChannelBase::buffer(int p_length) {
 	if (_is_idling) {
 		buffer_no_process(p_length);
@@ -523,6 +625,9 @@ void SiOPMChannelBase::buffer(int p_length) {
 	}
 	if (_filter_on) {
 		_apply_sv_filter(mono_out, p_length, _filter_variables);
+	}
+	if (_kill_fade_remaining_samples > 0) {
+		_apply_kill_fade(mono_out, p_length);
 	}
 
 	if (_output_mode == OutputMode::OUTPUT_STANDARD && !_mute) {
@@ -614,6 +719,7 @@ void SiOPMChannelBase::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) 
 void SiOPMChannelBase::reset() {
 	_is_note_on = false;
 	_is_idling = true;
+	cancel_kill_fade();
 }
 
 String SiOPMChannelBase::_to_string() const {

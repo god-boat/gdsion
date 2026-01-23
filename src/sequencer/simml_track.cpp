@@ -725,14 +725,18 @@ void SiMMLTrack::buffer(int p_length) {
 			if (_stop_with_reset) {
 				_key_off();
 				_note = -1;
-				_channel->reset();
+				if (_channel) {
+					_channel->start_kill_fade(-1);
+				}
 			}
 		} else if (_channel->is_note_on()) {
 			_key_off();
 			_note = -1;
 
 			if (_stop_with_reset) {
-				_channel->reset();
+				if (_channel) {
+					_channel->start_kill_fade(-1);
+				}
 			}
 		}
 
@@ -908,7 +912,11 @@ void SiMMLTrack::key_off(int p_sample_delay, bool p_with_reset) {
 		_note = -1;
 
 		if (_stop_with_reset) {
-			_channel->reset();
+			// Click-safe "immediate" stop: fade the channel to 0, then reset when silent.
+			// This prevents hard discontinuities that cause audible clicks.
+			if (_channel) {
+				_channel->start_kill_fade(-1);
+			}
 		}
 
 		// Ensure immediate finishes for UC / driver-note tracks on instant key-off
@@ -947,7 +955,9 @@ void SiMMLTrack::sequence_off(int p_sample_delay, bool p_with_reset) {
 		_executor->clear();
 
 		if (_stop_with_reset) {
-			_channel->reset();
+			if (_channel) {
+				_channel->start_kill_fade(-1);
+			}
 		}
 	}
 }
