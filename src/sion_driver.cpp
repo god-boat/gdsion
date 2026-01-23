@@ -1941,7 +1941,7 @@ void SiONDriver::_update_batch_meters(const Vector<double> *out_buf, int frames)
 	_push_meter_to_ring(master);
 }
 
-void SiONDriver::_meter_track_output(int track_id, const Vector<double> *track_buf, int frames) {
+void SiONDriver::_meter_track_output(int track_id, const Vector<double> *track_buf, int frames, double p_post_fader_gain, int p_post_pan) {
 	if (!_metering_enabled.load(std::memory_order_relaxed)) {
 		return;
 	}
@@ -1962,12 +1962,18 @@ void SiONDriver::_meter_track_output(int track_id, const Vector<double> *track_b
 	snapshot.timestamp_us = Time::get_singleton()->get_ticks_usec();
 	snapshot.sample_count = frames;
 
+	double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
+	const int clamped_pan = CLAMP(p_post_pan, 0, 128);
+	const double post_fader_gain = std::max(p_post_fader_gain, 0.0);
+	const double gain_l = pan_table[128 - clamped_pan] * post_fader_gain;
+	const double gain_r = pan_table[clamped_pan] * post_fader_gain;
+
 	double sum_sq_left = 0.0;
 	double sum_sq_right = 0.0;
 
 	for (int i = 0; i < frames; ++i) {
-		float left = fabsf((float)(*track_buf)[i * 2]);
-		float right = fabsf((float)(*track_buf)[i * 2 + 1]);
+		float left = fabsf((float)((*track_buf)[i * 2] * gain_l));
+		float right = fabsf((float)((*track_buf)[i * 2 + 1] * gain_r));
 
 		snapshot.peak_left = std::max(snapshot.peak_left, left);
 		snapshot.peak_right = std::max(snapshot.peak_right, right);
@@ -2625,9 +2631,8 @@ void SiONDriver::_drain_track_mailbox() {
             if (!ch) continue;
             if (u.has_vol) {
                 // Allow up to 2.0× (200%) for hot mixing headroom.
-                // This lets individual tracks exceed 0dBFS during mixing,
-                // but the final output is always hard-clamped to ±1.0 in generate_audio()
-                // to prevent actual clipping at the DAC. This matches Audacity's approach.
+                // This lets individual tracks exceed 0dBFS during mixing; downstream gain staging
+                // (driver volume / Godot buses) is expected to keep the final output in range.
                 int vol128 = (int)Math::round(CLAMP(u.vol_linear, 0.0, 2.0) * 128.0);
                 ch->set_master_volume(vol128);
             }

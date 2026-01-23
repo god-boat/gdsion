@@ -57,6 +57,7 @@ class SiOPMWavePCMData;
 class SiOPMWaveSamplerData;
 class SiOPMWaveSamplerTable;
 class SiEffectStream;
+class SiOPMChannelBase;
 
 // SiONDriver class provides the driver of SiON's digital signal processor emulator. All SiON's basic operations are
 // provided as driver's properties, methods, and signals. Only one instance must exist at a time.
@@ -230,7 +231,7 @@ private:
 
 	// Metering helper functions
 	void _update_batch_meters(const Vector<double> *out_buf, int frames);
-	void _meter_track_output(int track_id, const Vector<double> *track_buf, int frames);
+	void _meter_track_output(int track_id, const Vector<double> *track_buf, int frames, double p_post_fader_gain, int p_post_pan);
 	void _meter_all_track_outputs(int frames);
 	void _push_meter_to_ring(const MeterSnapshot &snapshot);
 
@@ -500,9 +501,11 @@ private:
 	void _drain_track_mailbox();
 
 	HashMap<int, SiEffectStream *> _track_effect_streams;
+	HashMap<int, SiOPMChannelBase *> _track_effect_channels;
 	SiEffectStream *_ensure_track_effect_stream(int p_track_id);
 	SiEffectStream *_get_track_effect_stream(int p_track_id);
 	void _bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id);
+	void _update_track_effect_post_fader();
 	void _clear_track_effect_streams(bool p_delete_streams);
 	Vector<double> _args_from_variant(const Variant &p_value) const;
 	Ref<SiEffectBase> _build_effect_from_dict(const Dictionary &p_slot);
