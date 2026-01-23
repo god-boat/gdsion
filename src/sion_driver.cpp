@@ -1805,9 +1805,6 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 	const int block = _buffer_length; // internal SiON processing block (in frames)
 
 	while (frames_generated < p_frames) {
-		// Drain mailbox on every iteration to minimize parameter change latency
-		// This ensures key_on, volume, filter, etc. are applied ASAP
-		_drain_track_mailbox();
 
 		// Only process audio if we need more samples than we have buffered
 		// This prevents the sequencer from advancing faster than real-time
