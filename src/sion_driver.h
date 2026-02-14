@@ -501,6 +501,33 @@ private:
 		bool has_stream_loop_region = false;
 		int64_t stream_loop_start = 0;
 		int64_t stream_loop_end = 0;
+
+		// Track effects (applied to per-track SiEffectStream, not per-voice channels)
+		enum FxOp {
+			FX_OP_NONE = 0,
+			FX_OP_SET_CHAIN = 1,
+			FX_OP_INSERT = 2,
+			FX_OP_REMOVE = 3,
+			FX_OP_SWAP = 4,
+		};
+		int fx_op = FX_OP_NONE;
+
+		// Args/bypass update payload (also used by insert/remove/swap for indices).
+		bool has_fx_args = false;
+		bool has_fx_bypass = false;
+		int fx_index = 0;
+		int fx_index_b = 0;
+		int fx_argc = 0;
+		double fx_args[16] = { 0.0 };
+		bool fx_bypassed = false;
+		char fx_effect_type[32] = { 0 };
+
+		// Chain payload (max 4 slots; Poolie caps FX slots per track to 4).
+		int fx_chain_count = 0;
+		char fx_chain_effect_type[4][32] = { { 0 } };
+		int fx_chain_argc[4] = { 0, 0, 0, 0 };
+		double fx_chain_args[4][16] = { { 0.0 } };
+		bool fx_chain_bypassed[4] = { false, false, false, false };
 	};
 
 	// Per-track cached filter state for merging partial updates
@@ -814,6 +841,14 @@ public:
 	void mailbox_key_off(int p_track_id, bool p_immediate = false, uint64_t p_track_instance_id = 0);
 	void mailbox_set_expression(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);
 	void mailbox_set_velocity(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);
+
+	// Track effects (thread-safe via mailbox, applied at audio block boundary)
+	void mailbox_track_effects_set_chain(int p_track_id, const Array &p_slots);
+	void mailbox_track_effects_insert_effect(int p_track_id, const Dictionary &p_slot, int p_index = -1);
+	void mailbox_track_effects_remove_effect(int p_track_id, int p_index);
+	void mailbox_track_effects_swap_effects(int p_track_id, int p_index_a, int p_index_b);
+	void mailbox_track_effects_set_effect_args(int p_track_id, int p_index, const Variant &p_args);
+	void mailbox_track_effects_set_bypass(int p_track_id, int p_index, bool p_bypassed);
 
 	void track_effects_set_chain(int p_track_id, const Array &p_slots);
 	void track_effects_insert_effect(int p_track_id, const Dictionary &p_slot, int p_index = -1);

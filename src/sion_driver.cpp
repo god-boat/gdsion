@@ -1459,6 +1459,14 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_expression", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_expression, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_set_velocity", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_velocity, DEFVAL(0));
 
+	// Track effects (thread-safe via mailbox)
+	ClassDB::bind_method(D_METHOD("mailbox_track_effects_set_chain", "track_id", "slots"), &SiONDriver::mailbox_track_effects_set_chain);
+	ClassDB::bind_method(D_METHOD("mailbox_track_effects_insert_effect", "track_id", "slot", "index"), &SiONDriver::mailbox_track_effects_insert_effect, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_track_effects_remove_effect", "track_id", "index"), &SiONDriver::mailbox_track_effects_remove_effect);
+	ClassDB::bind_method(D_METHOD("mailbox_track_effects_swap_effects", "track_id", "index_a", "index_b"), &SiONDriver::mailbox_track_effects_swap_effects);
+	ClassDB::bind_method(D_METHOD("mailbox_track_effects_set_effect_args", "track_id", "index", "args"), &SiONDriver::mailbox_track_effects_set_effect_args);
+	ClassDB::bind_method(D_METHOD("mailbox_track_effects_set_bypass", "track_id", "index", "bypassed"), &SiONDriver::mailbox_track_effects_set_bypass);
+
 	// User-controllable track API
 	ClassDB::bind_method(D_METHOD("create_user_controllable_track", "track_id"), &SiONDriver::create_user_controllable_track, DEFVAL(0));
 
@@ -2724,6 +2732,129 @@ void SiONDriver::mailbox_set_velocity(int p_track_id, int p_value, uint64_t p_tr
     _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_track_effects_set_effect_args(int p_track_id, int p_index, const Variant &p_args) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for mailbox track effects.", p_track_id));
+	// Ensure the stream exists on the calling thread (main thread).
+	if (_ensure_track_effect_stream(p_track_id) == nullptr) {
+		return;
+	}
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.fx_op = _TrackUpdate::FX_OP_NONE;
+	u.has_fx_args = true;
+	u.fx_index = p_index;
+	Vector<double> args = _args_from_variant(p_args);
+	u.fx_argc = MIN(16, args.size());
+	for (int i = 0; i < u.fx_argc; i++) {
+		u.fx_args[i] = args[i];
+	}
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_track_effects_set_bypass(int p_track_id, int p_index, bool p_bypassed) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for mailbox track effects.", p_track_id));
+	// Ensure the stream exists on the calling thread (main thread).
+	if (_ensure_track_effect_stream(p_track_id) == nullptr) {
+		return;
+	}
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.fx_op = _TrackUpdate::FX_OP_NONE;
+	u.has_fx_bypass = true;
+	u.fx_index = p_index;
+	u.fx_bypassed = p_bypassed;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_track_effects_set_chain(int p_track_id, const Array &p_slots) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for mailbox track effects.", p_track_id));
+	// Ensure the stream exists on the calling thread (main thread).
+	if (_ensure_track_effect_stream(p_track_id) == nullptr) {
+		return;
+	}
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.fx_op = _TrackUpdate::FX_OP_SET_CHAIN;
+
+	int count = 0;
+	for (int i = 0; i < p_slots.size() && count < 4; i++) {
+		Variant slot_variant = p_slots[i];
+		if (slot_variant.get_type() != Variant::DICTIONARY) {
+			continue;
+		}
+		Dictionary slot_dict = slot_variant;
+		String effect_type = slot_dict.get("effect_type", String());
+		if (effect_type.is_empty()) {
+			continue;
+		}
+		CharString cs = effect_type.utf8();
+		memset(u.fx_chain_effect_type[count], 0, sizeof(u.fx_chain_effect_type[count]));
+		strncpy(u.fx_chain_effect_type[count], cs.get_data(), sizeof(u.fx_chain_effect_type[count]) - 1);
+
+		Vector<double> args = _args_from_variant(slot_dict.get("args", Variant()));
+		u.fx_chain_argc[count] = MIN(16, args.size());
+		for (int a = 0; a < u.fx_chain_argc[count]; a++) {
+			u.fx_chain_args[count][a] = args[a];
+		}
+		u.fx_chain_bypassed[count] = bool(slot_dict.get("bypassed", false));
+		count++;
+	}
+	u.fx_chain_count = count;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_track_effects_insert_effect(int p_track_id, const Dictionary &p_slot, int p_index) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for mailbox track effects.", p_track_id));
+	// Ensure the stream exists on the calling thread (main thread).
+	if (_ensure_track_effect_stream(p_track_id) == nullptr) {
+		return;
+	}
+	String effect_type = p_slot.get("effect_type", String());
+	ERR_FAIL_COND_MSG(effect_type.is_empty(), "SiONDriver: Cannot insert an empty effect via mailbox.");
+
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.fx_op = _TrackUpdate::FX_OP_INSERT;
+	u.fx_index = p_index;
+	CharString cs = effect_type.utf8();
+	memset(u.fx_effect_type, 0, sizeof(u.fx_effect_type));
+	strncpy(u.fx_effect_type, cs.get_data(), sizeof(u.fx_effect_type) - 1);
+
+	Vector<double> args = _args_from_variant(p_slot.get("args", Variant()));
+	u.fx_argc = MIN(16, args.size());
+	for (int i = 0; i < u.fx_argc; i++) {
+		u.fx_args[i] = args[i];
+	}
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_track_effects_remove_effect(int p_track_id, int p_index) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for mailbox track effects.", p_track_id));
+	// Ensure the stream exists on the calling thread (main thread).
+	if (_ensure_track_effect_stream(p_track_id) == nullptr) {
+		return;
+	}
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.fx_op = _TrackUpdate::FX_OP_REMOVE;
+	u.fx_index = p_index;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_track_effects_swap_effects(int p_track_id, int p_index_a, int p_index_b) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for mailbox track effects.", p_track_id));
+	// Ensure the stream exists on the calling thread (main thread).
+	if (_ensure_track_effect_stream(p_track_id) == nullptr) {
+		return;
+	}
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.fx_op = _TrackUpdate::FX_OP_SWAP;
+	u.fx_index = p_index_a;
+	u.fx_index_b = p_index_b;
+	_mb_try_push(u);
+}
+
 // Thread-safe signal emission helper.
 void SiONDriver::_emit_signal_thread_safe(const StringName &signal_name, const Variant &arg) {
     if (arg.get_type() == Variant::NIL) {
@@ -2755,6 +2886,78 @@ void SiONDriver::_drain_track_mailbox() {
     while (tail != head) {
         const _TrackUpdate &u = _mb_ring[tail];
         tail = (tail + 1) & (_MB_CAPACITY - 1);
+
+		// Track effects: apply once per update (not per-voice/channel).
+		if (u.fx_op != _TrackUpdate::FX_OP_NONE || u.has_fx_args || u.has_fx_bypass) {
+			SiEffectStream *stream = _get_track_effect_stream(u.track_id);
+			if (stream) {
+				if (u.fx_op == _TrackUpdate::FX_OP_SET_CHAIN) {
+					Vector<Ref<SiEffectBase>> chain;
+					for (int i = 0; i < u.fx_chain_count; i++) {
+						String effect_type = String::utf8(u.fx_chain_effect_type[i]);
+						if (effect_type.is_empty()) {
+							continue;
+						}
+						Ref<SiEffectBase> effect = SiEffector::get_effect_instance(effect_type);
+						if (effect.is_null()) {
+							continue;
+						}
+						Vector<double> args;
+						args.resize(u.fx_chain_argc[i]);
+						for (int a = 0; a < u.fx_chain_argc[i]; a++) {
+							args.write[a] = u.fx_chain_args[i][a];
+						}
+						effect->reset();
+						effect->set_by_mml(args);
+						chain.push_back(effect);
+					}
+					stream->set_chain(chain);
+					stream->prepare_process();
+					// Apply bypass snapshot (also clears any stale bypass values).
+					for (int i = 0; i < chain.size() && i < u.fx_chain_count; i++) {
+						stream->set_effect_bypass(i, u.fx_chain_bypassed[i]);
+					}
+				} else if (u.fx_op == _TrackUpdate::FX_OP_INSERT) {
+					String effect_type = String::utf8(u.fx_effect_type);
+					if (!effect_type.is_empty()) {
+						Ref<SiEffectBase> effect = SiEffector::get_effect_instance(effect_type);
+						if (!effect.is_null()) {
+							Vector<double> args;
+							args.resize(u.fx_argc);
+							for (int a = 0; a < u.fx_argc; a++) {
+								args.write[a] = u.fx_args[a];
+							}
+							effect->reset();
+							effect->set_by_mml(args);
+							int insert_index = u.fx_index;
+							if (insert_index < 0 || insert_index > stream->get_effect_count()) {
+								insert_index = stream->get_effect_count();
+							}
+							stream->insert_effect(insert_index, effect);
+							stream->prepare_process();
+						}
+					}
+				} else if (u.fx_op == _TrackUpdate::FX_OP_REMOVE) {
+					stream->remove_effect(u.fx_index);
+					stream->prepare_process();
+				} else if (u.fx_op == _TrackUpdate::FX_OP_SWAP) {
+					stream->swap_effects(u.fx_index, u.fx_index_b);
+					stream->prepare_process();
+				}
+				if (u.has_fx_args) {
+					Vector<double> args;
+					args.resize(u.fx_argc);
+					for (int i = 0; i < u.fx_argc; i++) {
+						args.write[i] = u.fx_args[i];
+					}
+					stream->set_effect_args(u.fx_index, args);
+				}
+				if (u.has_fx_bypass) {
+					stream->set_effect_bypass(u.fx_index, u.fx_bypassed);
+				}
+			}
+		}
+
         // Apply to all live tracks that match this track_id (and optional voice scope)
         // AUDIO THREAD SAFETY: Use get_tracks_ref() to avoid vector copy allocation
         const Vector<SiMMLTrack *>& tracks = sequencer->get_tracks_ref();
@@ -3171,13 +3374,13 @@ Vector<double> SiONDriver::_args_from_variant(const Variant &p_value) const {
 }
 
 Ref<SiEffectBase> SiONDriver::_build_effect_from_dict(const Dictionary &p_slot) {
-	String effect_id = p_slot.get("id", String());
-	if (effect_id.is_empty()) {
+	String effect_type = p_slot.get("effect_type", String());
+	if (effect_type.is_empty()) {
 		return Ref<SiEffectBase>();
 	}
-	Ref<SiEffectBase> effect = SiEffector::get_effect_instance(effect_id);
+	Ref<SiEffectBase> effect = SiEffector::get_effect_instance(effect_type);
 	if (effect.is_null()) {
-		ERR_PRINT(vformat("SiONDriver: Unknown insert effect '%s'.", effect_id));
+		ERR_PRINT(vformat("SiONDriver: Unknown insert effect '%s'.", effect_type));
 		return Ref<SiEffectBase>();
 	}
 	Variant args_variant = p_slot.get("args", Variant());
