@@ -213,6 +213,7 @@ SiMMLRefTable::SiMMLRefTable() {
 		channel_settings_map[SiONModuleType::MODULE_RAMP]       = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_RAMP,       SiONPulseGeneratorType::PULSE_RAMP,        128, 1, 128));
 		channel_settings_map[SiONModuleType::MODULE_SAMPLE]     = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_SAMPLE,     SiONPulseGeneratorType::PULSE_SINE,        4,   1, 4));
 		channel_settings_map[SiONModuleType::MODULE_KS]         = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_KS,         SiONPulseGeneratorType::PULSE_SINE,        3,   1, 3));
+		channel_settings_map[SiONModuleType::MODULE_STREAM]     = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_STREAM,     SiONPulseGeneratorType::PULSE_SINE,        1,   1, 1));
 		channel_settings_map[SiONModuleType::MODULE_GB]         = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_GB,         SiONPulseGeneratorType::PULSE_PULSE,       11,  2, 4));
 		channel_settings_map[SiONModuleType::MODULE_VRC6]       = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_VRC6,       SiONPulseGeneratorType::PULSE_PULSE,       9,   1, 3));
 		channel_settings_map[SiONModuleType::MODULE_SID]        = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_SID,        SiONPulseGeneratorType::PULSE_PULSE,       12,  1, 3));
@@ -332,6 +333,13 @@ SiMMLRefTable::SiMMLRefTable() {
 		{
 			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_KS];
 			cs->set_channel_type(SiOPMChannelManager::CHANNEL_KS);
+			cs->set_suitable_for_fm_voice(false);
+		}
+
+		// Stream settings.
+		{
+			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_STREAM];
+			cs->set_channel_type(SiOPMChannelManager::CHANNEL_STREAM);
 			cs->set_suitable_for_fm_voice(false);
 		}
 	}

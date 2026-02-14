@@ -470,6 +470,37 @@ private:
 		int velocity_value = 256;
 		// Target specific track instance by Godot object ID (for note commands on pooled tracks)
 		uint64_t track_instance_id = 0;  // 0 = apply to all matching track_id
+
+		// Stream channel params (apply to SiOPMChannelStream on playing channels)
+		bool has_stream_gain = false;
+		double stream_gain = 0.0; // dB (0 = unity, matches sampler gain range)
+		bool has_stream_pan = false;
+		int stream_pan = 64;
+		bool has_stream_pitch_cents = false;
+		int stream_pitch_cents = 0;
+		bool has_stream_fade_in = false;
+		int stream_fade_in = 0;
+		bool has_stream_fade_out = false;
+		int stream_fade_out = 0;
+		bool has_stream_in_sample = false;
+		int64_t stream_in_sample = 0;
+		bool has_stream_out_sample = false;
+		int64_t stream_out_sample = 0;
+		bool has_stream_warp_mode = false;
+		int stream_warp_mode = 0;
+		bool has_stream_clip_bpm = false;
+		double stream_clip_bpm = 0.0;
+		bool has_stream_grain_size = false;
+		double stream_grain_size = 0.5;
+		bool has_stream_flux = false;
+		double stream_flux = 0.0;
+		bool has_stream_seek = false;
+		int64_t stream_seek_pos = 0;
+		bool has_stream_looping = false;
+		bool stream_looping = false;
+		bool has_stream_loop_region = false;
+		int64_t stream_loop_start = 0;
+		int64_t stream_loop_end = 0;
 	};
 
 	// Per-track cached filter state for merging partial updates
@@ -762,6 +793,21 @@ public:
 	void mailbox_set_ch_al_ws2(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id = -1);
 	void mailbox_set_ch_al_balance(int p_track_id, int p_balance, int64_t p_voice_scope_id = -1);
 	void mailbox_set_ch_al_detune2(int p_track_id, int p_detune2, int64_t p_voice_scope_id = -1);
+	// Stream channel params (apply to SiOPMChannelStream on playing channels)
+	void mailbox_stream_set_gain(int p_track_id, double p_gain);
+	void mailbox_stream_set_pan(int p_track_id, int p_pan);
+	void mailbox_stream_set_pitch_cents(int p_track_id, int p_cents);
+	void mailbox_stream_set_fade_in(int p_track_id, int p_frames);
+	void mailbox_stream_set_fade_out(int p_track_id, int p_frames);
+	void mailbox_stream_set_in_sample(int p_track_id, int64_t p_sample);
+	void mailbox_stream_set_out_sample(int p_track_id, int64_t p_sample);
+	void mailbox_stream_set_warp_mode(int p_track_id, int p_mode);
+	void mailbox_stream_set_clip_bpm(int p_track_id, double p_bpm);
+	void mailbox_stream_set_grain_size(int p_track_id, double p_grain_size);
+	void mailbox_stream_set_flux(int p_track_id, double p_flux);
+	void mailbox_stream_seek(int p_track_id, int64_t p_position_48k);
+	void mailbox_stream_set_looping(int p_track_id, bool p_looping);
+	void mailbox_stream_set_loop_region(int p_track_id, int64_t p_start_48k, int64_t p_end_48k);
 	// Note control (thread-safe alternatives to direct track method calls)
 	// p_track_instance_id: If non-zero, targets specific track by Godot object ID (for pooled tracks)
 	void mailbox_key_on(int p_track_id, int p_note, int p_tick_length = 0, uint64_t p_track_instance_id = 0);

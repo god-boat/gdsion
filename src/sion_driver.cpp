@@ -47,6 +47,7 @@
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/channels/siopm_channel_fm.h"
 #include "chip/channels/siopm_channel_sampler.h"
+#include "chip/channels/siopm_channel_stream.h"
 #include "utils/fader_util.h"
 #include "utils/transformer_util.h"
 #include <atomic>
@@ -1437,6 +1438,21 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws2", "track_id", "wave_shape", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_ws2, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_balance", "track_id", "balance", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_balance, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_detune2", "track_id", "detune2", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_detune2, DEFVAL(-1));
+	// Stream channel params (thread-safe via mailbox)
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_gain", "track_id", "gain"), &SiONDriver::mailbox_stream_set_gain);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_pan", "track_id", "pan"), &SiONDriver::mailbox_stream_set_pan);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_pitch_cents", "track_id", "cents"), &SiONDriver::mailbox_stream_set_pitch_cents);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_fade_in", "track_id", "frames"), &SiONDriver::mailbox_stream_set_fade_in);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_fade_out", "track_id", "frames"), &SiONDriver::mailbox_stream_set_fade_out);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_in_sample", "track_id", "sample"), &SiONDriver::mailbox_stream_set_in_sample);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_out_sample", "track_id", "sample"), &SiONDriver::mailbox_stream_set_out_sample);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_warp_mode", "track_id", "mode"), &SiONDriver::mailbox_stream_set_warp_mode);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_clip_bpm", "track_id", "bpm"), &SiONDriver::mailbox_stream_set_clip_bpm);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_grain_size", "track_id", "grain_size"), &SiONDriver::mailbox_stream_set_grain_size);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_flux", "track_id", "flux"), &SiONDriver::mailbox_stream_set_flux);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_seek", "track_id", "position_48k"), &SiONDriver::mailbox_stream_seek);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_looping", "track_id", "looping"), &SiONDriver::mailbox_stream_set_looping);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_loop_region", "track_id", "start_48k", "end_48k"), &SiONDriver::mailbox_stream_set_loop_region);
 	// Note control (thread-safe) - track_instance_id targets specific track by Godot object ID
 	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "track_instance_id"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_key_off", "track_id", "immediate", "track_instance_id"), &SiONDriver::mailbox_key_off, DEFVAL(false), DEFVAL(0));
@@ -1595,6 +1611,7 @@ void SiONDriver::_bind_methods() {
 	BIND_ENUM_CONSTANT(MODULE_FM_OPLL);
 	BIND_ENUM_CONSTANT(MODULE_FM_OPL3);
 	BIND_ENUM_CONSTANT(MODULE_FM_MA3);
+	BIND_ENUM_CONSTANT(MODULE_STREAM);
 	BIND_ENUM_CONSTANT(MODULE_MAX);
 
 	BIND_ENUM_CONSTANT(PITCH_TABLE_OPM);
@@ -2554,6 +2571,122 @@ void SiONDriver::mailbox_set_ch_al_detune2(int p_track_id, int p_detune2, int64_
     _mb_try_push(u);
 }
 
+// --- Stream channel mailbox methods -------------------------------------------
+
+void SiONDriver::mailbox_stream_set_gain(int p_track_id, double p_gain) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_gain = true;
+	u.stream_gain = p_gain;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_pan(int p_track_id, int p_pan) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_pan = true;
+	u.stream_pan = p_pan;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_pitch_cents(int p_track_id, int p_cents) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_pitch_cents = true;
+	u.stream_pitch_cents = p_cents;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_fade_in(int p_track_id, int p_frames) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_fade_in = true;
+	u.stream_fade_in = p_frames;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_fade_out(int p_track_id, int p_frames) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_fade_out = true;
+	u.stream_fade_out = p_frames;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_in_sample(int p_track_id, int64_t p_sample) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_in_sample = true;
+	u.stream_in_sample = p_sample;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_out_sample(int p_track_id, int64_t p_sample) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_out_sample = true;
+	u.stream_out_sample = p_sample;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_warp_mode(int p_track_id, int p_mode) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_warp_mode = true;
+	u.stream_warp_mode = p_mode;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_grain_size(int p_track_id, double p_grain_size) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_grain_size = true;
+	u.stream_grain_size = p_grain_size;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_flux(int p_track_id, double p_flux) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_flux = true;
+	u.stream_flux = p_flux;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_clip_bpm(int p_track_id, double p_bpm) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_clip_bpm = true;
+	u.stream_clip_bpm = p_bpm;
+	_mb_try_push(u);
+}
+
+
+void SiONDriver::mailbox_stream_seek(int p_track_id, int64_t p_position_48k) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_seek = true;
+	u.stream_seek_pos = p_position_48k;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_looping(int p_track_id, bool p_looping) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_looping = true;
+	u.stream_looping = p_looping;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_set_loop_region(int p_track_id, int64_t p_start_48k, int64_t p_end_48k) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_loop_region = true;
+	u.stream_loop_start = p_start_48k;
+	u.stream_loop_end = p_end_48k;
+	_mb_try_push(u);
+}
+
 void SiONDriver::mailbox_key_on(int p_track_id, int p_note, int p_tick_length, uint64_t p_track_instance_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -2849,6 +2982,52 @@ void SiONDriver::_drain_track_mailbox() {
                     // Apply as PTSS detune on operator 1 only (op1 is the second operator)
                     fm->set_active_operator_index(1);
                     fm->set_detune(u.al_detune2);
+                }
+            }
+            // Stream channel updates (apply to SiOPMChannelStream).
+            SiOPMChannelStream *stream_ch = Object::cast_to<SiOPMChannelStream>(ch);
+            if (stream_ch) {
+                if (u.has_stream_gain) {
+                    stream_ch->set_stream_gain(u.stream_gain);
+                }
+                if (u.has_stream_pan) {
+                    stream_ch->set_stream_pan(u.stream_pan);
+                }
+                if (u.has_stream_pitch_cents) {
+                    stream_ch->set_stream_pitch_cents(u.stream_pitch_cents);
+                }
+                if (u.has_stream_fade_in) {
+                    stream_ch->set_stream_fade_in(u.stream_fade_in);
+                }
+                if (u.has_stream_fade_out) {
+                    stream_ch->set_stream_fade_out(u.stream_fade_out);
+                }
+                if (u.has_stream_in_sample) {
+                    stream_ch->set_stream_in_sample(u.stream_in_sample);
+                }
+                if (u.has_stream_out_sample) {
+                    stream_ch->set_stream_out_sample(u.stream_out_sample);
+                }
+                if (u.has_stream_warp_mode) {
+                    stream_ch->set_stream_warp_mode(u.stream_warp_mode);
+                }
+                if (u.has_stream_clip_bpm) {
+                    stream_ch->set_stream_clip_bpm(u.stream_clip_bpm);
+                }
+                if (u.has_stream_grain_size) {
+                    stream_ch->set_stream_grain_size(u.stream_grain_size);
+                }
+                if (u.has_stream_flux) {
+                    stream_ch->set_stream_flux(u.stream_flux);
+                }
+                if (u.has_stream_seek) {
+                    stream_ch->seek_to(u.stream_seek_pos);
+                }
+                if (u.has_stream_looping) {
+                    stream_ch->set_stream_looping(u.stream_looping);
+                }
+                if (u.has_stream_loop_region) {
+                    stream_ch->set_stream_loop_region(u.stream_loop_start, u.stream_loop_end);
                 }
             }
             if (u.has_lfo_wave) {

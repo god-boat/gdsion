@@ -22,6 +22,7 @@ public:
 		CHANNEL_PCM = 1,
 		CHANNEL_SAMPLER = 2,
 		CHANNEL_KS = 3,
+		CHANNEL_STREAM = 4,
 		CHANNEL_MAX
 	};
 

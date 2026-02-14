@@ -44,6 +44,7 @@ enum SiONModuleType : unsigned int {
 	MODULE_FM_OPLL    = 18, // YM2413
 	MODULE_FM_OPL3    = 19, // YM3812
 	MODULE_FM_MA3     = 20, // YMU762
+	MODULE_STREAM     = 21, // Streaming audio clip
 	MODULE_MAX
 };
 

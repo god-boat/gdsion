@@ -12,6 +12,7 @@
 #include "chip/channels/siopm_channel_ks.h"
 #include "chip/channels/siopm_channel_pcm.h"
 #include "chip/channels/siopm_channel_sampler.h"
+#include "chip/channels/siopm_channel_stream.h"
 #include "chip/siopm_sound_chip.h"
 
 using namespace godot;
@@ -26,6 +27,7 @@ void SiOPMChannelManager::initialize(SiOPMSoundChip *p_chip) {
 	_channel_managers[CHANNEL_PCM]     = memnew(SiOPMChannelManager(CHANNEL_PCM));
 	_channel_managers[CHANNEL_SAMPLER] = memnew(SiOPMChannelManager(CHANNEL_SAMPLER));
 	_channel_managers[CHANNEL_KS]      = memnew(SiOPMChannelManager(CHANNEL_KS));
+	_channel_managers[CHANNEL_STREAM]  = memnew(SiOPMChannelManager(CHANNEL_STREAM));
 }
 
 void SiOPMChannelManager::finalize() {
@@ -35,6 +37,7 @@ void SiOPMChannelManager::finalize() {
 	memdelete(_channel_managers[CHANNEL_PCM]);
 	memdelete(_channel_managers[CHANNEL_SAMPLER]);
 	memdelete(_channel_managers[CHANNEL_KS]);
+	memdelete(_channel_managers[CHANNEL_STREAM]);
 	_channel_managers.clear();
 }
 
@@ -83,6 +86,9 @@ SiOPMChannelBase *SiOPMChannelManager::_create_channel(SiOPMChannelBase *p_prev,
 			} break;
 			case CHANNEL_KS: {
 				new_channel = memnew(SiOPMChannelKS(_sound_chip));
+			} break;
+			case CHANNEL_STREAM: {
+				new_channel = memnew(SiOPMChannelStream(_sound_chip));
 			} break;
 
 			default: break; // Silences enum warnings.

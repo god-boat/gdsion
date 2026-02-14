@@ -12,6 +12,7 @@
 
 #include "sion_enums.h"
 #include <cmath>
+#include "chip/wave/resample_util.h"
 #include "templates/singly_linked_list.h"
 #include <godot_cpp/core/class_db.hpp>
 #include "utils/transformer_util.h"
@@ -23,48 +24,6 @@ using namespace godot;
 static constexpr int kTARGET_SR = 48000;
 static constexpr int kSAMPLER_GAIN_MIN_DB = -36;
 static constexpr int kSAMPLER_GAIN_MAX_DB = 36;
-
-// ---------------------------------------------------------------------------
-// Helper: simple linear resampler for mono/stereo interleaved PCM in [-1, 1]
-// ---------------------------------------------------------------------------
-// Simple linear resampler for mono/stereo interleaved PCM in the range [-1, 1].
-// The result is written into r_dst to avoid an extra copy when the caller moves
-// it back into the original Vector.
-static void _resample_linear(const Vector<double> &p_src, int p_channels, int p_src_rate, int p_dst_rate, Vector<double> &r_dst) {
-    // Sanity checks & trivial cases.
-    if (p_src_rate == p_dst_rate || p_src_rate <= 0 || p_dst_rate <= 0) {
-        r_dst = p_src;
-        return;
-    }
-
-    int src_frame_count = p_src.size() / p_channels;
-    // Guard against very short clips (<= 1 frame per channel).
-    if (src_frame_count < 2) {
-        r_dst = p_src;
-        return;
-    }
-
-    double ratio = static_cast<double>(p_dst_rate) / static_cast<double>(p_src_rate);
-    double inv_ratio = 1.0 / ratio;
-    int dst_frame_count = static_cast<int>(std::ceil(src_frame_count * ratio));
-
-    r_dst.resize_zeroed(dst_frame_count * p_channels);
-
-    for (int ch = 0; ch < p_channels; ch++) {
-        double src_pos = 0.0;
-        for (int i = 0; i < dst_frame_count; ++i, src_pos += inv_ratio) {
-            int idx = static_cast<int>(std::floor(src_pos));
-            double frac = src_pos - idx;
-            if (idx >= src_frame_count - 1) {
-                idx  = src_frame_count - 2;
-                frac = 1.0;
-            }
-            double s0 = p_src[(idx * p_channels) + ch];
-            double s1 = p_src[((idx + 1) * p_channels) + ch];
-            r_dst.write[(i * p_channels) + ch] = s0 + (s1 - s0) * frac;
-        }
-    }
-}
 
 
 void SiOPMWaveSamplerData::_prepare_wave_data(const Variant &p_data, int p_src_channel_count, int p_channel_count) {
@@ -105,7 +64,7 @@ void SiOPMWaveSamplerData::_prepare_wave_data(const Variant &p_data, int p_src_c
 
                 if (src_rate > 0 && src_rate != kTARGET_SR) {
                     Vector<double> resampled;
-                    _resample_linear(raw_data, source_channels, src_rate, kTARGET_SR, resampled);
+                    resample_linear(raw_data, source_channels, src_rate, kTARGET_SR, resampled);
                     raw_data = std::move(resampled);
                     _sample_rate = kTARGET_SR;
                 }

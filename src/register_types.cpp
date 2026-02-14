@@ -21,6 +21,7 @@
 #include "chip/channels/siopm_channel_ks.h"
 #include "chip/channels/siopm_channel_pcm.h"
 #include "chip/channels/siopm_channel_sampler.h"
+#include "chip/channels/siopm_channel_stream.h"
 #include "chip/channels/siopm_operator.h"
 #include "chip/siopm_channel_params.h"
 #include "chip/siopm_operator_params.h"
@@ -31,6 +32,7 @@
 #include "chip/wave/siopm_wave_pcm_table.h"
 #include "chip/wave/siopm_wave_sampler_data.h"
 #include "chip/wave/siopm_wave_sampler_table.h"
+#include "chip/wave/siopm_wave_stream_data.h"
 #include "chip/wave/siopm_wave_table.h"
 #include "effector/components/si_effect_line_delay.h"
 #include "effector/effects/si_effect_autopan.h"
@@ -106,6 +108,7 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 		ClassDB::register_internal_class<SiOPMWavePCMTable>();
 		ClassDB::register_internal_class<SiOPMWaveSamplerData>();
 		ClassDB::register_internal_class<SiOPMWaveSamplerTable>();
+		ClassDB::register_class<SiOPMWaveStreamData>();
 		ClassDB::register_internal_class<SiOPMWaveTable>();
 
 		ClassDB::register_internal_class<SiOPMChannelBase>();
@@ -113,6 +116,7 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 		ClassDB::register_internal_class<SiOPMChannelKS>();
 		ClassDB::register_internal_class<SiOPMChannelPCM>();
 		ClassDB::register_internal_class<SiOPMChannelSampler>();
+		ClassDB::register_internal_class<SiOPMChannelStream>();
 		ClassDB::register_internal_class<SiOPMOperator>();
 
 		ClassDB::register_abstract_class<SiOPMChannelParams>();
@@ -214,6 +218,9 @@ void uninitialize_sion_module(ModuleInitializationLevel p_level) {
 	}
 
 	// Finalization.
+
+	// Shut down the stream loader thread before finalizing pools.
+	SiOPMWaveStreamData::shutdown_loader();
 
 	// SUS: This is a bit ugly, but I don't have a better idea yet.
 	SinglyLinkedList<int>::finalize_pool();
