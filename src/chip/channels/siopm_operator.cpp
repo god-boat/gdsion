@@ -834,11 +834,15 @@ void SiOPMOperator::get_operator_params(const Ref<SiOPMOperatorParams> &r_params
 
 void SiOPMOperator::set_wave_table(const Ref<SiOPMWaveTable> &p_wave_table) {
 	_pg_type = SiONPulseGeneratorType::PULSE_USER_CUSTOM;
-	_pt_type = p_wave_table->get_default_pitch_table_type();
 
 	_wave_table = p_wave_table->get_wavelet();
 	_wave_fixed_bits = p_wave_table->get_fixed_bits();
 	_update_wave_table_cache();
+
+	// Must use set_pitch_table_type() rather than assigning _pt_type directly,
+	// because it also recalculates _wave_phase_step_shift, _pitch_table, and
+	// _pitch_table_filter from the current _wave_fixed_bits.
+	set_pitch_table_type(p_wave_table->get_default_pitch_table_type());
 }
 
 void SiOPMOperator::set_pcm_data(const Ref<SiOPMWavePCMData> &p_pcm_data) {

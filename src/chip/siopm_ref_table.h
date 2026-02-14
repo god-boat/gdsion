@@ -272,6 +272,7 @@ public:
 
 	void reset_all_user_tables();
 	void register_wave_table(int p_index, const Ref<SiOPMWaveTable> &p_table);
+	void register_scc_wave_table(int p_index, const Ref<SiOPMWaveTable> &p_table);
 	Ref<SiOPMWaveSamplerData> register_sampler_data(int p_index, const Variant &p_data, bool p_ignore_note_off, int p_pan, int p_src_channel_count, int p_channel_count);
 
 	Ref<SiOPMWaveTable> get_wave_table(int p_index);

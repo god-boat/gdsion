@@ -86,6 +86,21 @@ void SiOPMRefTable::register_wave_table(int p_index, const Ref<SiOPMWaveTable> &
 	}
 }
 
+void SiOPMRefTable::register_scc_wave_table(int p_index, const Ref<SiOPMWaveTable> &p_table) {
+	int index = p_index & (WAVE_TABLE_MAX - 1);
+
+	// Persist in _custom_wave_tables so get_wave_table(PULSE_CUSTOM + index)
+	// works at runtime. The stencil is overwritten/cleared every audio buffer
+	// by SiMMLData (register_ref_stencils / clear_ref_stencils), so it cannot
+	// be relied upon for persistent engine wave tables. _custom_wave_tables is
+	// only cleared by reset_all_user_tables() which is not part of the normal
+	// playback lifecycle.
+	//
+	// NOTE: We write to _custom_wave_tables directly (not via register_wave_table)
+	// to avoid the MA-3 user-defined wave slot side effect in register_wave_table.
+	_custom_wave_tables.write[index] = p_table;
+}
+
 Ref<SiOPMWaveSamplerData> SiOPMRefTable::register_sampler_data(int p_index, const Variant &p_data, bool p_ignore_note_off, int p_pan, int p_src_channel_count, int p_channel_count) {
 	Ref<SiOPMWaveSamplerData> sampler_data = memnew(SiOPMWaveSamplerData(p_data, p_ignore_note_off, p_pan, p_src_channel_count, p_channel_count));
 

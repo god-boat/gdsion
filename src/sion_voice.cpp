@@ -442,6 +442,7 @@ void SiONVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_pitch_shift", "shift"), &SiONVoice::set_pitch_shift);
 	ClassDB::bind_method(D_METHOD("get_pitch_shift"), &SiONVoice::get_pitch_shift);
 	ClassDB::bind_method(D_METHOD("get_wave_data"), &SiONVoice::get_wave_data);
+	ClassDB::bind_method(D_METHOD("set_wave_data", "data"), &SiONVoice::set_wave_data);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "pitch_shift"), "set_pitch_shift", "get_pitch_shift");
 	ClassDB::bind_method(D_METHOD("set_pitch_bend", "bend"), &SiONVoice::set_pitch_bend);
 	ClassDB::bind_method(D_METHOD("get_pitch_bend"), &SiONVoice::get_pitch_bend);
