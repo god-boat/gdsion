@@ -58,6 +58,18 @@ public:
 		int p_sample_rate = 48000
 	);
 
+	// Estimate the dominant BPM of audio sample data using onset-based analysis.
+	// Returns 0.0 if there are too few onsets for reliable estimation.
+	static double estimate_bpm(
+		const PackedFloat32Array &p_wave_data,
+		int p_channel_count = 2,
+		int p_sample_rate = 48000
+	);
+
+	// Estimate the dominant BPM directly from an AudioStream (WAV supported).
+	// Returns 0.0 if there are too few onsets for reliable estimation.
+	static double estimate_bpm_from_stream(const Ref<AudioStream> &p_stream);
+
 	OnsetDetector() {}
 	~OnsetDetector() {}
 };

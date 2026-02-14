@@ -20,6 +20,10 @@ void OnsetDetector::_bind_methods() {
 		&OnsetDetector::detect_onsets, DEFVAL(2), DEFVAL(50), DEFVAL(48000));
 	ClassDB::bind_static_method("OnsetDetector", D_METHOD("detect_onsets_from_stream", "stream", "sensitivity"),
 		&OnsetDetector::detect_onsets_from_stream, DEFVAL(50));
+	ClassDB::bind_static_method("OnsetDetector", D_METHOD("estimate_bpm", "wave_data", "channel_count", "sample_rate"),
+		&OnsetDetector::estimate_bpm, DEFVAL(2), DEFVAL(48000));
+	ClassDB::bind_static_method("OnsetDetector", D_METHOD("estimate_bpm_from_stream", "stream"),
+		&OnsetDetector::estimate_bpm_from_stream);
 }
 
 PackedInt32Array OnsetDetector::detect_onsets(
@@ -204,4 +208,124 @@ Vector<int> OnsetDetector::detect_onsets_internal(
 	}
 
 	return onsets;
+}
+
+// ---------------------------------------------------------------------------
+// BPM estimation — onset-IOI histogram approach
+// ---------------------------------------------------------------------------
+
+// Internal: estimate BPM from onset sample indices and sample rate.
+static double _estimate_bpm_from_onsets(const Vector<int> &p_onsets, int p_sample_rate) {
+	// Need at least 3 onsets (2 IOIs) for meaningful estimation.
+	if (p_onsets.size() < 3 || p_sample_rate <= 0) {
+		return 0.0;
+	}
+
+	// BPM range for histogram buckets.
+	static constexpr int BPM_MIN = 60;
+	static constexpr int BPM_MAX = 200;
+	static constexpr int BPM_BUCKETS = BPM_MAX - BPM_MIN + 1;
+
+	// Build a histogram of IOIs quantized to BPM buckets.
+	Vector<int> histogram;
+	histogram.resize_zeroed(BPM_BUCKETS);
+
+	int valid_iois = 0;
+
+	for (int i = 1; i < p_onsets.size(); i++) {
+		int ioi_samples = p_onsets[i] - p_onsets[i - 1];
+		if (ioi_samples <= 0) {
+			continue;
+		}
+
+		// Convert IOI to BPM: BPM = 60 * sample_rate / ioi_samples.
+		double bpm = 60.0 * (double)p_sample_rate / (double)ioi_samples;
+
+		// Try the raw BPM and octave-related multiples (half, double) to catch
+		// rhythmic subdivisions (e.g. 8th notes at 120 BPM yield 240 BPM IOIs,
+		// but halving gives the correct 120).
+		double candidates[3] = { bpm, bpm * 0.5, bpm * 2.0 };
+
+		for (int c = 0; c < 3; c++) {
+			int rounded = (int)std::round(candidates[c]);
+			if (rounded >= BPM_MIN && rounded <= BPM_MAX) {
+				histogram.write[rounded - BPM_MIN]++;
+				valid_iois++;
+			}
+		}
+	}
+
+	if (valid_iois < 2) {
+		return 0.0;
+	}
+
+	// Find peak bucket.
+	int peak_index = 0;
+	int peak_count = 0;
+	for (int i = 0; i < BPM_BUCKETS; i++) {
+		if (histogram[i] > peak_count) {
+			peak_count = histogram[i];
+			peak_index = i;
+		}
+	}
+
+	double estimated_bpm = (double)(peak_index + BPM_MIN);
+
+	// Octave correction: bring into 60-180 range.
+	while (estimated_bpm > 180.0) {
+		estimated_bpm *= 0.5;
+	}
+	while (estimated_bpm < 60.0) {
+		estimated_bpm *= 2.0;
+	}
+
+	// Round to one decimal place for cleanliness.
+	estimated_bpm = std::round(estimated_bpm * 10.0) / 10.0;
+
+	return estimated_bpm;
+}
+
+double OnsetDetector::estimate_bpm(
+	const PackedFloat32Array &p_wave_data,
+	int p_channel_count,
+	int p_sample_rate
+) {
+	// Convert PackedFloat32Array to Vector<double>.
+	Vector<double> wave_data;
+	wave_data.resize(p_wave_data.size());
+	for (int i = 0; i < p_wave_data.size(); i++) {
+		wave_data.write[i] = static_cast<double>(p_wave_data[i]);
+	}
+
+	// Use moderate sensitivity (50) for BPM estimation — we want clear hits.
+	Vector<int> onsets = detect_onsets_internal(wave_data, p_channel_count, 50, p_sample_rate);
+
+	return _estimate_bpm_from_onsets(onsets, p_sample_rate);
+}
+
+double OnsetDetector::estimate_bpm_from_stream(const Ref<AudioStream> &p_stream) {
+	if (p_stream.is_null()) {
+		return 0.0;
+	}
+
+	int channel_count = 2;
+	Vector<double> wave_data = SiOPMWaveBase::extract_wave_data(p_stream, &channel_count);
+	if (wave_data.is_empty() || channel_count < 1) {
+		return 0.0;
+	}
+
+	int sample_rate = 48000;
+	if (p_stream->has_method("get_mix_rate")) {
+		Variant v_rate = p_stream->call("get_mix_rate");
+		if (v_rate.get_type() == Variant::INT) {
+			sample_rate = (int)v_rate;
+		} else if (v_rate.get_type() == Variant::FLOAT) {
+			sample_rate = (int)((double)v_rate);
+		}
+	}
+
+	// Use moderate sensitivity (50) for BPM estimation.
+	Vector<int> onsets = detect_onsets_internal(wave_data, channel_count, 50, sample_rate);
+
+	return _estimate_bpm_from_onsets(onsets, sample_rate);
 }
