@@ -342,20 +342,22 @@ void SiOPMChannelSampler::buffer(int p_length) {
 		if (_sample_index_fp >= end_point) {
 			if (loop_point >= 0) {
 				_sample_index_fp = loop_point + (_sample_index_fp - end_point);
-			} else {
+			} else if (_amp_stage != AMP_STAGE_IDLE) {
+				// Sample reached its end (one-shot). Transition to IDLE with
+				// click guard so the filter can keep running on zero-input and
+				// decay naturally. Don't set _is_idling — the click guard
+				// countdown in _update_amp_envelope() handles that.
 				_begin_click_guard();
-				_is_idling = true;
-				// Fill remainder with silence.
-				for (; i < p_length; i++) {
-					left_write->value = 0;
-					left_write = left_write->next();
-					if (channels == 2 && right_write) {
-						right_write->value = 0;
-						right_write = right_write->next();
-					}
-				}
-				break;
+				_amp_stage = AMP_STAGE_IDLE;
+				_amp_level = 0.0;
+				_amp_stage_samples_left = 0;
+				_amp_stage_increment = 0.0;
+				_envelope_level = 0.0;
+				_is_idling = !_click_guard_active;
 			}
+			// If already IDLE (click guard running or expired), fall through
+			// to the envelope update which counts down the guard and writes
+			// zeros via the IDLE check below.
 		}
 
 		// LFO and ADSR updates.
@@ -627,6 +629,10 @@ void SiOPMChannelSampler::_advance_amp_stage() {
 		case AMP_STAGE_RELEASE: {
 			_set_amp_stage(AMP_STAGE_IDLE);
 			_begin_click_guard();
+			// Keep the channel alive during the click guard period so that
+			// buffer() continues to run the filter on zero-input, allowing
+			// filter state to decay naturally instead of freezing.
+			_is_idling = !_click_guard_active;
 		} break;
 		default:
 			break;
@@ -664,7 +670,10 @@ void SiOPMChannelSampler::_set_amp_stage(AmplitudeStage p_stage) {
 			_amp_stage_increment = 0.0;
 			_amp_level = 0.0;
 			_envelope_level = 0.0;
-			_is_idling = true;
+			// NOTE: _is_idling is NOT set here. The caller is responsible for
+			// managing idling state, because _advance_amp_stage() activates
+			// the click guard after this and needs the channel to stay alive
+			// so the filter can decay naturally on zero-input.
 		} break;
 	}
 }
@@ -729,19 +738,35 @@ void SiOPMChannelSampler::_refresh_active_amp_stage() {
 
 int SiOPMChannelSampler::_compute_amp_samples_per_unit(int p_rate) const {
 	int rate_index = CLAMP(p_rate, 0, 63);
-	int base = _table->filter_eg_rate[rate_index];
-	if (base <= 0) {
-		int slowest_ref = _table->filter_eg_rate[1];
-		if (slowest_ref <= 0) {
-			slowest_ref = 32768;
-		}
-		base = slowest_ref << 4;
+	if (rate_index == 0) {
+		return 0;
 	}
+
+	// Compute a monotonically decreasing samples-per-unit value using a
+	// continuous exponential formula. This replaces the filter_eg_rate table
+	// which was designed for filter envelope timing and produced a non-monotonic
+	// sawtooth pattern at high rates (the liner factor increased within each
+	// group of 4, while the shift factor halved at group boundaries, causing
+	// rates 53-55 to be SLOWER than rate 52, and 58-59 slower than 56).
+	//
+	// The formula preserves the same base constant (2.36514) and
+	// doubling-per-4-rates characteristic, but as a continuous function
+	// the output is strictly monotonically decreasing across all rates.
+	//
+	// Approximate resulting durations for full sustain-to-zero release (128 units):
+	//   Rate  1 → spu ~16290 → ~43s
+	//   Rate 20 → spu ~606   → ~1.6s
+	//   Rate 40 → spu ~19    → ~51ms
+	//   Rate 48 → spu ~5     → ~13ms  (matches original filter_eg_rate[48])
+	//   Rate 52 → spu ~2     → ~5.3ms (matches original filter_eg_rate[52])
+	//   Rate 55 → spu  1     → ~2.7ms
+	//   Rate 63 → spu  1     → ~2.7ms (minimum)
+	double base = 2.36514 * std::pow(2.0, 14.0 - (double)rate_index / 4.0) * 0.5;
 	double scaled = base * _amp_rate_scale;
 	if (scaled <= 0.0) {
 		return 0;
 	}
-	int samples = (int)scaled;
+	int samples = (int)(scaled + 0.5);
 	return samples > 0 ? samples : 1;
 }
 
@@ -805,6 +830,9 @@ void SiOPMChannelSampler::_update_amp_envelope() {
 		} else {
 			_stop_click_guard();
 			_envelope_level = 0.0;
+			// Click guard finished — the filter has had enough zero-input
+			// time to decay. Now the channel can go fully idle.
+			_is_idling = true;
 		}
 	}
 }
