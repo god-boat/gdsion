@@ -781,9 +781,9 @@ void SiOPMOperator::set_operator_params(const Ref<SiOPMOperatorParams> &p_params
 	_detune1 = p_params->get_detune1() & 7;
 	_pitch_index_shift = p_params->get_detune2();
 
-	_mute = p_params->is_mute() ? SiOPMRefTable::ENV_BOTTOM : 0;
+	_mute = p_params->get_mute() ? SiOPMRefTable::ENV_BOTTOM : 0;
 	set_ssg_type(p_params->get_ssg_envelope_control());
-	_envelope_reset_on_attack = p_params->is_envelope_reset_on_attack();
+	_envelope_reset_on_attack = p_params->get_envelope_reset_on_attack();
 
 	if (p_params->get_fixed_pitch() > 0) {
 		_pitch_index = p_params->get_fixed_pitch();

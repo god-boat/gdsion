@@ -166,13 +166,13 @@ void SiOPMOperatorParams::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_fixed_pitch"), &SiOPMOperatorParams::get_fixed_pitch);
 	ClassDB::bind_method(D_METHOD("set_fixed_pitch", "value"), &SiOPMOperatorParams::set_fixed_pitch);
 
-	ClassDB::bind_method(D_METHOD("is_mute"), &SiOPMOperatorParams::is_mute);
+	ClassDB::bind_method(D_METHOD("get_mute"), &SiOPMOperatorParams::get_mute);
 	ClassDB::bind_method(D_METHOD("set_mute", "mute"), &SiOPMOperatorParams::set_mute);
 	ClassDB::bind_method(D_METHOD("get_ssg_envelope_control"), &SiOPMOperatorParams::get_ssg_envelope_control);
 	ClassDB::bind_method(D_METHOD("set_ssg_envelope_control", "value"), &SiOPMOperatorParams::set_ssg_envelope_control);
 	ClassDB::bind_method(D_METHOD("get_frequency_modulation_level"), &SiOPMOperatorParams::get_frequency_modulation_level);
 	ClassDB::bind_method(D_METHOD("set_frequency_modulation_level", "value"), &SiOPMOperatorParams::set_frequency_modulation_level);
-	ClassDB::bind_method(D_METHOD("is_envelope_reset_on_attack"), &SiOPMOperatorParams::is_envelope_reset_on_attack);
+	ClassDB::bind_method(D_METHOD("get_envelope_reset_on_attack"), &SiOPMOperatorParams::get_envelope_reset_on_attack);
 	ClassDB::bind_method(D_METHOD("set_envelope_reset_on_attack", "reset"), &SiOPMOperatorParams::set_envelope_reset_on_attack);
 
 	ClassDB::bind_method(D_METHOD("get_super_count"), &SiOPMOperatorParams::get_super_count);
@@ -206,10 +206,10 @@ void SiOPMOperatorParams::_bind_methods() {
 	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "initial_phase"), "set_initial_phase", "get_initial_phase");
 	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "fixed_pitch"), "set_fixed_pitch", "get_fixed_pitch");
 
-	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::BOOL, "mute"), "set_mute", "is_mute");
+	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::BOOL, "mute"), "set_mute", "get_mute");
 	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "ssg_envelope_control"), "set_ssg_envelope_control", "get_ssg_envelope_control");
 	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "frequency_modulation_level"), "set_frequency_modulation_level", "get_frequency_modulation_level");
-	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::BOOL, "envelope_reset_on_attack"), "set_envelope_reset_on_attack", "is_envelope_reset_on_attack");
+	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::BOOL, "envelope_reset_on_attack"), "set_envelope_reset_on_attack", "get_envelope_reset_on_attack");
 
 	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "super_count"), "set_super_count", "get_super_count");
 	ClassDB::add_property("SiOPMOperatorParams", PropertyInfo(Variant::INT, "super_spread"), "set_super_spread", "get_super_spread");
