@@ -117,8 +117,19 @@ void SiOPMChannelFM::get_channel_params(const Ref<SiOPMChannelParams> &p_params)
 	}
 
 	p_params->set_lfo_wave_shape(_lfo_wave_shape);
-	p_params->set_lfo_frequency_step(_lfo_timer_step_buffer);
+	// Set mode first so that per-mode setters sync lfo_frequency_step correctly.
 	p_params->set_lfo_time_mode(get_lfo_time_mode());
+	switch (get_lfo_time_mode()) {
+		case LFO_TIME_MODE_RATE:
+			p_params->set_lfo_rate_value(_lfo_timer_step_buffer);
+			break;
+		case LFO_TIME_MODE_TIME:
+			p_params->set_lfo_time_value(_lfo_timer_step_buffer);
+			break;
+		default:
+			p_params->set_lfo_beat_value(_lfo_beat_division);
+			break;
+	}
 
 	p_params->set_amplitude_modulation_depth(_amplitude_modulation_depth);
 	p_params->set_pitch_modulation_depth(_pitch_modulation_depth);
@@ -155,7 +166,17 @@ void SiOPMChannelFM::set_channel_params(const Ref<SiOPMChannelParams> &p_params,
 		initialize_lfo(p_params->get_lfo_wave_shape());
 
 		set_lfo_time_mode(p_params->get_lfo_time_mode());
-		set_lfo_frequency_step(p_params->get_lfo_frequency_step());
+		switch (p_params->get_lfo_time_mode()) {
+			case LFO_TIME_MODE_RATE:
+				set_lfo_frequency_step(p_params->get_lfo_rate_value());
+				break;
+			case LFO_TIME_MODE_TIME:
+				set_lfo_frequency_step(p_params->get_lfo_time_value());
+				break;
+			default:
+				set_lfo_frequency_step(p_params->get_lfo_beat_value());
+				break;
+		}
 
 		set_amplitude_modulation(p_params->get_amplitude_modulation_depth());
 		set_pitch_modulation(p_params->get_pitch_modulation_depth());
