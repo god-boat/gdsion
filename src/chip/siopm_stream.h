@@ -18,6 +18,8 @@ class SiOPMStream {
 	Vector<double> buffer;
 
 public:
+	static constexpr int PAN_NONE = -1;
+
 	int get_channel_count() const { return channels; }
 	void set_channel_count(int p_value) { channels = p_value; }
 

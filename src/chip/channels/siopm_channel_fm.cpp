@@ -1673,6 +1673,7 @@ void SiOPMChannelFM::buffer(int p_length) {
 	}
 
 	if (_output_mode == OutputMode::OUTPUT_STANDARD && !_mute) {
+		const bool is_redirected_main_stream = (_streams[0] != nullptr && _streams[0] != _sound_chip->get_output_stream());
 		if (stereo_mode) {
 			// Stereo super mode: write left/right channels separately.
 			if (_has_effect_send) {
@@ -1680,13 +1681,17 @@ void SiOPMChannelFM::buffer(int p_length) {
 					if (_volumes[i] > 0) {
 						SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 						if (stream) {
-							stream->write_stereo(left_start, right_start, _buffer_index, p_length, _volumes[i] * _instrument_gain, _pan);
+							const double volume = (i == 0 && is_redirected_main_stream) ? _instrument_gain : (_volumes[i] * _instrument_gain);
+							const int pan = (i == 0 && is_redirected_main_stream) ? SiOPMStream::PAN_NONE : _pan;
+							stream->write_stereo(left_start, right_start, _buffer_index, p_length, volume, pan);
 						}
 					}
 				}
 			} else {
 				SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-				stream->write_stereo(left_start, right_start, _buffer_index, p_length, _volumes[0] * _instrument_gain, _pan);
+				const double volume = is_redirected_main_stream ? _instrument_gain : (_volumes[0] * _instrument_gain);
+				const int pan = is_redirected_main_stream ? SiOPMStream::PAN_NONE : _pan;
+				stream->write_stereo(left_start, right_start, _buffer_index, p_length, volume, pan);
 			}
 		} else {
 			// Standard mono mode.
@@ -1695,13 +1700,17 @@ void SiOPMChannelFM::buffer(int p_length) {
 					if (_volumes[i] > 0) {
 						SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 						if (stream) {
-							stream->write(mono_out, _buffer_index, p_length, _volumes[i] * _instrument_gain, _pan);
+							const double volume = (i == 0 && is_redirected_main_stream) ? _instrument_gain : (_volumes[i] * _instrument_gain);
+							const int pan = (i == 0 && is_redirected_main_stream) ? SiOPMStream::PAN_NONE : _pan;
+							stream->write(mono_out, _buffer_index, p_length, volume, pan);
 						}
 					}
 				}
 			} else {
 				SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-				stream->write(mono_out, _buffer_index, p_length, _volumes[0] * _instrument_gain, _pan);
+				const double volume = is_redirected_main_stream ? _instrument_gain : (_volumes[0] * _instrument_gain);
+				const int pan = is_redirected_main_stream ? SiOPMStream::PAN_NONE : _pan;
+				stream->write(mono_out, _buffer_index, p_length, volume, pan);
 			}
 		}
 	}
@@ -1958,3 +1967,4 @@ static _FORCE_INLINE_ int _safe_log_lookup(class SiOPMRefTable *p_table, int p_i
 	}
 	return p_table->log_table[p_index];
 }
+

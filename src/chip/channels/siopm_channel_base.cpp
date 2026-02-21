@@ -631,8 +631,6 @@ void SiOPMChannelBase::buffer(int p_length) {
 	}
 
 	if (_output_mode == OutputMode::OUTPUT_STANDARD && !_mute) {
-		// TODO: this seems bad
-		// make track faders/pan work after the effect stream by preventing pre‑application in the channel write.
 		const bool is_redirected_main_stream = (_streams[0] != nullptr && _streams[0] != _sound_chip->get_output_stream());
 		if (_has_effect_send) {
 			for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
@@ -640,7 +638,7 @@ void SiOPMChannelBase::buffer(int p_length) {
 					SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 					if (stream) {
 						const double volume = (i == 0 && is_redirected_main_stream) ? _instrument_gain : (_volumes[i] * _instrument_gain);
-						const int pan = (i == 0 && is_redirected_main_stream) ? 64 : _pan;
+						const int pan = (i == 0 && is_redirected_main_stream) ? SiOPMStream::PAN_NONE : _pan;
 						stream->write(mono_out, _buffer_index, p_length, volume, pan);
 					}
 				}
@@ -648,7 +646,7 @@ void SiOPMChannelBase::buffer(int p_length) {
 		} else {
 			SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
 			const double volume = is_redirected_main_stream ? _instrument_gain : (_volumes[0] * _instrument_gain);
-			const int pan = is_redirected_main_stream ? 64 : _pan;
+			const int pan = is_redirected_main_stream ? SiOPMStream::PAN_NONE : _pan;
 			stream->write(mono_out, _buffer_index, p_length, volume, pan);
 		}
 	}
@@ -771,3 +769,4 @@ SiOPMChannelBase::~SiOPMChannelBase() {
 }
 
 #undef COPY_TL_TABLE
+

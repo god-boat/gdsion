@@ -591,38 +591,48 @@ void SiOPMChannelStream::reset() {
 void SiOPMChannelStream::_write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length) {
 	double volume_coef = _sound_chip->get_sampler_volume() * _instrument_gain;
 	int pan = CLAMP(_pan, 0, 128);
+	const bool is_redirected_main_stream = (_streams[0] != nullptr && _streams[0] != _sound_chip->get_output_stream());
 
 	if (_has_effect_send) {
 		for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
 			if (_volumes[i] > 0) {
 				SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 				if (stream) {
-					stream->write(p_output, _buffer_index, p_length, _volumes[i] * volume_coef, pan);
+					const double volume = (i == 0 && is_redirected_main_stream) ? volume_coef : (_volumes[i] * volume_coef);
+					const int write_pan = (i == 0 && is_redirected_main_stream) ? SiOPMStream::PAN_NONE : pan;
+					stream->write(p_output, _buffer_index, p_length, volume, write_pan);
 				}
 			}
 		}
 	} else {
 		SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-		stream->write(p_output, _buffer_index, p_length, _volumes[0] * volume_coef, pan);
+		const double volume = is_redirected_main_stream ? volume_coef : (_volumes[0] * volume_coef);
+		const int write_pan = is_redirected_main_stream ? SiOPMStream::PAN_NONE : pan;
+		stream->write(p_output, _buffer_index, p_length, volume, write_pan);
 	}
 }
 
 void SiOPMChannelStream::_write_stream_stereo(SinglyLinkedList<int>::Element *p_output_left, SinglyLinkedList<int>::Element *p_output_right, int p_length) {
 	double volume_coef = _sound_chip->get_sampler_volume() * _instrument_gain;
 	int pan = CLAMP(_pan, 0, 128);
+	const bool is_redirected_main_stream = (_streams[0] != nullptr && _streams[0] != _sound_chip->get_output_stream());
 
 	if (_has_effect_send) {
 		for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
 			if (_volumes[i] > 0) {
 				SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 				if (stream) {
-					stream->write_stereo(p_output_left, p_output_right, _buffer_index, p_length, _volumes[i] * volume_coef, pan);
+					const double volume = (i == 0 && is_redirected_main_stream) ? volume_coef : (_volumes[i] * volume_coef);
+					const int write_pan = (i == 0 && is_redirected_main_stream) ? SiOPMStream::PAN_NONE : pan;
+					stream->write_stereo(p_output_left, p_output_right, _buffer_index, p_length, volume, write_pan);
 				}
 			}
 		}
 	} else {
 		SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-		stream->write_stereo(p_output_left, p_output_right, _buffer_index, p_length, _volumes[0] * volume_coef, pan);
+		const double volume = is_redirected_main_stream ? volume_coef : (_volumes[0] * volume_coef);
+		const int write_pan = is_redirected_main_stream ? SiOPMStream::PAN_NONE : pan;
+		stream->write_stereo(p_output_left, p_output_right, _buffer_index, p_length, volume, write_pan);
 	}
 }
 
@@ -771,3 +781,4 @@ String SiOPMChannelStream::_to_string() const {
 SiOPMChannelStream::SiOPMChannelStream(SiOPMSoundChip *p_chip) : SiOPMChannelBase(p_chip) {
 	// Empty.
 }
+

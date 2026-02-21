@@ -57,8 +57,13 @@ void SiOPMStream::write(SinglyLinkedList<int>::Element *p_data_start, int p_offs
 
 	if (channels == 2) { // stereo
 		double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
-		double volume_left = pan_table[128 - p_pan] * volume;
-		double volume_right = pan_table[p_pan] * volume;
+		double volume_left = volume;
+		double volume_right = volume;
+		if (p_pan != PAN_NONE) {
+			const int pan = CLAMP(p_pan, 0, 128);
+			volume_left = pan_table[128 - pan] * volume;
+			volume_right = pan_table[pan] * volume;
+		}
 
 		SinglyLinkedList<int>::Element *current = p_data_start;
 		for (int i = p_offset << 1; i < buffer_size;) {
@@ -94,8 +99,13 @@ void SiOPMStream::write_stereo(SinglyLinkedList<int>::Element *p_left_start, Sin
 
 	if (channels == 2) { // stereo
 		double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
-		double volume_left = pan_table[128 - p_pan] * volume;
-		double volume_right = pan_table[p_pan] * volume;
+		double volume_left = volume;
+		double volume_right = volume;
+		if (p_pan != PAN_NONE) {
+			const int pan = CLAMP(p_pan, 0, 128);
+			volume_left = pan_table[128 - pan] * volume;
+			volume_right = pan_table[pan] * volume;
+		}
 
 		SinglyLinkedList<int>::Element *current_left = p_left_start;
 		SinglyLinkedList<int>::Element *current_right = p_right_start;
