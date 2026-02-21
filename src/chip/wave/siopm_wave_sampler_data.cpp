@@ -252,12 +252,14 @@ void SiOPMWaveSamplerData::set_gain_db(int p_db) {
 }
 
 void SiOPMWaveSamplerData::set_start_point(int p_start) {
-	_start_point = p_start;
+	int len = get_length();
+	_start_point = (p_start >= 0 && len > 0) ? MIN(p_start, len - 1) : p_start;
 	_slice();
 }
 
 void SiOPMWaveSamplerData::set_end_point(int p_end) {
-	_end_point = p_end;
+	int len = get_length();
+	_end_point = (p_end >= 0 && len > 0) ? MIN(p_end, len) : p_end;
 	_slice();
 }
 
