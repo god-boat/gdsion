@@ -3323,6 +3323,7 @@ void SiONDriver::_bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id) 
 		return;
 	}
 	_track_effect_channels[p_track_id] = channel;
+	_track_effect_tracks[p_track_id] = p_track;
 	stream->set_post_fader_gain(channel->get_stream_send(0));
 	stream->set_post_pan(CLAMP(channel->get_pan(), -64, 64) + 64);
 	channel->set_stream_buffer(0, stream->get_stream());
@@ -3335,12 +3336,28 @@ void SiONDriver::_update_track_effect_post_fader() {
 			continue;
 		}
 
-		SiOPMChannelBase **channel_ptr = _track_effect_channels.getptr(entry.key);
-		if (!channel_ptr || !*channel_ptr) {
+		// Use the stored SiMMLTrack to resolve the current channel. The channel
+		// object can change when a voice of a different type is applied (e.g. FM
+		// → KS/Sampler/Stream), which creates a new channel and deletes the old
+		// one. _track_effect_channels would then hold a stale pointer and
+		// post_fader_gain would never reflect mailbox volume updates.
+		SiMMLTrack **track_ptr = _track_effect_tracks.getptr(entry.key);
+		if (!track_ptr || !*track_ptr) {
+			continue;
+		}
+		SiOPMChannelBase *channel = (*track_ptr)->get_channel();
+		if (!channel) {
 			continue;
 		}
 
-		SiOPMChannelBase *channel = *channel_ptr;
+		// If the channel object has changed since the last bind, redirect the
+		// effect stream to the new channel and update our tracking pointer.
+		SiOPMChannelBase **old_channel_ptr = _track_effect_channels.getptr(entry.key);
+		if (!old_channel_ptr || *old_channel_ptr != channel) {
+			channel->set_stream_buffer(0, stream->get_stream());
+			_track_effect_channels[entry.key] = channel;
+		}
+
 		stream->set_post_fader_gain(channel->get_stream_send(0));
 		stream->set_post_pan(CLAMP(channel->get_pan(), -64, 64) + 64);
 	}
@@ -3356,6 +3373,7 @@ void SiONDriver::_clear_track_effect_streams(bool p_delete_streams) {
 	}
 	_track_effect_streams.clear();
 	_track_effect_channels.clear();
+	_track_effect_tracks.clear();
 }
 
 Vector<double> SiONDriver::_args_from_variant(const Variant &p_value) const {
