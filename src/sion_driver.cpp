@@ -1231,12 +1231,18 @@ bool SiONDriver::begin_output_capture(int p_max_seconds, bool p_post_master) {
 		return false;
 	}
 
-	// std::lock_guard<std::mutex> lock(_capture_mutex);
-	_capture_buffer.clear();
+	size_t target_capacity = 0;
 	if (p_max_seconds > 0) {
-		// Reserve for stereo float samples: seconds * sample_rate * 2 channels
-		size_t capacity = p_max_seconds * (size_t)_sample_rate * 2;
-		_capture_buffer.resize(capacity);
+		// Stereo float samples: seconds * sample_rate * 2 channels.
+		target_capacity = (size_t)p_max_seconds * (size_t)_sample_rate * 2;
+	} else {
+		// Unlimited capture still needs writable storage. Reuse current allocation
+		// when possible, otherwise default to 10 seconds.
+		const size_t default_unlimited_capacity = 10 * (size_t)_sample_rate * 2;
+		target_capacity = std::max((size_t)_capture_buffer.size(), default_unlimited_capacity);
+	}
+	if ((size_t)_capture_buffer.size() != target_capacity) {
+		_capture_buffer.resize(target_capacity);
 	}
 	_capture_post_master = p_post_master;
 	_capture_write_pos = 0;
@@ -1259,7 +1265,6 @@ PackedFloat32Array SiONDriver::end_output_capture() {
 		result[i] = _capture_buffer[i];
 	}
 
-	_capture_buffer.clear();
 	_capture_write_pos = 0;
 	return result;
 }
@@ -1271,7 +1276,6 @@ void SiONDriver::abort_output_capture() {
 
 	// std::lock_guard<std::mutex> lock(_capture_mutex);
 	_capture_active = false;
-	_capture_buffer.clear();
 	_capture_write_pos = 0;
 }
 
