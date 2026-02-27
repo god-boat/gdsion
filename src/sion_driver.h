@@ -560,7 +560,6 @@ private:
 
 	HashMap<int, SiEffectStream *> _track_effect_streams;
 	HashMap<int, SiOPMChannelBase *> _track_effect_channels;
-	HashMap<int, SiMMLTrack *> _track_effect_tracks;
 	SiEffectStream *_ensure_track_effect_stream(int p_track_id);
 	SiEffectStream *_get_track_effect_stream(int p_track_id);
 	void _bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id);

@@ -3300,6 +3300,11 @@ SiEffectStream *SiONDriver::_ensure_track_effect_stream(int p_track_id) {
 		return nullptr;
 	}
 	_track_effect_streams[p_track_id] = stream;
+	if (!_track_effect_channels.has(p_track_id)) {
+		// Keep channel map keys in sync with stream keys so the audio thread can
+		// update pointers without inserting into the map.
+		_track_effect_channels[p_track_id] = nullptr;
+	}
 	return stream;
 }
 
@@ -3323,41 +3328,58 @@ void SiONDriver::_bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id) 
 		return;
 	}
 	_track_effect_channels[p_track_id] = channel;
-	_track_effect_tracks[p_track_id] = p_track;
 	stream->set_post_fader_gain(channel->get_stream_send(0));
 	stream->set_post_pan(CLAMP(channel->get_pan(), -64, 64) + 64);
 	channel->set_stream_buffer(0, stream->get_stream());
 }
 
 void SiONDriver::_update_track_effect_post_fader() {
+	// Pass 1: mark all effect-track channel slots unresolved for this block.
+	// We only touch existing keys to avoid map insertions in the audio thread.
+	for (const KeyValue<int, SiEffectStream *> &entry : _track_effect_streams) {
+		SiOPMChannelBase **slot = _track_effect_channels.getptr(entry.key);
+		if (slot) {
+			*slot = nullptr;
+		}
+	}
+
+	// Pass 2: resolve current channels in one scan over live tracks.
+	// Reverse iteration preserves previous "latest track wins" behavior.
+	const Vector<SiMMLTrack *> &tracks = sequencer->get_tracks_ref();
+	for (int i = tracks.size() - 1; i >= 0; i--) {
+		SiMMLTrack *track = tracks[i];
+		if (!track) {
+			continue;
+		}
+
+		const int track_id = track->get_track_id();
+		SiOPMChannelBase **slot = _track_effect_channels.getptr(track_id);
+		if (!slot || *slot != nullptr) {
+			continue;
+		}
+
+		SiOPMChannelBase *candidate = track->get_channel();
+		if (!candidate) {
+			continue;
+		}
+		*slot = candidate;
+	}
+
+	// Pass 3: apply post-fader/pan using resolved channels.
 	for (const KeyValue<int, SiEffectStream *> &entry : _track_effect_streams) {
 		SiEffectStream *stream = entry.value;
 		if (!stream) {
 			continue;
 		}
 
-		// Use the stored SiMMLTrack to resolve the current channel. The channel
-		// object can change when a voice of a different type is applied (e.g. FM
-		// → KS/Sampler/Stream), which creates a new channel and deletes the old
-		// one. _track_effect_channels would then hold a stale pointer and
-		// post_fader_gain would never reflect mailbox volume updates.
-		SiMMLTrack **track_ptr = _track_effect_tracks.getptr(entry.key);
-		if (!track_ptr || !*track_ptr) {
+		SiOPMChannelBase **channel_ptr = _track_effect_channels.getptr(entry.key);
+		if (!channel_ptr || !*channel_ptr) {
 			continue;
 		}
-		SiOPMChannelBase *channel = (*track_ptr)->get_channel();
-		if (!channel) {
-			continue;
-		}
+		SiOPMChannelBase *channel = *channel_ptr;
 
-		// If the channel object has changed since the last bind, redirect the
-		// effect stream to the new channel and update our tracking pointer.
-		SiOPMChannelBase **old_channel_ptr = _track_effect_channels.getptr(entry.key);
-		if (!old_channel_ptr || *old_channel_ptr != channel) {
-			channel->set_stream_buffer(0, stream->get_stream());
-			_track_effect_channels[entry.key] = channel;
-		}
-
+		// Keep stream routing attached to the currently resolved channel.
+		channel->set_stream_buffer(0, stream->get_stream());
 		stream->set_post_fader_gain(channel->get_stream_send(0));
 		stream->set_post_pan(CLAMP(channel->get_pan(), -64, 64) + 64);
 	}
@@ -3373,7 +3395,6 @@ void SiONDriver::_clear_track_effect_streams(bool p_delete_streams) {
 	}
 	_track_effect_streams.clear();
 	_track_effect_channels.clear();
-	_track_effect_tracks.clear();
 }
 
 Vector<double> SiONDriver::_args_from_variant(const Variant &p_value) const {
