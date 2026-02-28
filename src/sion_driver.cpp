@@ -1830,6 +1830,10 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 		return p_frames;
 	}
 
+	// Snapshot queued track updates once per audio callback so note/control
+	// changes land on the next callback boundary instead of mid-buffer.
+	_drain_track_mailbox();
+
 	int frames_generated = 0;
 	const int block = _buffer_length; // internal SiON processing block (in frames)
 
@@ -1838,9 +1842,6 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 		// Only process audio if we need more samples than we have buffered
 		// This prevents the sequencer from advancing faster than real-time
 		if (_residual_buffer_frame_count == 0) {
-			// Drain mailbox once per processing block for low-latency note-on response
-			// This gives sub-buffer latency (~1-2ms avg) while avoiding redundant drains
-			_drain_track_mailbox();
 			
 			// Process one internal block to ensure sound_chip output is ready.
 			sound_chip->begin_process();
