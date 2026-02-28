@@ -58,12 +58,15 @@ class SiOPMWaveSamplerData;
 class SiOPMWaveSamplerTable;
 class SiEffectStream;
 class SiOPMChannelBase;
+class SiONOfflineRenderer;
 
 // SiONDriver class provides the driver of SiON's digital signal processor emulator. All SiON's basic operations are
 // provided as driver's properties, methods, and signals. Only one instance must exist at a time.
 // TODO: Mostly implemented, aside from MIDI support, audio stream sampling, and background sound. Refer to FIXMEs and TODOs.
 class SiONDriver : public Node {
 	GDCLASS(SiONDriver, Node)
+
+	friend class SiONOfflineRenderer;
 
 public:
 	static const char *VERSION;

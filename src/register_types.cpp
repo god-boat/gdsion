@@ -81,6 +81,7 @@
 #include "sequencer/simml_sequencer.h"
 #include "sequencer/simml_track.h"
 #include "sequencer/simml_voice.h"
+#include "utils/offline_renderer.h"
 #include "utils/onset_detector.h"
 #include "utils/sion_voice_preset_util.h"
 
@@ -180,6 +181,7 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 
 		// Utils.
 
+		ClassDB::register_class<SiONOfflineRenderer>();
 		ClassDB::register_class<OnsetDetector>();
 		ClassDB::register_class<SiONVoicePresetUtil>();
 
