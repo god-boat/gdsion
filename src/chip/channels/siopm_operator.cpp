@@ -870,35 +870,41 @@ void SiOPMOperator::set_pcm_data(const Ref<SiOPMWavePCMData> &p_pcm_data) {
 void SiOPMOperator::note_on() {
 	_eg_ssgec_state = -1;
 
-	// Envelope- and phase-aware voice stealing:
-	// If a new note is triggered while this operator is still audible, do not
-	// jump straight into ATTACK or reset the oscillator phase. Instead, force
-	// the current envelope to finish a RELEASE down to silence and only then
-	// start ATTACK and apply the phase reset. This guarantees that both the
-	// amplitude and the waveform are continuous at non-zero levels.
-	const bool envelope_audible =
-		(_eg_state != EG_OFF && _eg_level < SiOPMRefTable::ENV_BOTTOM);
-	const bool treat_as_voice_steal = _is_voice_steal_hint || envelope_audible;
-
-	if (treat_as_voice_steal) {
-		// Defer attack and phase reset until envelope is quiet.
-		// Fast release is implicit - will be detected in _shift_eg_state(EG_RELEASE).
+	if (_is_voice_steal_hint) {
+		// True voice steal (channel was active with no preceding note_off):
+		// defer attack and phase reset until envelope decays to silence via
+		// fast release. This avoids discontinuities during polyphonic voice
+		// collision.
 		_deferred_attack_target = EG_ATTACK;
-
-		// If we are not already in RELEASE, switch to it now so the current
-		// envelope decays smoothly towards silence using the fast release rate.
-		if (_eg_state != EG_RELEASE) {
-			_shift_eg_state(EG_RELEASE);
-		} else {
-			// Already in RELEASE but with natural rate - re-shift to apply fast rate.
-			_shift_eg_state(EG_RELEASE);
-		}
+		_shift_eg_state(EG_RELEASE);
 	} else {
-		// Envelope is effectively silent already: we can safely reset phases
-		// and jump straight into ATTACK without introducing discontinuities.
 		_deferred_attack_target = EG_OFF;
-		_reset_note_phases();
-		_shift_eg_state(EG_ATTACK);
+
+		const bool still_audible =
+			(_eg_state != EG_OFF && _eg_level < SiOPMRefTable::ENV_BOTTOM);
+		const int effective_attack_rate = _attack_rate + _eg_key_scale_rate;
+
+		if (still_audible && effective_attack_rate < 50) {
+			// Slow attack + still audible: both phase reset (waveform jump)
+			// and level reset (volume drop to silence) would create audible
+			// clicks that the slow attack cannot mask. Keep phase and level
+			// continuous; just reverse the envelope direction from release
+			// back into attack. Slightly non-deterministic starting state,
+			// but inaudible for slow-attack instruments where the first
+			// audible samples are many milliseconds away from note_on.
+			bool saved_reset = _envelope_reset_on_attack;
+			_envelope_reset_on_attack = false;
+			_shift_eg_state(EG_ATTACK);
+			_envelope_reset_on_attack = saved_reset;
+		} else {
+			// Either silent already, or fast attack whose transient masks
+			// any single-sample discontinuity. Full deterministic reset:
+			// force level to silence so phase jump is inaudible, then start
+			// attack from a known state.
+			_eg_level = SiOPMRefTable::ENV_BOTTOM;
+			_reset_note_phases();
+			_shift_eg_state(EG_ATTACK);
+		}
 	}
 
 	// Voice-steal hint is one-shot per note.
@@ -911,9 +917,9 @@ void SiOPMOperator::note_on() {
 	// UtilityFunctions::print(
 	// 	"FM_OP_NOTE_ON",
 	// 	" ptr=", (int64_t)this,
-	// 	" prev_state=", (int)prev_state,
-	// 	" prev_level=", prev_level,
-	// 	" prev_output=", prev_output,
+	// 	// " prev_state=", (int)prev_state,
+	// 	// " prev_level=", prev_level,
+	// 	// " prev_output=", prev_output,
 	// 	" new_state=", (int)_eg_state,
 	// 	" new_level=", _eg_level,
 	// 	" new_output=", _eg_output,
