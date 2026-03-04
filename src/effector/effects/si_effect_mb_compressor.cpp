@@ -365,81 +365,71 @@
 	 }
  }
  
- void SiEffectMultibandCompressor::_process_low_band(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
-	 SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
-	 if (!ref_table || ref_table->sampling_rate <= 0) return;
- 
-	 _ensure_buffer_size(p_length);
-	 int start_idx = p_start_index << 1;
-	 int length = p_length << 1;
- 
-	 // Copy input to temp
-	 const double *in_ptr = r_buffer->ptr() + start_idx;
-	 double *temp_ptr = _temp_buffer.ptrw();
-	 for (int i = 0; i < length; ++i) temp_ptr[i] = in_ptr[i];
+void SiEffectMultibandCompressor::_process_low_band(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+	SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
+	if (!ref_table || ref_table->sampling_rate <= 0) return;
 
-	 // Filter LPF at LM (filter should already have correct params)
-	 if (_lm_filter.is_valid()) {
-		 _lm_filter->process(p_channels, &_temp_buffer, 0, p_length);
-	 }
- 
-	 // Planar Split
-	 double *l_vec = _left_vec.ptrw();
-	 double *r_vec = _right_vec.ptrw();
-	 for (int i = 0; i < p_length; ++i) {
-		 l_vec[i] = temp_ptr[i * 2];
-		 r_vec[i] = temp_ptr[i * 2 + 1];
-	 }
- 
-	 _low_band_compressor.process_band(l_vec, r_vec, p_length,
-									   _low_upper_threshold, _low_lower_threshold,
-									   _low_upper_ratio, _low_lower_ratio,
-									   _low_output_gain, _attack, _release, _mix, ref_table->sampling_rate);
- 
-	 // Interleave back
-	 double *out_ptr = r_buffer->ptrw() + start_idx;
-	 for (int i = 0; i < p_length; ++i) {
-		 out_ptr[i * 2] = l_vec[i];
-		 out_ptr[i * 2 + 1] = r_vec[i];
-	 }
- }
- 
- void SiEffectMultibandCompressor::_process_high_band(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
-	 SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
-	 if (!ref_table || ref_table->sampling_rate <= 0) return;
- 
-	 _ensure_buffer_size(p_length);
-	 int start_idx = p_start_index << 1;
-	 int length = p_length << 1;
- 
-	 // Copy input to temp
-	 const double *in_ptr = r_buffer->ptr() + start_idx;
-	 double *temp_ptr = _temp_buffer.ptrw();
-	 for (int i = 0; i < length; ++i) temp_ptr[i] = in_ptr[i];
+	_ensure_buffer_size(p_length);
+	int start_idx = p_start_index << 1;
+	double *out_ptr = r_buffer->ptrw() + start_idx;
+	const double *in_ptr = out_ptr;
 
-	 // Filter HPF at MH (filter should already have correct params)
-	 if (_mh_filter.is_valid()) {
-		 _mh_filter->process(p_channels, &_temp_buffer, 0, p_length);
-	 }
+	// Filter LPF at LM (filter should already have correct params)
+	if (_lm_filter.is_valid()) {
+		_lm_filter->process_split(p_channels, in_ptr, out_ptr, _temp_buffer.ptrw(), p_length);
+	}
+
+	// Planar Split
+	double *l_vec = _left_vec.ptrw();
+	double *r_vec = _right_vec.ptrw();
+	for (int i = 0; i < p_length; ++i) {
+		l_vec[i] = out_ptr[i * 2];
+		r_vec[i] = out_ptr[i * 2 + 1];
+	}
  
-	 double *l_vec = _left_vec.ptrw();
-	 double *r_vec = _right_vec.ptrw();
-	 for (int i = 0; i < p_length; ++i) {
-		 l_vec[i] = temp_ptr[i * 2];
-		 r_vec[i] = temp_ptr[i * 2 + 1];
-	 }
+	_low_band_compressor.process_band(l_vec, r_vec, p_length,
+									  _low_upper_threshold, _low_lower_threshold,
+									  _low_upper_ratio, _low_lower_ratio,
+									  _low_output_gain, _attack, _release, _mix, ref_table->sampling_rate);
+
+	// Interleave back
+	for (int i = 0; i < p_length; ++i) {
+		out_ptr[i * 2] = l_vec[i];
+		out_ptr[i * 2 + 1] = r_vec[i];
+	}
+}
  
-	 _band_high_compressor.process_band(l_vec, r_vec, p_length,
-										 _high_upper_threshold, _high_lower_threshold,
-										 _high_upper_ratio, _high_lower_ratio,
-										 _high_output_gain, _attack, _release, _mix, ref_table->sampling_rate);
+void SiEffectMultibandCompressor::_process_high_band(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+	SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
+	if (!ref_table || ref_table->sampling_rate <= 0) return;
+
+	_ensure_buffer_size(p_length);
+	int start_idx = p_start_index << 1;
+	double *out_ptr = r_buffer->ptrw() + start_idx;
+	const double *in_ptr = out_ptr;
+
+	// Filter HPF at MH (filter should already have correct params)
+	if (_mh_filter.is_valid()) {
+		_mh_filter->process_split(p_channels, in_ptr, _temp_buffer.ptrw(), out_ptr, p_length);
+	}
+
+	double *l_vec = _left_vec.ptrw();
+	double *r_vec = _right_vec.ptrw();
+	for (int i = 0; i < p_length; ++i) {
+		l_vec[i] = out_ptr[i * 2];
+		r_vec[i] = out_ptr[i * 2 + 1];
+	}
  
-	 double *out_ptr = r_buffer->ptrw() + start_idx;
-	 for (int i = 0; i < p_length; ++i) {
-		 out_ptr[i * 2] = l_vec[i];
-		 out_ptr[i * 2 + 1] = r_vec[i];
-	 }
- }
+	_band_high_compressor.process_band(l_vec, r_vec, p_length,
+										_high_upper_threshold, _high_lower_threshold,
+										_high_upper_ratio, _high_lower_ratio,
+										_high_output_gain, _attack, _release, _mix, ref_table->sampling_rate);
+
+	for (int i = 0; i < p_length; ++i) {
+		out_ptr[i * 2] = l_vec[i];
+		out_ptr[i * 2 + 1] = r_vec[i];
+	}
+}
  
  void SiEffectMultibandCompressor::_process_single_band(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	 SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
