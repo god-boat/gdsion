@@ -59,13 +59,13 @@ int SiEffectLinkwitzRileyFilter::prepare_process() {
 int SiEffectLinkwitzRileyFilter::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
-
-	_compute_coefficients(_cutoff);
+	double *buffer = r_buffer->ptrw() + start_index;
+	const bool output_low = _output_mode == 0;
 
 	if (p_channels == 1) {
 		// Mono processing - same signal in both channels
-		for (int i = start_index; i < (start_index + length); i += 2) {
-			double audio = (*r_buffer)[i];
+		for (int i = 0; i < length; i += 2) {
+			double audio = buffer[i];
 
 			// Process low band - first stage
 			double low_in01 = audio * _low_in_0 + _past_in_1a_low_left * _low_in_1;
@@ -112,15 +112,15 @@ int SiEffectLinkwitzRileyFilter::process(int p_channels, Vector<double> *r_buffe
 			_past_out_1b_high_left = high_final;
 
 			// Output based on mode
-			double output_value = (_output_mode == 0) ? low_final : high_final;
-			r_buffer->write[i] = output_value;
-			r_buffer->write[i + 1] = output_value;
+			double output_value = output_low ? low_final : high_final;
+			buffer[i] = output_value;
+			buffer[i + 1] = output_value;
 		}
 	} else {
 		// Stereo processing - separate left and right channels
-		for (int i = start_index; i < (start_index + length); i += 2) {
-			double audio_left = (*r_buffer)[i];
-			double audio_right = (*r_buffer)[i + 1];
+		for (int i = 0; i < length; i += 2) {
+			double audio_left = buffer[i];
+			double audio_right = buffer[i + 1];
 
 			// Process low band for left channel - first stage
 			double low_in01_left = audio_left * _low_in_0 + _past_in_1a_low_left * _low_in_1;
@@ -211,12 +211,12 @@ int SiEffectLinkwitzRileyFilter::process(int p_channels, Vector<double> *r_buffe
 			_past_out_1b_high_right = high_final_right;
 
 			// Output based on mode
-			if (_output_mode == 0) {
-				r_buffer->write[i] = low_final_left;
-				r_buffer->write[i + 1] = low_final_right;
+			if (output_low) {
+				buffer[i] = low_final_left;
+				buffer[i + 1] = low_final_right;
 			} else {
-				r_buffer->write[i] = high_final_left;
-				r_buffer->write[i + 1] = high_final_right;
+				buffer[i] = high_final_left;
+				buffer[i + 1] = high_final_right;
 			}
 		}
 	}
