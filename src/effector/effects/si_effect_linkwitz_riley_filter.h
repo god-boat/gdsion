@@ -102,6 +102,7 @@ public:
 
 	virtual int prepare_process() override;
 	virtual int process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
+	void process_split(int p_channels, const double *p_input, double *p_low_output, double *p_high_output, int p_length);
 
 	virtual void set_by_mml(Vector<double> p_args) override;
 	virtual void reset() override;

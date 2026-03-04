@@ -84,12 +84,9 @@
 	 bool _was_low_enabled = false;
 	 bool _was_high_enabled = false;
  
-	 // Filter instances
-	 // Updated: Separate instances for Low/High paths at both split points to preserve state
-	 Ref<SiEffectLinkwitzRileyFilter> _lm_low_filter;
-	 Ref<SiEffectLinkwitzRileyFilter> _lm_high_filter;
-	 Ref<SiEffectLinkwitzRileyFilter> _mh_low_filter;
-	 Ref<SiEffectLinkwitzRileyFilter> _mh_high_filter;
+	 // One Linkwitz-Riley splitter per crossover point.
+	 Ref<SiEffectLinkwitzRileyFilter> _lm_filter;
+	 Ref<SiEffectLinkwitzRileyFilter> _mh_filter;
  
 	 // Compressor instances
 	 Compressor _low_band_compressor;

@@ -202,21 +202,17 @@
 		 _low_band_compressor(LOW_ATTACK_MS, LOW_RELEASE_MS, BAND_ATTACK_MS, BAND_RELEASE_MS),
 		 _band_high_compressor(BAND_ATTACK_MS, BAND_RELEASE_MS, HIGH_ATTACK_MS, HIGH_RELEASE_MS) {
 	 
-	 // Instantiate separate filters to avoid state corruption during crossover splitting
-	 _lm_low_filter.instantiate();
-	 _lm_high_filter.instantiate();
-	 _mh_low_filter.instantiate();
-	 _mh_high_filter.instantiate();
+	 // One filter per crossover point; process_split() emits both bands in one pass.
+	 _lm_filter.instantiate();
+	 _mh_filter.instantiate();
 
 	 // Initialize filters with default frequencies (will be updated by set_params)
 	 // This ensures filters are valid before first use
 	 double lm_freq = CLAMP(p_lm_frequency, 20.0, 20000.0);
 	 double mh_freq = CLAMP(p_mh_frequency, 20.0, 20000.0);
 	 
-	 if (_lm_low_filter.is_valid()) _lm_low_filter->set_params(lm_freq, 0);
-	 if (_lm_high_filter.is_valid()) _lm_high_filter->set_params(lm_freq, 1);
-	 if (_mh_low_filter.is_valid()) _mh_low_filter->set_params(mh_freq, 0);
-	 if (_mh_high_filter.is_valid()) _mh_high_filter->set_params(mh_freq, 1);
+	 if (_lm_filter.is_valid()) _lm_filter->set_params(lm_freq, 0);
+	 if (_mh_filter.is_valid()) _mh_filter->set_params(mh_freq, 1);
 
 	 set_params(p_enabled_bands,
 				p_low_upper_threshold, p_band_upper_threshold, p_high_upper_threshold,
@@ -260,12 +256,9 @@
 	 _lm_frequency = CLAMP(p_lm_frequency, 20.0, 20000.0);
 	 _mh_frequency = CLAMP(p_mh_frequency, 20.0, 20000.0);
  
-	 // Update params for all filter instances
-	 if (_lm_low_filter.is_valid()) _lm_low_filter->set_params(_lm_frequency, 0); // Low
-	 if (_lm_high_filter.is_valid()) _lm_high_filter->set_params(_lm_frequency, 1); // High
-	 
-	 if (_mh_low_filter.is_valid()) _mh_low_filter->set_params(_mh_frequency, 0); // Low (Mid)
-	 if (_mh_high_filter.is_valid()) _mh_high_filter->set_params(_mh_frequency, 1); // High
+	 // Keep the crossover frequencies current. Output mode only matters for the single-output paths.
+	 if (_lm_filter.is_valid()) _lm_filter->set_params(_lm_frequency, 0);
+	 if (_mh_filter.is_valid()) _mh_filter->set_params(_mh_frequency, 1);
  }
  
  int SiEffectMultibandCompressor::prepare_process() {
@@ -293,45 +286,33 @@
 	 int start_idx = p_start_index << 1;
 	 int length = p_length << 1;
  
-	 // Copy input to temp buffer
 	 const double *input_ptr = r_buffer->ptr() + start_idx;
-	 double *temp_ptr = _temp_buffer.ptrw();
-	 for (int i = 0; i < length; ++i) {
-		 temp_ptr[i] = input_ptr[i];
-	 }
  
 	 // --- Crossover Network ---
 	 // Filters should already have correct parameters set via set_params()
 	 // No need to call set_params during audio processing
 	 
-	 // 1. Split Input at LM Frequency
-	 // Filter A: Input -> Low Band (written to _low_buffer)
+	 // 1. Split Input at LM Frequency in one pass.
 	 double *low_ptr = _low_buffer.ptrw();
-	 for(int i=0; i<length; ++i) low_ptr[i] = temp_ptr[i];
-	 if (_lm_low_filter.is_valid()) {
-		 _lm_low_filter->process(p_channels, &_low_buffer, 0, p_length);
-	 }
-
-	 // Filter B: Input -> High intermediate (written to _band_buffer temporarily)
 	 double *band_ptr = _band_buffer.ptrw();
-	 for(int i=0; i<length; ++i) band_ptr[i] = temp_ptr[i];
-	 if (_lm_high_filter.is_valid()) {
-		 _lm_high_filter->process(p_channels, &_band_buffer, 0, p_length);
+	 if (_lm_filter.is_valid()) {
+		 _lm_filter->process_split(p_channels, input_ptr, low_ptr, band_ptr, p_length);
+	 } else {
+		 for (int i = 0; i < length; ++i) {
+			 low_ptr[i] = input_ptr[i];
+			 band_ptr[i] = 0.0;
+		 }
 	 }
 
-	 // 2. Split High Intermediate at MH Frequency
-	 // Filter C: High Int -> Mid Band (stays in _band_buffer)
-	 // We need to save High Int for Filter D first
+	 // 2. Split the high intermediate at MH Frequency in one pass.
 	 double *high_ptr = _high_buffer.ptrw();
-	 for(int i=0; i<length; ++i) high_ptr[i] = band_ptr[i];
-
-	 if (_mh_low_filter.is_valid()) {
-		 _mh_low_filter->process(p_channels, &_band_buffer, 0, p_length); // _band_buffer now contains Mid
-	 }
-
-	 // Filter D: High Int -> High Band
-	 if (_mh_high_filter.is_valid()) {
-		 _mh_high_filter->process(p_channels, &_high_buffer, 0, p_length); // _high_buffer now contains High
+	 if (_mh_filter.is_valid()) {
+		 // Reuse _band_buffer in place for the mid band; the splitter reads each frame before overwriting it.
+		 _mh_filter->process_split(p_channels, band_ptr, band_ptr, high_ptr, p_length);
+	 } else {
+		 for (int i = 0; i < length; ++i) {
+			 high_ptr[i] = 0.0;
+		 }
 	 }
  
 	 // --- Band Processing ---
@@ -398,8 +379,8 @@
 	 for (int i = 0; i < length; ++i) temp_ptr[i] = in_ptr[i];
 
 	 // Filter LPF at LM (filter should already have correct params)
-	 if (_lm_low_filter.is_valid()) {
-		 _lm_low_filter->process(p_channels, &_temp_buffer, 0, p_length);
+	 if (_lm_filter.is_valid()) {
+		 _lm_filter->process(p_channels, &_temp_buffer, 0, p_length);
 	 }
  
 	 // Planar Split
@@ -437,8 +418,8 @@
 	 for (int i = 0; i < length; ++i) temp_ptr[i] = in_ptr[i];
 
 	 // Filter HPF at MH (filter should already have correct params)
-	 if (_mh_high_filter.is_valid()) {
-		 _mh_high_filter->process(p_channels, &_temp_buffer, 0, p_length);
+	 if (_mh_filter.is_valid()) {
+		 _mh_filter->process(p_channels, &_temp_buffer, 0, p_length);
 	 }
  
 	 double *l_vec = _left_vec.ptrw();
@@ -497,10 +478,8 @@
 		 _low_band_compressor.reset();
 		 _band_high_compressor.reset();
 		 
-		 if (_lm_low_filter.is_valid()) _lm_low_filter->reset();
-		 if (_lm_high_filter.is_valid()) _lm_high_filter->reset();
-		 if (_mh_low_filter.is_valid()) _mh_low_filter->reset();
-		 if (_mh_high_filter.is_valid()) _mh_high_filter->reset();
+		 if (_lm_filter.is_valid()) _lm_filter->reset();
+		 if (_mh_filter.is_valid()) _mh_filter->reset();
  
 		 _was_low_enabled = low_enabled;
 		 _was_high_enabled = high_enabled;
@@ -558,10 +537,8 @@
 	 _low_band_compressor.reset();
 	 _band_high_compressor.reset();
 	 
-	 if (_lm_low_filter.is_valid()) _lm_low_filter->reset();
-	 if (_lm_high_filter.is_valid()) _lm_high_filter->reset();
-	 if (_mh_low_filter.is_valid()) _mh_low_filter->reset();
-	 if (_mh_high_filter.is_valid()) _mh_high_filter->reset();
+	 if (_lm_filter.is_valid()) _lm_filter->reset();
+	 if (_mh_filter.is_valid()) _mh_filter->reset();
  
 	 _was_low_enabled = false;
 	 _was_high_enabled = false;

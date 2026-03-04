@@ -224,6 +224,165 @@ int SiEffectLinkwitzRileyFilter::process(int p_channels, Vector<double> *r_buffe
 	return p_channels;
 }
 
+void SiEffectLinkwitzRileyFilter::process_split(int p_channels, const double *p_input, double *p_low_output, double *p_high_output, int p_length) {
+	int length = p_length << 1;
+
+	if (p_channels == 1) {
+		// Mono processing - same signal in both channels
+		for (int i = 0; i < length; i += 2) {
+			double audio = p_input[i];
+
+			// Process low band - first stage
+			double low_in01 = audio * _low_in_0 + _past_in_1a_low_left * _low_in_1;
+			double low_in = low_in01 + _past_in_2a_low_left * _low_in_2;
+			double low_in_out1 = low_in + _past_out_1a_low_left * _low_out_1;
+			double low = low_in_out1 + _past_out_2a_low_left * _low_out_2;
+
+			_past_in_2a_low_left = _past_in_1a_low_left;
+			_past_in_1a_low_left = audio;
+			_past_out_2a_low_left = _past_out_1a_low_left;
+			_past_out_1a_low_left = low;
+
+			// Process low band - second stage
+			double low_in01_b = low * _low_in_0 + _past_in_1b_low_left * _low_in_1;
+			double low_in_b = low_in01_b + _past_in_2b_low_left * _low_in_2;
+			double low_in_out1_b = low_in_b + _past_out_1b_low_left * _low_out_1;
+			double low_final = low_in_out1_b + _past_out_2b_low_left * _low_out_2;
+
+			_past_in_2b_low_left = _past_in_1b_low_left;
+			_past_in_1b_low_left = low;
+			_past_out_2b_low_left = _past_out_1b_low_left;
+			_past_out_1b_low_left = low_final;
+
+			// Process high band - first stage
+			double high_in01 = audio * _high_in_0 + _past_in_1a_high_left * _high_in_1;
+			double high_in = high_in01 + _past_in_2a_high_left * _high_in_2;
+			double high_in_out1 = high_in + _past_out_1a_high_left * _high_out_1;
+			double high = high_in_out1 + _past_out_2a_high_left * _high_out_2;
+
+			_past_in_2a_high_left = _past_in_1a_high_left;
+			_past_in_1a_high_left = audio;
+			_past_out_2a_high_left = _past_out_1a_high_left;
+			_past_out_1a_high_left = high;
+
+			// Process high band - second stage
+			double high_in01_b = high * _high_in_0 + _past_in_1b_high_left * _high_in_1;
+			double high_in_b = high_in01_b + _past_in_2b_high_left * _high_in_2;
+			double high_in_out1_b = high_in_b + _past_out_1b_high_left * _high_out_1;
+			double high_final = high_in_out1_b + _past_out_2b_high_left * _high_out_2;
+
+			_past_in_2b_high_left = _past_in_1b_high_left;
+			_past_in_1b_high_left = high;
+			_past_out_2b_high_left = _past_out_1b_high_left;
+			_past_out_1b_high_left = high_final;
+
+			p_low_output[i] = low_final;
+			p_low_output[i + 1] = low_final;
+			p_high_output[i] = high_final;
+			p_high_output[i + 1] = high_final;
+		}
+	} else {
+		// Stereo processing - separate left and right channels
+		for (int i = 0; i < length; i += 2) {
+			double audio_left = p_input[i];
+			double audio_right = p_input[i + 1];
+
+			// Process low band for left channel - first stage
+			double low_in01_left = audio_left * _low_in_0 + _past_in_1a_low_left * _low_in_1;
+			double low_in_left = low_in01_left + _past_in_2a_low_left * _low_in_2;
+			double low_in_out1_left = low_in_left + _past_out_1a_low_left * _low_out_1;
+			double low_left = low_in_out1_left + _past_out_2a_low_left * _low_out_2;
+
+			_past_in_2a_low_left = _past_in_1a_low_left;
+			_past_in_1a_low_left = audio_left;
+			_past_out_2a_low_left = _past_out_1a_low_left;
+			_past_out_1a_low_left = low_left;
+
+			// Process low band for left channel - second stage
+			double low_in01_b_left = low_left * _low_in_0 + _past_in_1b_low_left * _low_in_1;
+			double low_in_b_left = low_in01_b_left + _past_in_2b_low_left * _low_in_2;
+			double low_in_out1_b_left = low_in_b_left + _past_out_1b_low_left * _low_out_1;
+			double low_final_left = low_in_out1_b_left + _past_out_2b_low_left * _low_out_2;
+
+			_past_in_2b_low_left = _past_in_1b_low_left;
+			_past_in_1b_low_left = low_left;
+			_past_out_2b_low_left = _past_out_1b_low_left;
+			_past_out_1b_low_left = low_final_left;
+
+			// Process low band for right channel - first stage
+			double low_in01_right = audio_right * _low_in_0 + _past_in_1a_low_right * _low_in_1;
+			double low_in_right = low_in01_right + _past_in_2a_low_right * _low_in_2;
+			double low_in_out1_right = low_in_right + _past_out_1a_low_right * _low_out_1;
+			double low_right = low_in_out1_right + _past_out_2a_low_right * _low_out_2;
+
+			_past_in_2a_low_right = _past_in_1a_low_right;
+			_past_in_1a_low_right = audio_right;
+			_past_out_2a_low_right = _past_out_1a_low_right;
+			_past_out_1a_low_right = low_right;
+
+			// Process low band for right channel - second stage
+			double low_in01_b_right = low_right * _low_in_0 + _past_in_1b_low_right * _low_in_1;
+			double low_in_b_right = low_in01_b_right + _past_in_2b_low_right * _low_in_2;
+			double low_in_out1_b_right = low_in_b_right + _past_out_1b_low_right * _low_out_1;
+			double low_final_right = low_in_out1_b_right + _past_out_2b_low_right * _low_out_2;
+
+			_past_in_2b_low_right = _past_in_1b_low_right;
+			_past_in_1b_low_right = low_right;
+			_past_out_2b_low_right = _past_out_1b_low_right;
+			_past_out_1b_low_right = low_final_right;
+
+			// Process high band for left channel - first stage
+			double high_in01_left = audio_left * _high_in_0 + _past_in_1a_high_left * _high_in_1;
+			double high_in_left = high_in01_left + _past_in_2a_high_left * _high_in_2;
+			double high_in_out1_left = high_in_left + _past_out_1a_high_left * _high_out_1;
+			double high_left = high_in_out1_left + _past_out_2a_high_left * _high_out_2;
+
+			_past_in_2a_high_left = _past_in_1a_high_left;
+			_past_in_1a_high_left = audio_left;
+			_past_out_2a_high_left = _past_out_1a_high_left;
+			_past_out_1a_high_left = high_left;
+
+			// Process high band for left channel - second stage
+			double high_in01_b_left = high_left * _high_in_0 + _past_in_1b_high_left * _high_in_1;
+			double high_in_b_left = high_in01_b_left + _past_in_2b_high_left * _high_in_2;
+			double high_in_out1_b_left = high_in_b_left + _past_out_1b_high_left * _high_out_1;
+			double high_final_left = high_in_out1_b_left + _past_out_2b_high_left * _high_out_2;
+
+			_past_in_2b_high_left = _past_in_1b_high_left;
+			_past_in_1b_high_left = high_left;
+			_past_out_2b_high_left = _past_out_1b_high_left;
+			_past_out_1b_high_left = high_final_left;
+
+			// Process high band for right channel - first stage
+			double high_in01_right = audio_right * _high_in_0 + _past_in_1a_high_right * _high_in_1;
+			double high_in_right = high_in01_right + _past_in_2a_high_right * _high_in_2;
+			double high_in_out1_right = high_in_right + _past_out_1a_high_right * _high_out_1;
+			double high_right = high_in_out1_right + _past_out_2a_high_right * _high_out_2;
+
+			_past_in_2a_high_right = _past_in_1a_high_right;
+			_past_in_1a_high_right = audio_right;
+			_past_out_2a_high_right = _past_out_1a_high_right;
+			_past_out_1a_high_right = high_right;
+
+			// Process high band for right channel - second stage
+			double high_in01_b_right = high_right * _high_in_0 + _past_in_1b_high_right * _high_in_1;
+			double high_in_b_right = high_in01_b_right + _past_in_2b_high_right * _high_in_2;
+			double high_in_out1_b_right = high_in_b_right + _past_out_1b_high_right * _high_out_1;
+			double high_final_right = high_in_out1_b_right + _past_out_2b_high_right * _high_out_2;
+
+			_past_in_2b_high_right = _past_in_1b_high_right;
+			_past_in_1b_high_right = high_right;
+			_past_out_2b_high_right = _past_out_1b_high_right;
+			_past_out_1b_high_right = high_final_right;
+
+			p_low_output[i] = low_final_left;
+			p_low_output[i + 1] = low_final_right;
+			p_high_output[i] = high_final_left;
+			p_high_output[i + 1] = high_final_right;
+		}
+	}
+}
+
 void SiEffectLinkwitzRileyFilter::set_by_mml(Vector<double> p_args) {
 	double cutoff = _get_mml_arg(p_args, 0, 1000.0);
 	int output_mode = (int)_get_mml_arg(p_args, 1, 0.0);
