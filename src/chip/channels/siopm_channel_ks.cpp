@@ -16,6 +16,10 @@
 #include "sequencer/simml_ref_table.h"
 #include "sequencer/simml_voice.h"
 
+namespace {
+static constexpr double KS_SUB_SAMPLE_SILENCE = 1.0;
+}
+
 void SiOPMChannelKS::set_karplus_strong_params(int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension) {
 	int wave_shape = p_wave_shape;
 	if (wave_shape == -1) {
@@ -28,7 +32,7 @@ void SiOPMChannelKS::set_karplus_strong_params(int p_attack_rate, int p_decay_ra
 	set_feedback(0, 0);
 	set_params_by_value(p_attack_rate, p_decay_rate, 0, 63, 15, p_total_level, 0, 0, 1, 0, 0, 0, 0, p_fixed_pitch);
 
-	_active_operator->set_pulse_generator_type(p_wave_shape);
+	_active_operator->set_pulse_generator_type(wave_shape);
 	Ref<SiOPMWaveTable> wave_table = _table->get_wave_table(_active_operator->get_pulse_generator_type());
 	_active_operator->set_pitch_table_type(wave_table->get_default_pitch_table_type());
 
@@ -37,11 +41,13 @@ void SiOPMChannelKS::set_karplus_strong_params(int p_attack_rate, int p_decay_ra
 
 void SiOPMChannelKS::apply_ks_runtime_params(int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension) {
 	// Apply changes similar to set_karplus_strong_params but without touching algorithm or feedback routing.
+	int wave_shape = (p_wave_shape == -1) ? SiONPulseGeneratorType::PULSE_NOISE_PINK : p_wave_shape;
+
 	_active_operator->set_attack_rate(p_attack_rate);
 	_active_operator->set_decay_rate(p_decay_rate > 48 ? 48 : p_decay_rate);
 	_active_operator->set_total_level(p_total_level > 127 ? 127 : p_total_level);
 	_active_operator->set_fixed_pitch_index(p_fixed_pitch << 6);
-	_active_operator->set_pulse_generator_type(p_wave_shape);
+	_active_operator->set_pulse_generator_type(wave_shape);
 	{
 		Ref<SiOPMWaveTable> wave_table = _table->get_wave_table(_active_operator->get_pulse_generator_type());
 		_active_operator->set_pitch_table_type(wave_table->get_default_pitch_table_type());
@@ -123,7 +129,7 @@ void SiOPMChannelKS::set_release_rate(int p_value) {
 
 void SiOPMChannelKS::set_fixed_pitch(int p_value) {
 	for (int i = 0; i < _operator_count; i++) {
-		_operators[i]->set_fixed_pitch_index(i);
+		_operators[i]->set_fixed_pitch_index(p_value);
 	}
 }
 
@@ -145,9 +151,10 @@ void SiOPMChannelKS::_set_lfo_state(bool p_enabled) {
 void SiOPMChannelKS::note_on() {
 	_output = 0;
 
-	int __buf_size = _ks_delay_buffer.size();
-	for (int i = 0; i < __buf_size; i++) {
-		_ks_delay_buffer.write[i] *= 0.3;
+	const int delay_buffer_size = _ks_delay_buffer.size();
+	int *delay_buffer = (delay_buffer_size > 0) ? _ks_delay_buffer.ptrw() : nullptr;
+	for (int i = 0; i < delay_buffer_size; i++) {
+		delay_buffer[i] = (int)(delay_buffer[i] * 0.3);
 	}
 
 	_decay_lpf = _ks_decay_lpf;
@@ -164,15 +171,37 @@ void SiOPMChannelKS::note_off() {
 }
 
 void SiOPMChannelKS::reset_channel_buffer_status() {
-	_buffer_index = 0;
-	_is_idling = false;
+	SiOPMChannelFM::reset_channel_buffer_status();
+	if (!_is_idling) {
+		return;
+	}
+
+	if (Math::abs(_output) >= KS_SUB_SAMPLE_SILENCE) {
+		_is_idling = false;
+		return;
+	}
+
+	const int delay_buffer_size = _ks_delay_buffer.size();
+	const int *delay_buffer = _ks_delay_buffer.ptr();
+	for (int i = 0; i < delay_buffer_size; i++) {
+		if (delay_buffer[i] != 0) {
+			_is_idling = false;
+			return;
+		}
+	}
 }
 
 void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buffer_start, int p_length) {
 	SinglyLinkedList<int>::Element *target = p_buffer_start;
 	const int pitch_idx_max = SiOPMRefTable::PITCH_TABLE_SIZE - 1;
+	const int detune = _operators[0]->get_ptss_detune();
+	const int delay_buffer_size = _ks_delay_buffer.size();
+	if (delay_buffer_size <= 0) {
+		return;
+	}
+	int *delay_buffer = _ks_delay_buffer.ptrw();
 
-	int pitch_idx = _ks_pitch_index + _operators[0]->get_ptss_detune() + _pitch_modulation_output_level;
+	int pitch_idx = _ks_pitch_index + detune + _pitch_modulation_output_level;
 	pitch_idx = CLAMP(pitch_idx, 0, pitch_idx_max);
 	double wave_length_max = _table->pitch_wave_length[pitch_idx];
 
@@ -185,7 +214,7 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 			int value_base = _lfo_wave_table[_lfo_phase];
 			_pitch_modulation_output_level = (((value_base << 1) - 255) * _pitch_modulation_depth) >> 8;
 
-			pitch_idx = _ks_pitch_index + _operators[0]->get_ptss_detune() + _pitch_modulation_output_level;
+			pitch_idx = _ks_pitch_index + detune + _pitch_modulation_output_level;
 			pitch_idx = CLAMP(pitch_idx, 0, pitch_idx_max);
 			wave_length_max = _table->pitch_wave_length[pitch_idx];
 
@@ -198,16 +227,18 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 			_ks_delay_buffer_index = Math::fmod(_ks_delay_buffer_index, wave_length_max);
 		}
 		int buffer_index = (int)_ks_delay_buffer_index;
-		// Safety clamp in case buffer length exceeds current allocation.
-		int __db_size = _ks_delay_buffer.size();
-		if (__db_size > 0 && buffer_index >= __db_size) {
-			buffer_index %= __db_size;
+		// Safety clamp in case the dynamic pitch table exceeds the current allocation.
+		if (buffer_index >= delay_buffer_size) {
+			buffer_index %= delay_buffer_size;
 		}
 
 		_output *= _decay;
-		_output += (_ks_delay_buffer[buffer_index] - _output) * _decay_lpf + target->value;
+		_output += (delay_buffer[buffer_index] - _output) * _decay_lpf + target->value;
+		if (Math::abs(_output) < KS_SUB_SAMPLE_SILENCE) {
+			_output = 0;
+		}
 
-		_ks_delay_buffer.write[buffer_index] = _output;
+		delay_buffer[buffer_index] = (int)_output;
 		target->value = (int)_output;
 		target = target->next();
 	}
