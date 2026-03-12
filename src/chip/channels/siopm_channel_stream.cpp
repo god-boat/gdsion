@@ -99,9 +99,9 @@ void SiOPMChannelStream::_recalc_pitch_step() {
 		// the source audio, producing the pitch shift.
 		_pitch_step = std::pow(2.0, (double)_pitch_cents / 1200.0);
 	} else if (_warp_mode == 4 /* TEXTURE */) {
-		// TEXTURE: grain playback rate is always 1:1 (no pitch shift).
-		// Time-stretching is handled entirely by the granular engine.
-		_pitch_step = 1.0;
+		// TEXTURE: same pitch behavior as TONES, but with randomized grain
+		// source positions (flux) for a smeared/granular texture.
+		_pitch_step = std::pow(2.0, (double)_pitch_cents / 1200.0);
 	} else {
 		// OFF / BEATS / COMPLEX: user pitch only.
 		_pitch_step = std::pow(2.0, (double)_pitch_cents / 1200.0);
@@ -726,7 +726,7 @@ void SiOPMChannelStream::update_lfo_for_bpm() {
 	// When in BPM-dependent modes, recalculate pitch/rate.
 	// REPITCH: pitch step = driver_bpm / clip_bpm.
 	// TONES/TEXTURE: granular source_advance is computed per-buffer from BPM,
-	// but _recalc_pitch_step() is needed for TONES pitch step.
+	// but _recalc_pitch_step() is needed for TONES/TEXTURE pitch step.
 	if ((_warp_mode == 1 || _warp_mode == 3 || _warp_mode == 4) && _clip_bpm > 0.0) {
 		_recalc_pitch_step();
 	}
