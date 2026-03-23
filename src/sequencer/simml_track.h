@@ -193,6 +193,7 @@ private:
 
 	void _enable_envelope_mode(int p_note_on);
 	void _disable_envelope_mode(int p_note_on);
+	void _process_envelope_tick();
 	int _buffer_envelope(int p_length, int p_step);
 	void _process_buffer(int p_length);
 
