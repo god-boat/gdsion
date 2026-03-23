@@ -69,8 +69,9 @@ void SiMMLSequencer::reset_all_tracks() {
 	_is_sequence_finished = (_tracks.size() == 0);
 }
 
+// todo: envelope fps hardcode
 void SiMMLSequencer::_initialize_track(SiMMLTrack *p_track, int p_internal_track_id, bool p_disposable) {
-	p_track->initialize(Ref<SiMMLData>(), nullptr, 60, (p_internal_track_id >= 0 ? p_internal_track_id : 0), _callback_event_note_on, _callback_event_note_off, p_disposable);
+	p_track->initialize(Ref<SiMMLData>(), nullptr, 240, (p_internal_track_id >= 0 ? p_internal_track_id : 0), _callback_event_note_on, _callback_event_note_off, p_disposable);
 	p_track->reset(_global_buffer_index);
 	p_track->get_channel()->set_master_volume(_parser_settings->default_fine_volume);
 }
