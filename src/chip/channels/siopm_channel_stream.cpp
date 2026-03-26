@@ -79,6 +79,7 @@ void SiOPMChannelStream::set_channel_params(const Ref<SiOPMChannelParams> &p_par
 
 void SiOPMChannelStream::set_wave_data(const Ref<SiOPMWaveBase> &p_wave_data) {
 	_stream_data = p_wave_data;
+	_recalc_pitch_step();
 }
 
 // ---------------------------------------------------------------------------
@@ -86,26 +87,42 @@ void SiOPMChannelStream::set_wave_data(const Ref<SiOPMWaveBase> &p_wave_data) {
 // ---------------------------------------------------------------------------
 
 void SiOPMChannelStream::_recalc_pitch_step() {
+	double musical_ratio = 1.0;
 	if (_warp_mode == 1 /* REPITCH */ && _clip_bpm > 0.0) {
 		// REPITCH: playback rate = driver_bpm / clip_bpm.
 		// User pitch (_pitch_cents) is ignored — pitch is fully determined
 		// by the BPM ratio (turntable/varispeed behavior).
 		double driver_bpm = _sound_chip ? _sound_chip->get_bpm() : 120.0;
-		_pitch_step = driver_bpm / _clip_bpm;
+		musical_ratio = driver_bpm / _clip_bpm;
 	} else if (_warp_mode == 3 /* TONES */) {
 		// TONES: user pitch controls grain playback rate (pitch-shifting).
 		// The grain source position advances at the BPM ratio to keep timing,
 		// while _pitch_step controls the speed at which individual grains read
 		// the source audio, producing the pitch shift.
-		_pitch_step = std::pow(2.0, (double)_pitch_cents / 1200.0);
+		musical_ratio = std::pow(2.0, (double)_pitch_cents / 1200.0);
 	} else if (_warp_mode == 4 /* TEXTURE */) {
 		// TEXTURE: same pitch behavior as TONES, but with randomized grain
 		// source positions (flux) for a smeared/granular texture.
-		_pitch_step = std::pow(2.0, (double)_pitch_cents / 1200.0);
+		musical_ratio = std::pow(2.0, (double)_pitch_cents / 1200.0);
 	} else {
 		// OFF / BEATS / COMPLEX: user pitch only.
-		_pitch_step = std::pow(2.0, (double)_pitch_cents / 1200.0);
+		musical_ratio = std::pow(2.0, (double)_pitch_cents / 1200.0);
 	}
+	_pitch_step = musical_ratio * _get_source_to_driver_rate_ratio();
+}
+
+double SiOPMChannelStream::_get_source_to_driver_rate_ratio() const {
+	if (_stream_data.is_null() || _table == nullptr) {
+		return 1.0;
+	}
+
+	const int source_rate = _stream_data->get_source_sample_rate();
+	const int driver_rate = _table->sampling_rate;
+	if (source_rate <= 0 || driver_rate <= 0) {
+		return 1.0;
+	}
+
+	return (double)source_rate / (double)driver_rate;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,7 +134,7 @@ int64_t SiOPMChannelStream::_effective_clip_length() const {
 		return _out_sample - _in_sample;
 	}
 	if (_stream_data.is_valid()) {
-		return _stream_data->get_total_frames_48k() - _in_sample;
+		return _stream_data->get_total_frames() - _in_sample;
 	}
 	return 0;
 }
@@ -176,7 +193,7 @@ void SiOPMChannelStream::note_on() {
 
 	// Sync loop state to stream data so the loader wraps at loop boundaries.
 	_stream_data->set_looping(_looping);
-	_stream_data->set_loop_region(_loop_start_48k, _loop_end_48k);
+	_stream_data->set_loop_region(_loop_start_sample, _loop_end_sample);
 
 	// Reset granular state for TONES/TEXTURE modes (preserves grain_size/flux params).
 	{
@@ -229,7 +246,7 @@ void SiOPMChannelStream::buffer(int p_length) {
 
 	int channels = _stream_data->get_channel_count();
 
-	// Determine effective clip/loop end (relative to in_sample, in source 48 kHz frames).
+	// Determine effective clip/loop end (relative to in_sample, in source frames).
 	int64_t effective_end = _effective_clip_length();
 	if (effective_end <= 0) {
 		buffer_no_process(p_length);
@@ -242,8 +259,8 @@ void SiOPMChannelStream::buffer(int p_length) {
 	int64_t effective_loop_end = effective_end;
 	double loop_offset = 0.0;
 	if (_looping) {
-		int64_t le = (_loop_end_48k > 0) ? _loop_end_48k : (_out_sample > 0 ? _out_sample : (_stream_data->get_total_frames_48k()));
-		int64_t ls = (_loop_start_48k > 0) ? _loop_start_48k : _in_sample;
+		int64_t le = (_loop_end_sample > 0) ? _loop_end_sample : (_out_sample > 0 ? _out_sample : (_stream_data->get_total_frames()));
+		int64_t ls = (_loop_start_sample > 0) ? _loop_start_sample : _in_sample;
 		// Convert to relative (from _in_sample).
 		effective_loop_end = le - _in_sample;
 		loop_offset = (double)(ls - _in_sample);
@@ -273,12 +290,12 @@ void SiOPMChannelStream::buffer(int p_length) {
 		//
 		// Source advance rate: determines how fast we move through the source
 		// material, independent of grain pitch. For tempo-sync when BPM info
-		// is available, source advances at (driver_bpm / clip_bpm); otherwise
-		// 1:1.
-		double source_advance = 1.0;
+		// is available, source advances at (driver_bpm / clip_bpm). Convert that
+		// motion into source frames per output sample via source_rate/driver_rate.
+		double source_advance = _get_source_to_driver_rate_ratio();
 		if (_clip_bpm > 0.0) {
 			double driver_bpm = _sound_chip ? _sound_chip->get_bpm() : 120.0;
-			source_advance = driver_bpm / _clip_bpm;
+			source_advance *= driver_bpm / _clip_bpm;
 		}
 
 		// Lambda: read from the ring buffer at an offset.
@@ -579,8 +596,8 @@ void SiOPMChannelStream::reset() {
 	_warp.reset();
 
 	_looping = false;
-	_loop_start_48k = 0;
-	_loop_end_48k = 0;
+	_loop_start_sample = 0;
+	_loop_end_sample = 0;
 	_loops_completed = 0;
 }
 
@@ -743,11 +760,11 @@ void SiOPMChannelStream::set_stream_looping(bool p_looping) {
 	}
 }
 
-void SiOPMChannelStream::set_stream_loop_region(int64_t p_start_48k, int64_t p_end_48k) {
-	_loop_start_48k = MAX(p_start_48k, (int64_t)0);
-	_loop_end_48k = MAX(p_end_48k, (int64_t)0);
+void SiOPMChannelStream::set_stream_loop_region(int64_t p_start_sample, int64_t p_end_sample) {
+	_loop_start_sample = MAX(p_start_sample, (int64_t)0);
+	_loop_end_sample = MAX(p_end_sample, (int64_t)0);
 	if (_stream_data.is_valid()) {
-		_stream_data->set_loop_region(_loop_start_48k, _loop_end_48k);
+		_stream_data->set_loop_region(_loop_start_sample, _loop_end_sample);
 	}
 }
 
@@ -755,16 +772,16 @@ void SiOPMChannelStream::set_stream_loop_region(int64_t p_start_48k, int64_t p_e
 // Seek
 // ---------------------------------------------------------------------------
 
-void SiOPMChannelStream::seek_to(int64_t p_position_48k) {
+void SiOPMChannelStream::seek_to(int64_t p_position_sample) {
 	if (_stream_data.is_null()) {
 		return;
 	}
 
-	_stream_data->seek(p_position_48k);
+	_stream_data->seek(p_position_sample);
 	_playback_pos = 0.0;
 
 	// Compute source frames elapsed relative to in_sample.
-	int64_t relative = p_position_48k - _in_sample;
+	int64_t relative = p_position_sample - _in_sample;
 	_source_frames_elapsed = (relative > 0) ? (double)relative : 0.0;
 }
 
@@ -781,4 +798,3 @@ String SiOPMChannelStream::_to_string() const {
 SiOPMChannelStream::SiOPMChannelStream(SiOPMSoundChip *p_chip) : SiOPMChannelBase(p_chip) {
 	// Empty.
 }
-

@@ -503,12 +503,12 @@ private:
 		bool has_stream_flux = false;
 		double stream_flux = 0.0;
 		bool has_stream_seek = false;
-		int64_t stream_seek_pos = 0;
+		int64_t stream_seek_sample = 0;
 		bool has_stream_looping = false;
 		bool stream_looping = false;
 		bool has_stream_loop_region = false;
-		int64_t stream_loop_start = 0;
-		int64_t stream_loop_end = 0;
+		int64_t stream_loop_start_sample = 0;
+		int64_t stream_loop_end_sample = 0;
 
 		// Track effects (applied to per-track SiEffectStream, not per-voice channels)
 		enum FxOp {
@@ -842,9 +842,9 @@ public:
 	void mailbox_stream_set_clip_bpm(int p_track_id, double p_bpm);
 	void mailbox_stream_set_grain_size(int p_track_id, double p_grain_size);
 	void mailbox_stream_set_flux(int p_track_id, double p_flux);
-	void mailbox_stream_seek(int p_track_id, int64_t p_position_48k);
+	void mailbox_stream_seek(int p_track_id, int64_t p_position_sample);
 	void mailbox_stream_set_looping(int p_track_id, bool p_looping);
-	void mailbox_stream_set_loop_region(int p_track_id, int64_t p_start_48k, int64_t p_end_48k);
+	void mailbox_stream_set_loop_region(int p_track_id, int64_t p_start_sample, int64_t p_end_sample);
 	// Note control (thread-safe alternatives to direct track method calls)
 	// p_track_instance_id: If non-zero, targets specific track by Godot object ID (for pooled tracks)
 	void mailbox_key_on(int p_track_id, int p_note, int p_tick_length = 0, uint64_t p_track_instance_id = 0);

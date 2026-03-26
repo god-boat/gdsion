@@ -19,7 +19,7 @@ class SiOPMWaveBase;
 
 // Streaming audio channel for clip playback.
 //
-// Reads pre-resampled 48 kHz frames from a SiOPMWaveStreamData ring buffer,
+// Reads source frames from a SiOPMWaveStreamData ring buffer,
 // applies dB-based gain (-36..+36 dB, matching sampler), fade in/out ramps,
 // pitch shifting via variable playback rate, and writes to SiON output streams.
 //
@@ -34,8 +34,8 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 
 	// ---- Playback state (audio thread only) ----
 
-	double _playback_pos = 0.0;     // Fractional frame position in ring buffer.
-	double _source_frames_elapsed = 0.0; // Source 48 kHz frames consumed since note_on (pitch-aware).
+	double _playback_pos = 0.0;     // Fractional source-frame position in ring buffer.
+	double _source_frames_elapsed = 0.0; // Source frames consumed since note_on (pitch-aware).
 	bool _playing = false;
 	bool _reached_end = false;
 
@@ -43,11 +43,11 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 
 	int _gain_db = 0;               // Gain in dB (-36..+36), matches sampler.
 	double _clip_gain = 1.0;        // Linear gain derived from _gain_db: pow(2, dB/6).
-	double _pitch_step = 1.0;       // Playback rate (1.0 = normal).
+	double _pitch_step = 1.0;       // Source-frame advance per output sample.
 	int _pitch_cents = 0;           // Pitch shift in cents.
-	int _fade_in_frames = 0;        // Fade-in length in 48 kHz frames.
-	int _fade_out_frames = 0;       // Fade-out length in 48 kHz frames.
-	int64_t _in_sample = 0;         // Start trim in 48 kHz frames.
+	int _fade_in_frames = 0;        // Fade-in length in source frames.
+	int _fade_out_frames = 0;       // Fade-out length in source frames.
+	int64_t _in_sample = 0;         // Start trim in source frames.
 	int64_t _out_sample = 0;        // End trim (0 = EOF).
 	int _warp_mode = 0;             // 0 = OFF, 1 = REPITCH, 2 = BEATS, 3 = TONES, 4 = TEXTURE, 5 = COMPLEX.
 	double _clip_bpm = 0.0;         // Original BPM of the clip (for REPITCH warp mode).
@@ -55,8 +55,8 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	// ---- Loop state (set via mailbox, read in buffer()) ----
 
 	bool _looping = false;          // Whether the clip should loop.
-	int64_t _loop_start_48k = 0;    // Loop start in absolute 48 kHz frames.
-	int64_t _loop_end_48k = 0;      // Loop end (0 = use out_sample/EOF).
+	int64_t _loop_start_sample = 0; // Loop start in absolute source frames.
+	int64_t _loop_end_sample = 0;   // Loop end (0 = use out_sample/EOF).
 	int64_t _loops_completed = 0;   // Number of full loops completed since note_on.
 
 	// ---- Granular warp engine (TONES / TEXTURE warp modes) ----
@@ -70,8 +70,9 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 
 	// Unified pitch step recalculation from _pitch_cents.
 	void _recalc_pitch_step();
+	double _get_source_to_driver_rate_ratio() const;
 
-	// Compute the effective clip length in source 48 kHz frames (accounts for trim).
+	// Compute the effective clip length in source frames (accounts for trim).
 	int64_t _effective_clip_length() const;
 
 	// Compute fade envelope multiplier for the given source-domain frame position.
@@ -153,15 +154,15 @@ public:
 	void set_stream_looping(bool p_looping);
 	bool get_stream_looping() const { return _looping; }
 
-	void set_stream_loop_region(int64_t p_start_48k, int64_t p_end_48k);
-	int64_t get_stream_loop_start() const { return _loop_start_48k; }
-	int64_t get_stream_loop_end() const { return _loop_end_48k; }
+	void set_stream_loop_region(int64_t p_start_sample, int64_t p_end_sample);
+	int64_t get_stream_loop_start() const { return _loop_start_sample; }
+	int64_t get_stream_loop_end() const { return _loop_end_sample; }
 
 	int64_t get_loops_completed() const { return _loops_completed; }
 
-	// Seek to an absolute 48 kHz source position. Resets playback cursor and
+	// Seek to an absolute source-frame position. Resets playback cursor and
 	// triggers a ring buffer refill from the new position.
-	void seek_to(int64_t p_position_48k);
+	void seek_to(int64_t p_position_sample);
 
 	SiOPMChannelStream(SiOPMSoundChip *p_chip = nullptr);
 };

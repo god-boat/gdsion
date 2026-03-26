@@ -58,19 +58,19 @@ void SiOPMWaveStreamData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_valid"), &SiOPMWaveStreamData::is_valid);
 	ClassDB::bind_method(D_METHOD("get_channel_count"), &SiOPMWaveStreamData::get_channel_count);
 	ClassDB::bind_method(D_METHOD("get_source_sample_rate"), &SiOPMWaveStreamData::get_source_sample_rate);
-	ClassDB::bind_method(D_METHOD("get_total_frames_48k"), &SiOPMWaveStreamData::get_total_frames_48k);
+	ClassDB::bind_method(D_METHOD("get_total_frames"), &SiOPMWaveStreamData::get_total_frames);
 	ClassDB::bind_method(D_METHOD("set_in_sample", "sample"), &SiOPMWaveStreamData::set_in_sample);
 	ClassDB::bind_method(D_METHOD("get_in_sample"), &SiOPMWaveStreamData::get_in_sample);
 	ClassDB::bind_method(D_METHOD("set_out_sample", "sample"), &SiOPMWaveStreamData::set_out_sample);
 	ClassDB::bind_method(D_METHOD("get_out_sample"), &SiOPMWaveStreamData::get_out_sample);
 	ClassDB::bind_method(D_METHOD("set_looping", "looping"), &SiOPMWaveStreamData::set_looping);
 	ClassDB::bind_method(D_METHOD("get_looping"), &SiOPMWaveStreamData::get_looping);
-	ClassDB::bind_method(D_METHOD("set_loop_region", "start_48k", "end_48k"), &SiOPMWaveStreamData::set_loop_region);
-	ClassDB::bind_method(D_METHOD("get_loop_start_48k"), &SiOPMWaveStreamData::get_loop_start_48k);
-	ClassDB::bind_method(D_METHOD("get_loop_end_48k"), &SiOPMWaveStreamData::get_loop_end_48k);
+	ClassDB::bind_method(D_METHOD("set_loop_region", "start_sample", "end_sample"), &SiOPMWaveStreamData::set_loop_region);
+	ClassDB::bind_method(D_METHOD("get_loop_start_sample"), &SiOPMWaveStreamData::get_loop_start_sample);
+	ClassDB::bind_method(D_METHOD("get_loop_end_sample"), &SiOPMWaveStreamData::get_loop_end_sample);
 	ClassDB::bind_method(D_METHOD("activate"), &SiOPMWaveStreamData::activate);
 	ClassDB::bind_method(D_METHOD("deactivate"), &SiOPMWaveStreamData::deactivate);
-	ClassDB::bind_method(D_METHOD("seek", "position_48k"), &SiOPMWaveStreamData::seek);
+	ClassDB::bind_method(D_METHOD("seek", "position_sample"), &SiOPMWaveStreamData::seek);
 	ClassDB::bind_method(D_METHOD("prefill_sync"), &SiOPMWaveStreamData::prefill_sync);
 }
 
@@ -108,14 +108,6 @@ bool SiOPMWaveStreamData::load_wav(const String &p_file_path, int p_ring_capacit
 		return false;
 	}
 
-	// Compute 48 kHz frame count.
-	if (_source_sample_rate == TARGET_SR) {
-		_total_frames_48k = _total_source_frames;
-	} else {
-		double ratio = (double)TARGET_SR / (double)_source_sample_rate;
-		_total_frames_48k = (int64_t)std::ceil((double)_total_source_frames * ratio);
-	}
-
 	// Allocate ring buffer (power of 2).
 	int capacity = (p_ring_capacity > 0) ? p_ring_capacity : DEFAULT_RING_CAPACITY;
 	_ring_capacity = _next_power_of_2(capacity);
@@ -126,11 +118,7 @@ bool SiOPMWaveStreamData::load_wav(const String &p_file_path, int p_ring_capacit
 
 	// Reset loader state.
 	_file_read_pos_frames = 0;
-	_resample_frac = 0.0;
-	_overlap_frame[0] = 0.0;
-	_overlap_frame[1] = 0.0;
-	_has_overlap = false;
-	_decode_pos_48k = 0;
+	_decode_pos_frames = 0;
 	_decode_buf_valid = 0;
 	_loader_file = Ref<FileAccess>();
 
@@ -255,9 +243,9 @@ void SiOPMWaveStreamData::set_looping(bool p_looping) {
 	_looping.store(p_looping, std::memory_order_relaxed);
 }
 
-void SiOPMWaveStreamData::set_loop_region(int64_t p_start_48k, int64_t p_end_48k) {
-	_loop_start_48k.store(MAX(p_start_48k, (int64_t)0), std::memory_order_relaxed);
-	_loop_end_48k.store(MAX(p_end_48k, (int64_t)0), std::memory_order_relaxed);
+void SiOPMWaveStreamData::set_loop_region(int64_t p_start_sample, int64_t p_end_sample) {
+	_loop_start_sample.store(MAX(p_start_sample, (int64_t)0), std::memory_order_relaxed);
+	_loop_end_sample.store(MAX(p_end_sample, (int64_t)0), std::memory_order_relaxed);
 }
 
 // ---------------------------------------------------------------------------
@@ -308,8 +296,8 @@ void SiOPMWaveStreamData::deactivate() {
 	// the destructor or load_wav() after _s_wait_until_idle().
 }
 
-void SiOPMWaveStreamData::seek(int64_t p_position_48k) {
-	_seek_target.store(p_position_48k, std::memory_order_relaxed);
+void SiOPMWaveStreamData::seek(int64_t p_position_sample) {
+	_seek_target.store(p_position_sample, std::memory_order_relaxed);
 	_seek_requested.store(true, std::memory_order_release);
 
 	// Flush the ring buffer so the channel sees no stale data.
@@ -326,7 +314,7 @@ void SiOPMWaveStreamData::prefill_sync() {
 
 	// Reset loader state for a clean fill from the current position.
 	int64_t in_sample = _in_sample.load(std::memory_order_relaxed);
-	_reset_decode_to_48k(in_sample);
+	_reset_decode_to_sample(in_sample);
 
 	_ring_read_pos.store(0, std::memory_order_relaxed);
 	_ring_write_pos.store(0, std::memory_order_relaxed);
@@ -414,88 +402,34 @@ bool SiOPMWaveStreamData::_refill_decode_buffer() {
 }
 
 // ---------------------------------------------------------------------------
-// Loader: produce resampled 48 kHz frames
+// Loader: produce source frames
 // ---------------------------------------------------------------------------
 
-int SiOPMWaveStreamData::_produce_resampled_frames(double *r_out, int p_max_frames) {
+int SiOPMWaveStreamData::_produce_frames(double *r_out, int p_max_frames) {
 	int64_t effective_end = _out_sample.load(std::memory_order_relaxed);
-	if (effective_end <= 0) {
-		effective_end = _total_frames_48k;
+	if (effective_end <= 0 || effective_end > _total_source_frames) {
+		effective_end = _total_source_frames;
 	}
 
 	// Loop region: when looping is enabled, the loader wraps back to
 	// loop_start when it reaches loop_end, producing continuous audio.
 	bool looping = _looping.load(std::memory_order_relaxed);
-	int64_t loop_start_raw = _loop_start_48k.load(std::memory_order_relaxed);
-	int64_t loop_end_raw = _loop_end_48k.load(std::memory_order_relaxed);
+	int64_t loop_start_raw = _loop_start_sample.load(std::memory_order_relaxed);
+	int64_t loop_end_raw = _loop_end_sample.load(std::memory_order_relaxed);
 	int64_t in_samp = _in_sample.load(std::memory_order_relaxed);
 	// Resolve defaults: 0 means "use trim region".
 	int64_t effective_loop_start = (looping && loop_start_raw > 0) ? loop_start_raw : in_samp;
 	int64_t effective_loop_end = (looping && loop_end_raw > 0) ? loop_end_raw : effective_end;
+	effective_loop_start = CLAMP(effective_loop_start, (int64_t)0, effective_end);
+	effective_loop_end = CLAMP(effective_loop_end, effective_loop_start, effective_end);
 
 	int frames_produced = 0;
 
-	if (_source_sample_rate == TARGET_SR) {
-		// No resampling needed — copy directly from decode buffer.
-
-		while (frames_produced < p_max_frames) {
-			// Check for loop wrap or end-of-stream.
-			if (_decode_pos_48k >= effective_loop_end) {
-				if (looping) {
-					_reset_decode_to_48k(effective_loop_start);
-					continue;
-				} else {
-					break;
-				}
-			}
-
-			if (_decode_buf_valid <= 0) {
-				if (!_refill_decode_buffer()) {
-					if (looping) {
-						// Hit EOF before loop_end (loop region extends past file).
-						// Wrap back to loop start.
-						_reset_decode_to_48k(effective_loop_start);
-						continue;
-					}
-					break;
-				}
-			}
-
-			int end_remaining = (int)(effective_loop_end - _decode_pos_48k);
-			int to_copy = p_max_frames - frames_produced;
-			if (to_copy > _decode_buf_valid) {
-				to_copy = _decode_buf_valid;
-			}
-			if (to_copy > end_remaining) {
-				to_copy = end_remaining;
-			}
-			if (to_copy <= 0) {
-				break;
-			}
-
-			// Copy from the front of the decode buffer.
-			int buf_offset = (_decode_buffer.size() / _channel_count) - _decode_buf_valid;
-			for (int i = 0; i < to_copy * _channel_count; i++) {
-				r_out[frames_produced * _channel_count + i] =
-					_decode_buffer[buf_offset * _channel_count + i];
-			}
-
-			frames_produced += to_copy;
-			_decode_pos_48k += to_copy;
-			_decode_buf_valid -= to_copy;
-		}
-		return frames_produced;
-	}
-
-	// Resampling path (source rate != 48 kHz).
-	// Uses a stateful streaming resampler with overlap for continuity.
-	double inv_ratio = (double)_source_sample_rate / (double)TARGET_SR;
-
 	while (frames_produced < p_max_frames) {
 		// Check for loop wrap or end-of-stream.
-		if (_decode_pos_48k >= effective_loop_end) {
-			if (looping) {
-				_reset_decode_to_48k(effective_loop_start);
+		if (_decode_pos_frames >= effective_loop_end) {
+			if (looping && effective_loop_end > effective_loop_start) {
+				_reset_decode_to_sample(effective_loop_start);
 				continue;
 			} else {
 				break;
@@ -505,81 +439,37 @@ int SiOPMWaveStreamData::_produce_resampled_frames(double *r_out, int p_max_fram
 		// Ensure decode buffer has data.
 		if (_decode_buf_valid <= 0) {
 			if (!_refill_decode_buffer()) {
-				if (looping) {
+				if (looping && effective_loop_end > effective_loop_start) {
 					// Hit EOF before loop_end — wrap back to loop start.
-					_reset_decode_to_48k(effective_loop_start);
+					_reset_decode_to_sample(effective_loop_start);
 					continue;
 				}
 				break;
 			}
-			// On first fill or after exhaustion, set up the resample cursor.
-			if (!_has_overlap) {
-				// No overlap from a previous chunk; start from frame 0.
-				_resample_frac = 0.0;
-			}
-			// _resample_frac is already adjusted relative to the new buffer.
 		}
 
-		// Produce output frames by interpolating the decode buffer.
-		// _resample_frac is the fractional position in the current decode buffer.
-		// Negative values use the overlap frame from the previous chunk.
-		while (frames_produced < p_max_frames && _decode_pos_48k < effective_loop_end) {
-			int src_idx = (int)std::floor(_resample_frac);
-			double frac = _resample_frac - src_idx;
-
-			double s0[2] = {0.0, 0.0};
-			double s1[2] = {0.0, 0.0};
-			bool can_interpolate = false;
-
-			if (src_idx < 0 && _has_overlap) {
-				// Interpolating between overlap frame and decode buffer.
-				for (int ch = 0; ch < _channel_count; ch++) {
-					s0[ch] = _overlap_frame[ch];
-				}
-				if (src_idx + 1 >= 0 && src_idx + 1 < _decode_buf_valid) {
-					for (int ch = 0; ch < _channel_count; ch++) {
-						s1[ch] = _decode_buffer[(src_idx + 1) * _channel_count + ch];
-					}
-					can_interpolate = true;
-				} else if (src_idx + 1 < 0) {
-					// Both samples from overlap.
-					for (int ch = 0; ch < _channel_count; ch++) {
-						s1[ch] = _overlap_frame[ch];
-					}
-					can_interpolate = true;
-				}
-			} else if (src_idx >= 0 && src_idx + 1 < _decode_buf_valid) {
-				// Both samples from current decode buffer.
-				for (int ch = 0; ch < _channel_count; ch++) {
-					s0[ch] = _decode_buffer[src_idx * _channel_count + ch];
-					s1[ch] = _decode_buffer[(src_idx + 1) * _channel_count + ch];
-				}
-				can_interpolate = true;
-			}
-
-			if (!can_interpolate) {
-				// Need more data from the next chunk.
-				break;
-			}
-
-			for (int ch = 0; ch < _channel_count; ch++) {
-				r_out[frames_produced * _channel_count + ch] = s0[ch] + (s1[ch] - s0[ch]) * frac;
-			}
-
-			frames_produced++;
-			_decode_pos_48k++;
-			_resample_frac += inv_ratio;
+		int end_remaining = (int)(effective_loop_end - _decode_pos_frames);
+		int to_copy = p_max_frames - frames_produced;
+		if (to_copy > _decode_buf_valid) {
+			to_copy = _decode_buf_valid;
+		}
+		if (to_copy > end_remaining) {
+			to_copy = end_remaining;
+		}
+		if (to_copy <= 0) {
+			break;
 		}
 
-		// When we've consumed past the decode buffer, save overlap and prepare for next chunk.
-		if ((int)std::floor(_resample_frac) >= _decode_buf_valid - 1 && _decode_buf_valid > 0) {
-			for (int ch = 0; ch < _channel_count; ch++) {
-				_overlap_frame[ch] = _decode_buffer[(_decode_buf_valid - 1) * _channel_count + ch];
-			}
-			_has_overlap = true;
-			_resample_frac -= _decode_buf_valid;
-			_decode_buf_valid = 0;
+		// Copy from the front of the decode buffer.
+		int buf_offset = (_decode_buffer.size() / _channel_count) - _decode_buf_valid;
+		for (int i = 0; i < to_copy * _channel_count; i++) {
+			r_out[frames_produced * _channel_count + i] =
+				_decode_buffer[buf_offset * _channel_count + i];
 		}
+
+		frames_produced += to_copy;
+		_decode_pos_frames += to_copy;
+		_decode_buf_valid -= to_copy;
 	}
 
 	return frames_produced;
@@ -637,9 +527,9 @@ void SiOPMWaveStreamData::_fill_ring_buffer_impl() {
 		}
 	}
 
-	// Temporary buffer for resampled output.
+	// Temporary buffer for decoded source-frame output.
 	std::vector<double> temp(frames_to_fill * _channel_count);
-	int produced = _produce_resampled_frames(temp.data(), frames_to_fill);
+	int produced = _produce_frames(temp.data(), frames_to_fill);
 
 	if (produced > 0) {
 		_ring_write_frames(temp.data(), produced);
@@ -651,37 +541,29 @@ void SiOPMWaveStreamData::_fill_ring_buffer_impl() {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Loader: reset decode state to a 48 kHz position
+// Loader: reset decode state to a source-frame position
 // ---------------------------------------------------------------------------
 
-void SiOPMWaveStreamData::_reset_decode_to_48k(int64_t p_pos_48k) {
-	if (_source_sample_rate == TARGET_SR) {
-		_file_read_pos_frames = p_pos_48k;
-	} else {
-		double inv_ratio = (double)_source_sample_rate / (double)TARGET_SR;
-		_file_read_pos_frames = (int64_t)(p_pos_48k * inv_ratio);
-	}
-	_decode_pos_48k = p_pos_48k;
-	_resample_frac = 0.0;
-	_has_overlap = false;
-	_overlap_frame[0] = 0.0;
-	_overlap_frame[1] = 0.0;
+void SiOPMWaveStreamData::_reset_decode_to_sample(int64_t p_pos_sample) {
+	p_pos_sample = CLAMP(p_pos_sample, (int64_t)0, (int64_t)_total_source_frames);
+	_file_read_pos_frames = p_pos_sample;
+	_decode_pos_frames = p_pos_sample;
 	_decode_buf_valid = 0;
 }
 
 void SiOPMWaveStreamData::_handle_seek() {
-	int64_t target_48k = _seek_target.load(std::memory_order_relaxed);
+	int64_t target_sample = _seek_target.load(std::memory_order_relaxed);
 	_seek_requested.store(false, std::memory_order_relaxed);
 
 	// Clamp to valid range.
-	if (target_48k < 0) {
-		target_48k = 0;
+	if (target_sample < 0) {
+		target_sample = 0;
 	}
-	if (target_48k > _total_frames_48k) {
-		target_48k = _total_frames_48k;
+	if (target_sample > _total_source_frames) {
+		target_sample = _total_source_frames;
 	}
 
-	_reset_decode_to_48k(target_48k);
+	_reset_decode_to_sample(target_sample);
 
 	// Flush ring buffer.
 	uint32_t pos = _ring_write_pos.load(std::memory_order_relaxed);

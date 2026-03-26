@@ -1484,9 +1484,9 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_clip_bpm", "track_id", "bpm"), &SiONDriver::mailbox_stream_set_clip_bpm);
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_grain_size", "track_id", "grain_size"), &SiONDriver::mailbox_stream_set_grain_size);
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_flux", "track_id", "flux"), &SiONDriver::mailbox_stream_set_flux);
-	ClassDB::bind_method(D_METHOD("mailbox_stream_seek", "track_id", "position_48k"), &SiONDriver::mailbox_stream_seek);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_seek", "track_id", "position_sample"), &SiONDriver::mailbox_stream_seek);
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_looping", "track_id", "looping"), &SiONDriver::mailbox_stream_set_looping);
-	ClassDB::bind_method(D_METHOD("mailbox_stream_set_loop_region", "track_id", "start_48k", "end_48k"), &SiONDriver::mailbox_stream_set_loop_region);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_loop_region", "track_id", "start_sample", "end_sample"), &SiONDriver::mailbox_stream_set_loop_region);
 	// Note control (thread-safe) - track_instance_id targets specific track by Godot object ID
 	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "track_instance_id"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_key_off", "track_id", "immediate", "track_instance_id"), &SiONDriver::mailbox_key_off, DEFVAL(false), DEFVAL(0));
@@ -2725,11 +2725,11 @@ void SiONDriver::mailbox_stream_set_clip_bpm(int p_track_id, double p_bpm) {
 }
 
 
-void SiONDriver::mailbox_stream_seek(int p_track_id, int64_t p_position_48k) {
+void SiONDriver::mailbox_stream_seek(int p_track_id, int64_t p_position_sample) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.has_stream_seek = true;
-	u.stream_seek_pos = p_position_48k;
+	u.stream_seek_sample = p_position_sample;
 	_mb_try_push(u);
 }
 
@@ -2741,12 +2741,12 @@ void SiONDriver::mailbox_stream_set_looping(int p_track_id, bool p_looping) {
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_stream_set_loop_region(int p_track_id, int64_t p_start_48k, int64_t p_end_48k) {
+void SiONDriver::mailbox_stream_set_loop_region(int p_track_id, int64_t p_start_sample, int64_t p_end_sample) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.has_stream_loop_region = true;
-	u.stream_loop_start = p_start_48k;
-	u.stream_loop_end = p_end_48k;
+	u.stream_loop_start_sample = p_start_sample;
+	u.stream_loop_end_sample = p_end_sample;
 	_mb_try_push(u);
 }
 
@@ -3279,13 +3279,13 @@ void SiONDriver::_drain_track_mailbox() {
                     stream_ch->set_stream_flux(u.stream_flux);
                 }
                 if (u.has_stream_seek) {
-                    stream_ch->seek_to(u.stream_seek_pos);
+                    stream_ch->seek_to(u.stream_seek_sample);
                 }
                 if (u.has_stream_looping) {
                     stream_ch->set_stream_looping(u.stream_looping);
                 }
                 if (u.has_stream_loop_region) {
-                    stream_ch->set_stream_loop_region(u.stream_loop_start, u.stream_loop_end);
+                    stream_ch->set_stream_loop_region(u.stream_loop_start_sample, u.stream_loop_end_sample);
                 }
             }
             if (u.has_lfo_wave) {
