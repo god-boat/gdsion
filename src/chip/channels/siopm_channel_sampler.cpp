@@ -139,25 +139,7 @@ int SiOPMChannelSampler::get_pitch() const {
 void SiOPMChannelSampler::set_pitch(int p_value) {
 	_wave_number = p_value >> 6;
 	_fine_pitch = p_value & 0x3F; // lower 6 bits
-
-	double delta_semitones = 0.0;
-	if (_sample_data.is_valid() && _sample_data->is_fixed_pitch() && _has_note_on_pitch) {
-		// For fixed-pitch samples, preserve envelope deltas but ignore base note transposition.
-		delta_semitones = ((double)(p_value - _note_on_pitch)) / 64.0;
-	} else {
-		// Calculate pitch ratio relative to middle C (note 60).
-		delta_semitones = (double)(_wave_number - 60) + ((double)_fine_pitch / 64.0); // 64 fine steps per semitone
-	}
-
-	double user_offset = 0.0;
-	if (_sample_data.is_valid()) {
-		user_offset = (double)_sample_data->get_root_offset()
-			+ (double)_sample_data->get_coarse_offset()
-			+ ((double)_sample_data->get_fine_offset() / 100.0);
-	}
-
-	double total_pitch = delta_semitones + user_offset;
-	_pitch_step = std::pow(2.0, total_pitch / 12.0);
+	_recalc_pitch_step();
 }
 
 void SiOPMChannelSampler::set_phase(int p_value) {
@@ -916,25 +898,47 @@ String SiOPMChannelSampler::_to_string() const {
 
 // Sampler-specific live param setters.
 
+double SiOPMChannelSampler::_get_note_pitch_ratio() const {
+	if (!_sample_data.is_valid()) {
+		return 1.0;
+	}
+
+	double delta_semitones = 0.0;
+	if (_sample_data->is_fixed_pitch() && _has_note_on_pitch) {
+		// Fixed-pitch pads still need envelope/LFO deltas relative to the note-on pitch.
+		delta_semitones = ((double)(get_pitch() - _note_on_pitch)) / 64.0;
+	} else {
+		// 64 fine-pitch steps per semitone, relative to middle C.
+		delta_semitones = ((double)get_pitch() - (double)(60 << 6)) / 64.0;
+	}
+
+	const double user_offset = (double)_sample_data->get_root_offset()
+			+ (double)_sample_data->get_coarse_offset()
+			+ ((double)_sample_data->get_fine_offset() / 100.0);
+
+	return std::pow(2.0, (delta_semitones + user_offset) / 12.0);
+}
+
+double SiOPMChannelSampler::_get_source_to_driver_rate_ratio() const {
+	if (!_sample_data.is_valid() || _table == nullptr) {
+		return 1.0;
+	}
+
+	const int source_rate = _sample_data->get_sample_rate();
+	const int driver_rate = _table->sampling_rate;
+	if (source_rate <= 0 || driver_rate <= 0) {
+		return 1.0;
+	}
+
+	return (double)source_rate / (double)driver_rate;
+}
+
 void SiOPMChannelSampler::_recalc_pitch_step() {
 	if (!_sample_data.is_valid()) {
 		return;
 	}
-	
-	// Layer 1: MIDI note transposition (ignored if fixed_pitch)
-	double note_transposition = 0.0;
-	if (!_sample_data->is_fixed_pitch()) {
-		note_transposition = (double)(_wave_number - 60);
-	}
-	
-	// Layer 2: User pitch adjustments from SamplerData (set via param system)
-	double user_offset = (double)_sample_data->get_root_offset() 
-	                   + (double)_sample_data->get_coarse_offset() 
-	                   + ((double)_sample_data->get_fine_offset() / 100.0);
-	
-	// Combine all layers
-	double total_pitch = note_transposition + user_offset;
-	_pitch_step = std::pow(2.0, total_pitch / 12.0);
+
+	_pitch_step = _get_note_pitch_ratio() * _get_source_to_driver_rate_ratio();
 }
 
 void SiOPMChannelSampler::set_sampler_start_point(int p_start) {
@@ -1015,4 +1019,3 @@ int SiOPMChannelSampler::get_sampler_fine_offset() const {
 SiOPMChannelSampler::SiOPMChannelSampler(SiOPMSoundChip *p_chip) : SiOPMChannelBase(p_chip) {
 	// Empty.
 }
-

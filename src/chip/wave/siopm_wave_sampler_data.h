@@ -23,19 +23,20 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
 	int _pan = 0;
 	int _gain_db = 0;
 	double _gain_linear = 1.0;
-    // Source sample rate of the decoded audio (Hz). Default sampler target is 48000 Hz.
-    int _sample_rate = 48000;
-    // This flag is only available for non-loop samples.
+	// Native sample rate of the decoded audio (Hz). Falls back to 48000 only when
+	// no source metadata is available (for example raw float arrays).
+	int _sample_rate = 48000;
+	// This flag is only available for non-loop samples.
 	bool _ignore_note_off = false;
-    // When true, playback is forced at original pitch regardless of note input.
+	// When true, playback is forced at original pitch regardless of note input.
 	bool _fixed_pitch = false;
-    
-    // Performance-layer pitch offsets (per-sample, mailbox-driven).
-    // In multi-sample mode, each pad has its own offsets.
-    // In melodic mode, there's only one sample, so these are effectively "global".
-    int _root_offset = 0;      // -48..+48 semitones
-    int _coarse_offset = 0;    // -24..+24 semitones
-    int _fine_offset = 0;      // -100..+100 cents
+
+	// Performance-layer pitch offsets (per-sample, mailbox-driven).
+	// In multi-sample mode, each pad has its own offsets.
+	// In melodic mode, there's only one sample, so these are effectively "global".
+	int _root_offset = 0;      // -48..+48 semitones
+	int _coarse_offset = 0;    // -24..+24 semitones
+	int _fine_offset = 0;      // -100..+100 cents
 
 	// Track the last applied fade so we can efficiently undo it.
 	int _prev_fade_start = -1;
@@ -43,6 +44,7 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
 	int _prev_fade_len = 0;
 
 	void _prepare_wave_data(const Variant &p_data, int p_src_channel_count, int p_channel_count);
+	int _get_samples_for_duration_ms(double p_ms, int p_fallback) const;
 
 	//
 

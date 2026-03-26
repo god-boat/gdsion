@@ -12,19 +12,16 @@
 
 #include "sion_enums.h"
 #include <cmath>
-#include "chip/wave/resample_util.h"
 #include "templates/singly_linked_list.h"
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/core/math.hpp>
 #include "utils/transformer_util.h"
-#include <utility> // std::move
 
 using namespace godot;
 
-// Target sample rate that GDSiON operates at.
-static constexpr int kTARGET_SR = 48000;
+static constexpr int kDEFAULT_SAMPLE_RATE = 48000;
 static constexpr int kSAMPLER_GAIN_MIN_DB = -36;
 static constexpr int kSAMPLER_GAIN_MAX_DB = 36;
-
 
 void SiOPMWaveSamplerData::_prepare_wave_data(const Variant &p_data, int p_src_channel_count, int p_channel_count) {
 	int source_channels = CLAMP(p_src_channel_count, 1, 2);
@@ -47,27 +44,17 @@ void SiOPMWaveSamplerData::_prepare_wave_data(const Variant &p_data, int p_src_c
 			if (audio_stream.is_valid()) {
 				Vector<double> raw_data = SiOPMWaveBase::extract_wave_data(audio_stream, &source_channels);
 
-                // --- Sample-rate handling -----------------------------------
-                int src_rate = kTARGET_SR;
+				int src_rate = kDEFAULT_SAMPLE_RATE;
+				if (audio_stream->has_method("get_mix_rate")) {
+					Variant v_rate = audio_stream->call("get_mix_rate");
+					if (v_rate.get_type() == Variant::INT) {
+						src_rate = (int)v_rate;
+					} else if (v_rate.get_type() == Variant::FLOAT) {
+						src_rate = (int)((double)v_rate);
+					}
+				}
+				_sample_rate = (src_rate > 0) ? src_rate : kDEFAULT_SAMPLE_RATE;
 
-                // Query mix rate generically – any AudioStream that reports one via `get_mix_rate`.
-                if (audio_stream->has_method("get_mix_rate")) {
-                    Variant v_rate = audio_stream->call("get_mix_rate");
-                    if (v_rate.get_type() == Variant::INT) {
-                        src_rate = (int)v_rate;
-                    } else if (v_rate.get_type() == Variant::FLOAT) {
-                        src_rate = (int)((double)v_rate);
-                    }
-                }
-
-                _sample_rate = src_rate;
-
-                if (src_rate > 0 && src_rate != kTARGET_SR) {
-                    Vector<double> resampled;
-                    resample_linear(raw_data, source_channels, src_rate, kTARGET_SR, resampled);
-                    raw_data = std::move(resampled);
-                    _sample_rate = kTARGET_SR;
-                }
 				if (p_channel_count == 0) { // Update if necessary.
 					target_channels = source_channels;
 				}
@@ -95,6 +82,16 @@ void SiOPMWaveSamplerData::_prepare_wave_data(const Variant &p_data, int p_src_c
 	_original_wave_data = _wave_data;
 }
 
+int SiOPMWaveSamplerData::_get_samples_for_duration_ms(double p_ms, int p_fallback) const {
+	if (p_ms <= 0.0) {
+		return MAX(1, p_fallback);
+	}
+
+	const int rate = (_sample_rate > 0) ? _sample_rate : kDEFAULT_SAMPLE_RATE;
+	const int samples = (int)Math::round((double)rate * p_ms * 0.001);
+	return MAX(1, samples);
+}
+
 int SiOPMWaveSamplerData::get_length() const {
 	if (_channel_count > 0) {
 		return _wave_data.size() >> (_channel_count - 1);
@@ -119,13 +116,15 @@ int SiOPMWaveSamplerData::_seek_head_silence() {
 	}
 
 	// Note: Original code is pretty much broken here. The intent seems to be to keep track of the
-	// last 22 sample points and check if their sum goes over a threshold. However, the order of
+	// last sample points and check if their sum goes over a threshold. However, the order of
 	// calls was wrong, and we ended up adding and immediately removing the value from the sum, and
 	// constantly overriding our ring buffer without reusing its values.
 	// This method has been adjusted to fix the code according to the assumed intent. But it's not
 	// tested, and I can't say if the original idea behind the code is wrong somehow.
+	const int window_samples = _get_samples_for_duration_ms(0.5, 22);
+	const double threshold_scale = (double)window_samples / 22.0;
 
-	SinglyLinkedList<double> *ms_window = memnew(SinglyLinkedList<double>(22, 0.0, true)); // 0.5ms
+	SinglyLinkedList<double> *ms_window = memnew(SinglyLinkedList<double>(window_samples, 0.0, true));
 	int i = 0;
 
 	if (_channel_count == 1) {
@@ -138,7 +137,7 @@ int SiOPMWaveSamplerData::_seek_head_silence() {
 
 			ms_window->next();
 
-			if (ms > 0.0011) {
+			if (ms > (0.0011 * threshold_scale)) {
 				break;
 			}
 		}
@@ -148,13 +147,13 @@ int SiOPMWaveSamplerData::_seek_head_silence() {
 
 		for (; i < _wave_data.size(); i += 2) {
 			ms -= ms_window->get()->value;
-			ms_window->get()->value  = _wave_data[i]     * _wave_data[i];
+			ms_window->get()->value = _wave_data[i] * _wave_data[i];
 			ms_window->get()->value += _wave_data[i + 1] * _wave_data[i + 1];
 			ms += ms_window->get()->value;
 
 			ms_window->next();
 
-			if (ms > 0.0022) {
+			if (ms > (0.0022 * threshold_scale)) {
 				break;
 			}
 		}
@@ -163,7 +162,7 @@ int SiOPMWaveSamplerData::_seek_head_silence() {
 	}
 
 	memdelete(ms_window);
-	return i - 22;
+	return i - window_samples;
 }
 
 int SiOPMWaveSamplerData::_seek_end_gap() {
@@ -183,8 +182,8 @@ int SiOPMWaveSamplerData::_seek_end_gap() {
 		}
 	} else {
 		for (; i >= 0; i -= 2) {
-			double ms = _wave_data[i]     * _wave_data[i];
-			ms       += _wave_data[i - 1] * _wave_data[i - 1];
+			double ms = _wave_data[i] * _wave_data[i];
+			ms += _wave_data[i - 1] * _wave_data[i - 1];
 
 			if (ms > 0.0002) {
 				break;
@@ -194,8 +193,8 @@ int SiOPMWaveSamplerData::_seek_end_gap() {
 		i >>= 1;
 	}
 
-	// SUS: What is 1152? Should be extracted into a clearly named constant.
-	return MAX(i, (get_length() - 1152));
+	const int tail_margin = _get_samples_for_duration_ms(24.0, 1152);
+	return MAX(i, (get_length() - tail_margin));
 }
 
 void SiOPMWaveSamplerData::_slice() {
@@ -317,19 +316,19 @@ void SiOPMWaveSamplerData::_bind_methods() {
 
 // ---------------------------------------------------------------------------
 
-// NOTE: This operation is intentionally simple – it linearly ramps the first and
-// last FADE_SAMPLES samples of the active region to and from 0. The fade length
-// is kept short (about 128 samples ≈ 3 ms @ 44.1 kHz) so that it is inaudible
-// but still prevents hard discontinuities.
+// NOTE: This operation is intentionally simple - it linearly ramps the first and
+// last fade samples of the active region to and from 0. The fade length stays
+// close to the old 128-sample-at-48k window, but scales with source rate so the
+// audible fade duration stays stable across sources.
 
 void SiOPMWaveSamplerData::_apply_fade() {
-	const int FADE_SAMPLES = 128; // Must be even smaller than typical slice.
+	const int fade_samples = _get_samples_for_duration_ms((128.0 * 1000.0) / 48000.0, 128);
 
 	if (_wave_data.is_empty() || _channel_count == 0) {
 		return;
 	}
 
-	int fade_len = MIN(FADE_SAMPLES, _end_point - _start_point);
+	int fade_len = MIN(fade_samples, _end_point - _start_point);
 	if (fade_len <= 0) {
 		return;
 	}
@@ -340,13 +339,13 @@ void SiOPMWaveSamplerData::_apply_fade() {
 	};
 
 	// 1. Restore the samples that were faded previously so we can re-apply with new
-	//    boundaries. This touches at most FADE_SAMPLES * channel_count * 2 values
+	//    boundaries. This touches at most fade_samples * channel_count * 2 values
 	//    and avoids copying the whole buffer.
 	if (_prev_fade_len > 0) {
 		for (int i = 0; i < _prev_fade_len; i++) {
 			for (int ch = 0; ch < _channel_count; ch++) {
 				int idx_start = _get_sample_index(_prev_fade_start + i, ch);
-				int idx_end   = _get_sample_index(_prev_fade_end - _prev_fade_len + 1 + i, ch);
+				int idx_end = _get_sample_index(_prev_fade_end - _prev_fade_len + 1 + i, ch);
 
 				if (idx_start >= 0 && idx_start < _wave_data.size()) {
 					_wave_data.write[idx_start] = _original_wave_data[idx_start];
@@ -382,37 +381,37 @@ void SiOPMWaveSamplerData::_apply_fade() {
 
 	// Store current fade region for next invocation.
 	_prev_fade_start = _start_point;
-	_prev_fade_end   = _end_point;
-	_prev_fade_len   = fade_len;
+	_prev_fade_end = _end_point;
+	_prev_fade_len = fade_len;
 }
 
 Ref<SiOPMWaveSamplerData> SiOPMWaveSamplerData::duplicate() const {
-    Ref<SiOPMWaveSamplerData> copy = Ref<SiOPMWaveSamplerData>(memnew(SiOPMWaveSamplerData));
+	Ref<SiOPMWaveSamplerData> copy = Ref<SiOPMWaveSamplerData>(memnew(SiOPMWaveSamplerData));
 
-    // Shallow-copy primitive members.
-    copy->_wave_data           = _wave_data;          // Shared buffer (copy-on-write)
-    copy->_original_wave_data  = _original_wave_data; // Shared buffer as well
-    copy->_channel_count       = _channel_count;
-    copy->_pan                 = _pan;
-    copy->_gain_db             = _gain_db;
-    copy->_gain_linear         = _gain_linear;
-    copy->_sample_rate         = _sample_rate;
-    copy->_ignore_note_off     = _ignore_note_off;
-    copy->_fixed_pitch         = _fixed_pitch;
-    
-    copy->_root_offset         = _root_offset;
-    copy->_coarse_offset       = _coarse_offset;
-    copy->_fine_offset         = _fine_offset;
+	// Shallow-copy primitive members.
+	copy->_wave_data = _wave_data; // Shared buffer (copy-on-write)
+	copy->_original_wave_data = _original_wave_data; // Shared buffer as well
+	copy->_channel_count = _channel_count;
+	copy->_pan = _pan;
+	copy->_gain_db = _gain_db;
+	copy->_gain_linear = _gain_linear;
+	copy->_sample_rate = _sample_rate;
+	copy->_ignore_note_off = _ignore_note_off;
+	copy->_fixed_pitch = _fixed_pitch;
 
-    copy->_start_point         = _start_point;
-    copy->_end_point           = _end_point;
-    copy->_loop_point          = _loop_point;
+	copy->_root_offset = _root_offset;
+	copy->_coarse_offset = _coarse_offset;
+	copy->_fine_offset = _fine_offset;
 
-    // Fade bookkeeping values; the copy will re-apply fades when its slice
-    // window changes, so we reset these.
-    copy->_prev_fade_start = -1;
-    copy->_prev_fade_end   = -1;
-    copy->_prev_fade_len   = 0;
+	copy->_start_point = _start_point;
+	copy->_end_point = _end_point;
+	copy->_loop_point = _loop_point;
 
-    return copy;
+	// Fade bookkeeping values; the copy will re-apply fades when its slice
+	// window changes, so we reset these.
+	copy->_prev_fade_start = -1;
+	copy->_prev_fade_end = -1;
+	copy->_prev_fade_len = 0;
+
+	return copy;
 }

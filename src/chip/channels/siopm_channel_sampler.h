@@ -104,6 +104,8 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 	void _execute_note_on_immediate();
 	
 	// Unified pitch calculation.
+	double _get_note_pitch_ratio() const;
+	double _get_source_to_driver_rate_ratio() const;
 	void _recalc_pitch_step();
 
 	// Stream writers (mirror PCM).
