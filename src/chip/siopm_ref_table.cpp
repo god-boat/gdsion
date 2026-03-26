@@ -19,7 +19,7 @@ SiOPMRefTable *SiOPMRefTable::_instance = nullptr;
 
 const double SiOPMRefTable::NOISE_WAVE_OUTPUT  = 1;
 const double SiOPMRefTable::SQUARE_WAVE_OUTPUT = 1;
-const double SiOPMRefTable::OUTPUT_MAX         = 0.5;
+const double SiOPMRefTable::OUTPUT_MAX         = 1.0;
 
 void SiOPMRefTable::initialize() {
 	if (_instance) {
