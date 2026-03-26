@@ -10,6 +10,7 @@
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <cmath>
+#include "chip/siopm_ref_table.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -23,9 +24,19 @@ class SiEffectBase : public RefCounted {
 	GDCLASS(SiEffectBase, RefCounted)
 
 	bool _is_free = true;
+	double _sampling_rate = 48000.0;
 
 protected:
 	static void _bind_methods() {}
+
+	_FORCE_INLINE_ void _refresh_sampling_rate_cache() {
+		_sampling_rate = 48000.0;
+
+		SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
+		if (ref_table && ref_table->sampling_rate > 0) {
+			_sampling_rate = ref_table->sampling_rate;
+		}
+	}
 
 	// Helper for set_by_mml implementations.
 	_FORCE_INLINE_ double _get_mml_arg(Vector<double> p_args, int p_index, double p_default) const {
@@ -44,9 +55,13 @@ protected:
 		r_wet_gain = sin(p_wet * M_PI * 0.5);
 	}
 
+	_FORCE_INLINE_ double _get_sampling_rate() const { return _sampling_rate; }
+	_FORCE_INLINE_ double _get_samples_per_ms() const { return _sampling_rate / 1000.0; }
+
 public:
 	bool is_free() const { return _is_free; }
 	void set_free(bool p_free) { _is_free = p_free; }
+	void refresh_sampling_rate() { _refresh_sampling_rate_cache(); }
 
 	// Returns the requested channel count.
 	virtual int prepare_process() { return 1; }
@@ -61,7 +76,7 @@ public:
 	virtual void set_by_mml(Vector<double> p_args) {}
 	virtual void reset() {}
 
-	SiEffectBase() {}
+	SiEffectBase() { _refresh_sampling_rate_cache(); }
 };
 
 #endif // SI_EFFECT_BASE_H

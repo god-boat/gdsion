@@ -29,9 +29,11 @@ void SiControllableFilterBase::set_params(int p_cutoff, int p_resonance, double 
 	_cutoff_index = (_cutoff_ptr ? _cutoff_ptr->value : 128);
 	_resonance = (_resonance_ptr ? _resonance_ptr->value * 0.007751937984496124 : 0); // 0.007751937984496124 = 1/129
 
-	_lfo_step = (int)(48000 / p_fps);
-	if (_lfo_step <= 48) {
-		_lfo_step = 48;
+	double sampling_rate = _get_sampling_rate();
+	_lfo_step = (int)(sampling_rate / p_fps);
+	int min_step = MAX(1, (int)_get_samples_per_ms());
+	if (_lfo_step <= min_step) {
+		_lfo_step = min_step;
 	}
 
 	_lfo_residue_step = _lfo_step << 1;

@@ -6,16 +6,9 @@
 
 #include "si_effect_stereo_delay.h"
 
-#include "chip/siopm_ref_table.h"
-
 void SiEffectStereoDelay::set_params(double p_delay_time, double p_feedback, bool p_cross, double p_wet, int p_time_mode) {
-	double samples_per_ms = 48.0;
-	double sampling_rate = 48000.0;
-	SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
-	if (ref_table && ref_table->sampling_rate > 0) {
-		sampling_rate = ref_table->sampling_rate;
-		samples_per_ms = sampling_rate / 1000.0;
-	}
+	double sampling_rate = _get_sampling_rate();
+	double samples_per_ms = _get_samples_per_ms();
 
 	int offset = (int)(p_delay_time * samples_per_ms);
 	if (offset > DELAY_BUFFER_FILTER) {

@@ -6,18 +6,12 @@
 
 #include "si_effect_compressor.h"
 
-#include "chip/siopm_ref_table.h"
-
 void SiEffectCompressor::set_params(double p_threshold, double p_window_time, double p_attack_time, double p_release_time, double p_max_gain, double p_mixing_level) {
 	std::lock_guard<std::mutex> guard(_state_mutex);
 
 	_threshold_squared = p_threshold * p_threshold;
 
-	double samples_per_ms = 48.0;
-	SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
-	if (ref_table && ref_table->sampling_rate > 0) {
-		samples_per_ms = ref_table->sampling_rate / 1000.0;
-	}
+	double samples_per_ms = _get_samples_per_ms();
 
 	_window_samples = (int)(p_window_time * samples_per_ms);
 	if (_window_samples <= 0) {

@@ -85,6 +85,7 @@ Ref<SiEffectBase> SiEffector::get_effect_instance(const String &p_name) {
 		if (instances[i]->is_free()) {
 			Ref<SiEffectBase> effect = instances[i];
 
+			effect->refresh_sampling_rate();
 			effect->set_free(false);
 			effect->reset();
 			return effect;
@@ -140,6 +141,7 @@ Ref<T> SiEffector::create_effect_instance() {
 	Ref<T> effect;
 	effect.instantiate();
 
+	effect->refresh_sampling_rate();
 	effect->set_free(false);
 	effect->reset();
 	return effect;
