@@ -153,14 +153,8 @@ void SiOPMChannelFM::get_channel_params(const Ref<SiOPMChannelParams> &p_params)
 	p_params->set_carrier_mask(mask);
 }
 
-void SiOPMChannelFM::set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation) {
-	if (p_params->get_operator_count() == 0) {
-		return;
-	}
-
-	set_algorithm(p_params->get_operator_count(), p_params->is_analog_like(), p_params->get_algorithm());
+void SiOPMChannelFM::_apply_common_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation) {
 	set_frequency_ratio(p_params->get_envelope_frequency_ratio());
-	set_feedback(p_params->get_feedback(), p_params->get_feedback_connection());
 
 	if (p_with_modulation) {
 		initialize_lfo(p_params->get_lfo_wave_shape());
@@ -213,6 +207,16 @@ void SiOPMChannelFM::set_channel_params(const Ref<SiOPMChannelParams> &p_params,
 		int filter_rc = p_params->get_filter_release_offset();
 		set_sv_filter(filter_cutoff, filter_resonance, filter_ar, filter_dr1, filter_dr2, filter_rr, filter_dc1, filter_dc2, filter_sc, filter_rc);
 	}
+}
+
+void SiOPMChannelFM::set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation) {
+	if (p_params->get_operator_count() == 0) {
+		return;
+	}
+
+	set_algorithm(p_params->get_operator_count(), p_params->is_analog_like(), p_params->get_algorithm());
+	set_feedback(p_params->get_feedback(), p_params->get_feedback_connection());
+	_apply_common_channel_params(p_params, p_with_volume, p_with_modulation);
 
 	for (int i = 0; i < _operator_count; i++) {
 		_operators[i]->set_operator_params(p_params->get_operator_params(i));
@@ -1650,7 +1654,11 @@ void SiOPMChannelFM::buffer(int p_length) {
 
 	if (_ring_pipe) {
 		if (stereo_mode) {
+			// Both stereo sides must use the same ring-mod source block; only advance the
+			// shared pipe cursor once after processing the pair.
+			SinglyLinkedList<int>::Element *ring_start = _ring_pipe->get();
 			_apply_ring_modulation(left_start, p_length);
+			_ring_pipe->set(ring_start);
 			_apply_ring_modulation(right_start, p_length);
 		} else {
 			_apply_ring_modulation(mono_out, p_length);
@@ -1967,4 +1975,3 @@ static _FORCE_INLINE_ int _safe_log_lookup(class SiOPMRefTable *p_table, int p_i
 	}
 	return p_table->log_table[p_index];
 }
-

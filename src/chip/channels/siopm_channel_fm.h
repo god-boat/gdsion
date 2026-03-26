@@ -116,6 +116,7 @@ protected:
 	static void _bind_methods();
 
 	String _to_string() const;
+	void _apply_common_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation);
 
 	Vector<SiOPMOperator *> _operators;
 	SiOPMOperator *_active_operator = nullptr;

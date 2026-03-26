@@ -109,7 +109,12 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 				ks_ch = dynamic_cast<SiOPMChannelKS *>(p_track->get_channel());
 			}
 			if (ks_ch) {
-				ks_ch->apply_voice_params(channel_params, is_pcm_voice() ? wave_data : Ref<SiOPMWaveBase>(), pms_tension);
+				ks_ch->set_all_release_rate(pms_tension);
+				ks_ch->set_channel_params(channel_params, update_volumes, true);
+				p_track->reset_volume_offset();
+				if (is_pcm_voice() && wave_data.is_valid()) {
+					ks_ch->set_wave_data(wave_data);
+				}
 			}
 		} break;
 

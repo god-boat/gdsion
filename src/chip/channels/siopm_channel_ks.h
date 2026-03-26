@@ -39,6 +39,7 @@ class SiOPMChannelKS : public SiOPMChannelFM {
 	double _ks_decay = 0.98;
 	double _ks_mute_decay_lpf = 0.5;
 	double _ks_mute_decay = 0.75;
+	int _ks_tension = 8;
 
 	double _output = 0;
 	double _decay_lpf = 0.5;
@@ -67,6 +68,7 @@ public:
 	// This maps the first operator's params (AR, DR, TL, fixed pitch, waveform) and
 	// applies KS-specific runtime updates and tension without altering the algorithm.
 	void apply_voice_params(const Ref<class SiOPMChannelParams> &p_params, const Ref<class SiOPMWaveBase> &p_wave_data, int p_tension);
+	virtual void set_channel_params(const Ref<class SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation = true) override;
 
 	virtual void set_parameters(Vector<int> p_params) override;
 	virtual void set_types(int p_pg_type, SiONPitchTableType p_pt_type) override;

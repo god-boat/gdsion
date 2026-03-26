@@ -56,22 +56,35 @@ void SiOPMChannelKS::apply_ks_runtime_params(int p_attack_rate, int p_decay_rate
 }
 
 void SiOPMChannelKS::apply_voice_params(const Ref<SiOPMChannelParams> &p_params, const Ref<SiOPMWaveBase> &p_wave_data, int p_tension) {
-	if (p_params.is_null() || p_params->get_operator_count() == 0) {
+	if (p_params.is_null()) {
 		return;
 	}
 
-	Ref<SiOPMOperatorParams> op = p_params->get_operator_params(0);
-	int ar  = op->get_attack_rate();
-	int dr  = op->get_decay_rate();
-	int tl  = op->get_total_level();
-	int fix = op->get_fixed_pitch() >> 6; // engine expects MIDI note number
-	int ws  = op->get_pulse_generator_type();
-
-	apply_ks_runtime_params(ar, dr, tl, fix, ws, p_tension);
+	set_all_release_rate(p_tension);
+	set_channel_params(p_params, false, true);
 
 	if (p_wave_data.is_valid()) {
 		set_wave_data(p_wave_data);
 	}
+}
+
+void SiOPMChannelKS::set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation) {
+	if (p_params->get_operator_count() == 0) {
+		return;
+	}
+
+	// Reuse the shared channel-param path (LFO, gain, pan, filter, etc.) but
+	// keep KS topology/operator remapping separate from the generic FM path.
+	_apply_common_channel_params(p_params, p_with_volume, p_with_modulation);
+
+	Ref<SiOPMOperatorParams> op = p_params->get_operator_params(0);
+	apply_ks_runtime_params(
+			op->get_attack_rate(),
+			op->get_decay_rate(),
+			op->get_total_level(),
+			op->get_fixed_pitch() >> 6,
+			op->get_pulse_generator_type(),
+			_ks_tension);
 }
 
 void SiOPMChannelKS::set_parameters(Vector<int> p_params) {
@@ -120,10 +133,12 @@ void SiOPMChannelKS::set_all_attack_rate(int p_value) {
 }
 
 void SiOPMChannelKS::set_all_release_rate(int p_value) {
+	_ks_tension = p_value;
 	_ks_decay_lpf = 1 - p_value * 0.015625; // 1/64
 }
 
 void SiOPMChannelKS::set_release_rate(int p_value) {
+	_ks_tension = p_value;
 	_ks_decay_lpf = 1 - p_value * 0.015625; // 1/64
 }
 
