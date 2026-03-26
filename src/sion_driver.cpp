@@ -59,6 +59,30 @@ const char *SiONDriver::VERSION_FLAVOR = "beta8";
 SiONDriver *SiONDriver::_mutex = nullptr;
 bool SiONDriver::_allow_multiple_drivers = false;
 
+bool SiONDriver::_is_supported_backend_sample_rate(int p_sample_rate) {
+	return p_sample_rate == 44100 || p_sample_rate == 48000;
+}
+
+int SiONDriver::get_backend_sample_rate() {
+	AudioServer *audio_server = AudioServer::get_singleton();
+	if (!audio_server) {
+		return 0;
+	}
+
+	const int backend_sample_rate = (int)Math::round((double)audio_server->get_mix_rate());
+	return backend_sample_rate > 0 ? backend_sample_rate : 0;
+}
+
+int SiONDriver::_resolve_supported_backend_sample_rate() {
+	const int backend_sample_rate = get_backend_sample_rate();
+	ERR_FAIL_COND_V_MSG(backend_sample_rate <= 0, 0, "SiONDriver: Failed to read the backend mix rate from AudioServer.");
+	ERR_FAIL_COND_V_MSG(
+			!_is_supported_backend_sample_rate(backend_sample_rate),
+			0,
+			vformat("SiONDriver: Audio backend mix rate %d Hz is unsupported. Supported backend output rates are 44100 Hz and 48000 Hz.", backend_sample_rate));
+	return backend_sample_rate;
+}
+
 // Data.
 
 Ref<SiOPMWaveTable> SiONDriver::set_wave_table(int p_index, Vector<double> p_table) {
@@ -1343,7 +1367,12 @@ void SiONDriver::_notification(int p_what) {
 //
 
 SiONDriver *SiONDriver::create(int p_buffer_length, int p_channel_num, int p_sample_rate, int p_bitrate) {
-	return memnew(SiONDriver(p_buffer_length, p_channel_num, p_sample_rate, p_bitrate));
+	SiONDriver *driver = memnew(SiONDriver(p_buffer_length, p_channel_num, p_sample_rate, p_bitrate));
+	if (driver && !driver->_is_initialized) {
+		memdelete(driver);
+		return nullptr;
+	}
+	return driver;
 }
 
 void SiONDriver::_bind_methods() {
@@ -1363,6 +1392,7 @@ void SiONDriver::_bind_methods() {
 
 	ClassDB::bind_static_method("SiONDriver", D_METHOD("get_version"), &SiONDriver::get_version);
 	ClassDB::bind_static_method("SiONDriver", D_METHOD("get_version_flavor"), &SiONDriver::get_version_flavor);
+	ClassDB::bind_static_method("SiONDriver", D_METHOD("get_backend_sample_rate"), &SiONDriver::get_backend_sample_rate);
 
 	// Factory.
 
@@ -1484,6 +1514,7 @@ void SiONDriver::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("get_buffer_length"), &SiONDriver::get_buffer_length);
 	ClassDB::bind_method(D_METHOD("get_channel_num"), &SiONDriver::get_channel_num);
+	ClassDB::bind_method(D_METHOD("get_preferred_sample_rate"), &SiONDriver::get_preferred_sample_rate);
 	ClassDB::bind_method(D_METHOD("get_sample_rate"), &SiONDriver::get_sample_rate);
 	ClassDB::bind_method(D_METHOD("get_bitrate"), &SiONDriver::get_bitrate);
 
@@ -1698,23 +1729,33 @@ void SiONDriver::_bind_methods() {
 }
 
 SiONDriver::SiONDriver(int p_buffer_length, int p_channel_num, int p_sample_rate, int p_bitrate) {
-	// Ensure reference tables use the correct sampling rate before any chip initialization. Or else the synthesizer will be out of tune!
-	{
-		SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
-		if (!ref_table || ref_table->sampling_rate != p_sample_rate) {
-			// Recreate the reference table with the requested rate.
-			SiOPMRefTable::finalize();
-			memnew(SiOPMRefTable(3580000, 1789772.5, p_sample_rate));
-		}
-	}
-	ERR_FAIL_COND_MSG(!_allow_multiple_drivers && _mutex, "SiONDriver: Only one driver instance is allowed.");
-	_mutex = this;
-
 	// Check if buffer length is a power of 2 and between 32 and 8192
 	bool is_valid_buffer_length = p_buffer_length >= 2 && p_buffer_length <= 8192 && (p_buffer_length & (p_buffer_length - 1)) == 0;
 	ERR_FAIL_COND_MSG(!is_valid_buffer_length, "SiONDriver: Buffer length must be a power of 2 between 32 and 8192 (e.g., 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192).");
 	ERR_FAIL_COND_MSG((p_channel_num != 1 && p_channel_num != 2), "SiONDriver: Channel number can only be 1 (mono) or 2 (stereo).");
-	ERR_FAIL_COND_MSG((p_sample_rate != 44100 && p_sample_rate != 48000), "SiONDriver: Sampling rate can only be 44100 or 48000.");
+	ERR_FAIL_COND_MSG(!_is_supported_backend_sample_rate(p_sample_rate), "SiONDriver: Preferred sample rate can only be 44100 or 48000.");
+
+	const int actual_sample_rate = _resolve_supported_backend_sample_rate();
+	if (actual_sample_rate <= 0) {
+		return;
+	}
+
+	_preferred_sample_rate = p_sample_rate;
+	_sample_rate = actual_sample_rate;
+	_bitrate = p_bitrate;
+	_buffer_length = p_buffer_length;
+	_channel_num = p_channel_num;
+
+	// Ensure reference tables use the actual backend rate before any chip initialization.
+	{
+		SiOPMRefTable *ref_table = SiOPMRefTable::get_instance();
+		if (!ref_table || ref_table->sampling_rate != actual_sample_rate) {
+			SiOPMRefTable::finalize();
+			memnew(SiOPMRefTable(3580000, 1789772.5, actual_sample_rate));
+		}
+	}
+	ERR_FAIL_COND_MSG(!_allow_multiple_drivers && _mutex, "SiONDriver: Only one driver instance is allowed.");
+	_mutex = this;
 
 	sound_chip = memnew(SiOPMSoundChip);
 	effector = memnew(SiEffector(sound_chip));
@@ -1755,13 +1796,6 @@ SiONDriver::SiONDriver(int p_buffer_length, int p_channel_num, int p_sample_rate
 	//_midi_converter = memnew(SiONDataConverterSMF(nullptr, _midi_module));
 
 	{
-		_buffer_length = p_buffer_length;
-		_channel_num = p_channel_num;
-		_sample_rate = p_sample_rate;
-		_bitrate = p_bitrate;
-	}
-
-	{
 		_timer_sequence = memnew(MMLSequence);
 		_timer_sequence->initialize();
 		_timer_sequence->append_new_event(MMLEvent::REPEAT_ALL, 0);
@@ -1782,6 +1816,7 @@ SiONDriver::SiONDriver(int p_buffer_length, int p_channel_num, int p_sample_rate
 	// 10 seconds * sample_rate * 2 channels = reasonable upper bound
 	_capture_buffer.resize(10 * _sample_rate * 2);
 	_capture_write_pos = 0;
+	_is_initialized = true;
 }
 
 SiONDriver::~SiONDriver() {

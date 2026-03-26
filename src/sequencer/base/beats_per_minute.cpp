@@ -20,7 +20,14 @@ bool BeatsPerMinute::update(double p_bpm, int p_sample_rate) {
 	}
 
 	_bpm = bpm;
-	_sample_rate = p_sample_rate;
+	_sample_rate = MAX(0, p_sample_rate);
+	if (_sample_rate <= 0) {
+		_tick_per_sample = 0;
+		_beat_16th_per_sample = 0;
+		_sample_per_beat_16th = 0;
+		_sample_per_tick = 0;
+		return true;
+	}
 
 	_tick_per_sample = _resolution * _bpm / (_sample_rate * 240);
 	_beat_16th_per_sample = _bpm / (_sample_rate * 15); // 60 / 4

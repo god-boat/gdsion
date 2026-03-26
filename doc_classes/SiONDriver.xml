@@ -45,9 +45,15 @@
 
 				Use [param channel_num] to configure the number of output channels. Can only be [code]1[/code] for mono and [code]2[/code] for stereo.
 
-				Use [param sample_rate] to control the sampling rate. Supported values are [code]44100[/code] and [code]48000[/code] Hz.
+				Use [param sample_rate] to request a preferred sampling rate. Supported preferred/backend values are [code]44100[/code] and [code]48000[/code] Hz. During initialization the driver reads back the actual backend mix rate and [method get_sample_rate] returns that actual rate.
 
 				Use [param bitrate] to enable quantization.
+			</description>
+		</method>
+		<method name="get_backend_sample_rate" qualifiers="static">
+			<return type="int" />
+			<description>
+				Returns the current backend mix rate reported by Godot's audio server, or [code]0[/code] if it cannot be read.
 			</description>
 		</method>
 		<method name="get_audio_playback" qualifiers="const">
@@ -137,7 +143,13 @@
 		<method name="get_sample_rate" qualifiers="const">
 			<return type="float" />
 			<description>
-				Returns the sampling rate (44100 or 48000 Hz). See also [method create].
+				Returns the actual sampling rate the driver is using after backend readback. See also [method create].
+			</description>
+		</method>
+		<method name="get_preferred_sample_rate" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the preferred sample rate that was requested when the driver was created.
 			</description>
 		</method>
 		<method name="get_sequencer" qualifiers="const">

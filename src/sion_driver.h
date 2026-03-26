@@ -93,6 +93,8 @@ private:
 	// Single unique instance.
 	static SiONDriver *_mutex;
 	static bool _allow_multiple_drivers;
+	static bool _is_supported_backend_sample_rate(int p_sample_rate);
+	static int _resolve_supported_backend_sample_rate();
 
 	// Guards audio state to prevent concurrent access between the audio thread
 	// (generate_audio) and the main thread (play/stop/reset operations).
@@ -143,10 +145,13 @@ private:
 	int _buffer_length = 512;
 	// Output channels (1 or 2).
 	int _channel_num = 2;
-	// Output sample rate (48000 or 44100).
-	double _sample_rate = 48000;
+	// Preferred requested sample rate (48000 or 44100).
+	int _preferred_sample_rate = 0;
+	// Actual backend sample rate resolved during driver initialization.
+	double _sample_rate = 0;
 	// Output bitrate. Value of 0 means that the wave is represented by a float in [-1,+1].
 	int _bitrate = 0;
+	bool _is_initialized = false;
 
 	// Streaming and rendering.
 
@@ -579,6 +584,7 @@ protected:
 public:
 	static String get_version() { return VERSION; }
 	static String get_version_flavor() { return VERSION_FLAVOR; }
+	static int get_backend_sample_rate();
 
 	// The singleton instance.
 	static SiONDriver *get_mutex() { return _mutex; }
@@ -587,7 +593,7 @@ public:
 	// same client code causes errors by the default.
 	// @param   buffer_length : (default=2048) Size of streaming buffer. Must be a power of 2 between 32 and 8192.
 	// @param   channel_num   : (default=2) Output channel. 1 is monaural and 2 is stereo.
-	// @param   sample_rate   : (default=48000) Output sample rate. Can be 48000Hz or 44100Hz.
+	// @param   sample_rate   : (default=48000) Preferred output sample rate request. Can be 48000Hz or 44100Hz.
 	// @param   bitrate       : (default=0) Output bitrate.
 	static SiONDriver *create(int p_buffer_length = 2048, int p_channel_num = 2, int p_sample_rate = 48000, int p_bitrate = 0);
 
@@ -653,6 +659,7 @@ public:
 
 	int get_buffer_length() const { return _buffer_length; }
 	int get_channel_num() const { return _channel_num; }
+	int get_preferred_sample_rate() const { return _preferred_sample_rate; }
 	double get_sample_rate() const { return _sample_rate; }
 	double get_bitrate() const { return _bitrate; }
 

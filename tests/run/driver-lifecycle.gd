@@ -12,9 +12,13 @@ var name: String = "Driver Lifecycle"
 
 func run(scene_tree: SceneTree) -> void:
 	var driver := SiONDriver.create()
+	_assert_not_null("driver create", driver)
+	if driver == null:
+		return
 	_assert_equal("driver buffer",      driver.get_buffer_length(), 2048)
 	_assert_equal("driver channels",    driver.get_channel_num(),   2)
-	_assert_equal("driver sample rate", driver.get_sample_rate(),   48000)
+	_assert_equal("driver preferred sample rate", driver.get_preferred_sample_rate(), 48000)
+	_assert_equal("driver sample rate", driver.get_sample_rate(),   SiONDriver.get_backend_sample_rate())
 	_assert_equal("driver bitrate",     driver.get_bitrate(),       0)
 
 	driver.set_bpm(120)

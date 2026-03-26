@@ -600,7 +600,7 @@ MMLSequencer::MMLSequencer() {
 	_set_mml_event_listener(MMLEvent::INTERNAL_CALL, Callable(this, "_default_on_internal_call"), false);
 	_set_mml_event_listener(MMLEvent::TABLE_EVENT,   Callable(this, "_no_process"),               true);
 
-	Ref<BeatsPerMinute> base_bpm = memnew(BeatsPerMinute(120, 48000));
+	Ref<BeatsPerMinute> base_bpm = memnew(BeatsPerMinute(120, 0));
 	_adjustible_bpm = base_bpm;
 	_bpm = base_bpm;
 
