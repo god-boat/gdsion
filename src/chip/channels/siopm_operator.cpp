@@ -867,6 +867,19 @@ void SiOPMOperator::set_pcm_data(const Ref<SiOPMWavePCMData> &p_pcm_data) {
 	}
 }
 
+void SiOPMOperator::update_sound_chip(SiOPMSoundChip *p_chip) {
+	_sound_chip = p_chip;
+	_table = SiOPMRefTable::get_instance();
+
+	// Pooled operators can outlive a driver/sample-rate change. Refresh the
+	// EG tables that are sourced directly from the global ref table so the next
+	// initialize()/set_operator_params() call rebuilds against the current rate.
+	if (_table) {
+		_eg_increment_table = make_vector<int>(_table->eg_increment_tables[17]);
+		_eg_level_table = make_vector<int>(_table->eg_level_tables[0]);
+	}
+}
+
 void SiOPMOperator::note_on() {
 	_eg_ssgec_state = -1;
 

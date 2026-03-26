@@ -39,9 +39,10 @@ SiOPMOperator *SiOPMChannelFM::_alloc_operator() {
 		SiOPMOperator *op = _operator_pool.back()->get();
 		_operator_pool.pop_back();
 		if (op != nullptr) {
-			// CRITICAL: Update the sound chip pointer when reusing from pool.
-			// After a buffer size change, the old sound chip is destroyed
-			// and a new one is created, so pooled operators have stale pointers.
+			// Pooled operators survive driver rebuilds. Refresh both the owning
+			// sound chip and the global ref-table-backed caches before reuse so
+			// subsequent initialize() calls rebuild pitch math at the new rate.
+			// from a trivial inline setter into a real implementation in siopm_operator.cpp (line 870) 
 			op->update_sound_chip(_sound_chip);
 			return op;
 		}
