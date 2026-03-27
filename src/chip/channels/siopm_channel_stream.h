@@ -47,6 +47,8 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	int _pitch_cents = 0;           // Pitch shift in cents.
 	int _fade_in_frames = 0;        // Fade-in length in source frames.
 	int _fade_out_frames = 0;       // Fade-out length in source frames.
+	int _declick_in_remaining = 0;  // Remaining output samples for automatic start/seek declick ramp (0→1).
+	int _declick_in_total = 0;      // Total output samples for the current declick-in ramp.
 	int64_t _in_sample = 0;         // Start trim in source frames.
 	int64_t _out_sample = 0;        // End trim (0 = EOF).
 	int _warp_mode = 0;             // 0 = OFF, 1 = REPITCH, 2 = BEATS, 3 = TONES, 4 = TEXTURE, 5 = COMPLEX.

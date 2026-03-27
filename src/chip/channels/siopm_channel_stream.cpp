@@ -151,14 +151,37 @@ double SiOPMChannelStream::_compute_fade_envelope(double p_source_frame) const {
 		env *= p_source_frame / (double)_fade_in_frames;
 	}
 
-	// Fade-out ramp: only when NOT looping (one-shot clips or final stop).
-	if (_fade_out_frames > 0 && !_looping) {
+	int source_sr = _stream_data.is_valid() ? _stream_data->get_source_sample_rate() : 0;
+	int min_declick = (source_sr > 0) ? (int)(source_sr * 0.002) : 96;
+
+	if (_looping) {
+		// Loop crossfade: fade out the last ~2ms before the loop end to create
+		// a smooth zero-crossing at the loop boundary. The complementary fade-in
+		// is handled by the declick-in ramp triggered at each loop crossing.
+		int64_t le = (_loop_end_sample > 0) ? _loop_end_sample : (_out_sample > 0 ? _out_sample : (_stream_data.is_valid() ? _stream_data->get_total_frames() : 0));
+		int64_t loop_end_rel = le - _in_sample;
+		if (loop_end_rel > 0) {
+			int64_t xfade_start = loop_end_rel - min_declick;
+			if (xfade_start < 0) {
+				xfade_start = 0;
+			}
+			if (p_source_frame >= (double)xfade_start && p_source_frame < (double)loop_end_rel) {
+				double remaining = (double)loop_end_rel - p_source_frame;
+				env *= remaining / (double)min_declick;
+			}
+		}
+	} else {
+		// One-shot fade-out: always apply at least a short declick at clip end.
 		int64_t total_length = _effective_clip_length();
 		if (total_length > 0) {
-			int64_t fade_out_start = total_length - _fade_out_frames;
-			if (p_source_frame >= (double)fade_out_start && p_source_frame < (double)total_length) {
+			int fade_frames = MAX(_fade_out_frames, min_declick);
+			int64_t fade_start = total_length - fade_frames;
+			if (fade_start < 0) {
+				fade_start = 0;
+			}
+			if (p_source_frame >= (double)fade_start && p_source_frame < (double)total_length) {
 				double remaining = (double)total_length - p_source_frame;
-				env *= remaining / (double)_fade_out_frames;
+				env *= remaining / (double)fade_frames;
 			}
 		}
 	}
@@ -185,6 +208,11 @@ void SiOPMChannelStream::_start_playback_at(int64_t p_start_sample) {
 	_is_idling = false;
 	_is_note_on = true;
 	_loops_completed = 0;
+
+	// Short declick-in ramp (~2ms) to avoid a hard discontinuity at the start position.
+	const int sr = (_table ? _table->sampling_rate : 0);
+	_declick_in_total = (sr > 0) ? (int)(sr * 0.002) : 96;
+	_declick_in_remaining = _declick_in_total;
 
 	// Compute source frames elapsed relative to in_sample.
 	int64_t relative = p_start_sample - _in_sample;
@@ -236,9 +264,10 @@ void SiOPMChannelStream::note_off() {
 	}
 
 	_is_note_on = false;
-	_playing = false;
 
-	// Use the base class kill-fade for a click-safe stop.
+	// Keep _playing = true so buffer() continues running and the kill fade
+	// can attenuate the audio to zero over ~2ms. The kill fade calls reset()
+	// on completion, which sets _playing = false.
 	start_kill_fade();
 
 	SiOPMChannelBase::note_off();
@@ -321,6 +350,10 @@ void SiOPMChannelStream::buffer(int p_length) {
 				_source_frames_elapsed = loop_offset + overshoot;
 				_warp.set_source_pos(_source_frames_elapsed);
 				_loops_completed++;
+
+				const int sr = (_table ? _table->sampling_rate : 0);
+				_declick_in_total = (sr > 0) ? (int)(sr * 0.002) : 96;
+				_declick_in_remaining = _declick_in_total;
 				// Fall through to the read/write code below (matching
 				// the sampler's loop pattern — no output sample is skipped).
 			} else {
@@ -348,9 +381,14 @@ void SiOPMChannelStream::buffer(int p_length) {
 				? _warp.read_granular(ring_reader, avail, 1, channels, _pitch_step)
 				: sampleL;
 
-			// Apply gain and fade envelope.
+			// Apply gain, fade envelope, and declick-in ramp.
 			double fade = _compute_fade_envelope(_source_frames_elapsed);
-			double amplitude = _clip_gain * fade;
+			double declick = 1.0;
+			if (_declick_in_remaining > 0) {
+				declick = 1.0 - (double)_declick_in_remaining / (double)_declick_in_total;
+				_declick_in_remaining--;
+			}
+			double amplitude = _clip_gain * fade * declick;
 			double outL = sampleL * amplitude;
 			double outR = sampleR * amplitude;
 
@@ -414,6 +452,10 @@ void SiOPMChannelStream::buffer(int p_length) {
 				double overshoot = _source_frames_elapsed - (double)effective_loop_end;
 				_source_frames_elapsed = loop_offset + overshoot;
 				_loops_completed++;
+
+				const int sr = (_table ? _table->sampling_rate : 0);
+				_declick_in_total = (sr > 0) ? (int)(sr * 0.002) : 96;
+				_declick_in_remaining = _declick_in_total;
 				// Fall through to the read/write code below. The ring buffer
 				// contains continuous data across the loop boundary (the
 				// loader wrapped at loop_end and continued filling from
@@ -468,9 +510,14 @@ void SiOPMChannelStream::buffer(int p_length) {
 						- _stream_data->ring_read_sample(base_idx, 1)) * frac;
 			}
 
-			// Apply native gain and fade envelope (source-domain position for fade).
+			// Apply native gain, fade envelope, and declick-in ramp.
 			double fade = _compute_fade_envelope(_source_frames_elapsed);
-			double amplitude = _clip_gain * fade;
+			double declick = 1.0;
+			if (_declick_in_remaining > 0) {
+				declick = 1.0 - (double)_declick_in_remaining / (double)_declick_in_total;
+				_declick_in_remaining--;
+			}
+			double amplitude = _clip_gain * fade * declick;
 			double outL = sampleL * amplitude;
 			double outR = sampleR * amplitude;
 
@@ -599,6 +646,8 @@ void SiOPMChannelStream::reset() {
 	_pitch_cents = 0;
 	_fade_in_frames = 0;
 	_fade_out_frames = 0;
+	_declick_in_remaining = 0;
+	_declick_in_total = 0;
 	_in_sample = 0;
 	_out_sample = 0;
 	_warp_mode = 0;
@@ -793,6 +842,11 @@ void SiOPMChannelStream::seek_to(int64_t p_position_sample) {
 	// Compute source frames elapsed relative to in_sample.
 	int64_t relative = p_position_sample - _in_sample;
 	_source_frames_elapsed = (relative > 0) ? (double)relative : 0.0;
+
+	// Short declick-in ramp (~2ms) to avoid a hard discontinuity at the new position.
+	const int sr = (_table ? _table->sampling_rate : 0);
+	_declick_in_total = (sr > 0) ? (int)(sr * 0.002) : 96;
+	_declick_in_remaining = _declick_in_total;
 }
 
 // ---------------------------------------------------------------------------
