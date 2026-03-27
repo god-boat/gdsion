@@ -197,10 +197,11 @@ void SiOPMOperator::_update_pitch() {
 }
 
 void SiOPMOperator::_update_phase_step(int p_step) {
-	_phase_step = p_step;
-	_phase_step += _table->dt1_table[_detune1][_key_code];
-	_phase_step *= _fine_multiple;
-	_phase_step >>= (7 - _table->sample_rate_pitch_shift);  // 44kHz:1/128, 22kHz:1/256
+	// Pitch tables are already generated for the active sample rate, so only the operator multiplier remains here.
+	int64_t phase_step = p_step;
+	phase_step += _table->dt1_table[_detune1][_key_code];
+	phase_step *= _fine_multiple;
+	_phase_step = (int)(phase_step >> 7);
 }
 
 void SiOPMOperator::_update_wave_table_cache() {

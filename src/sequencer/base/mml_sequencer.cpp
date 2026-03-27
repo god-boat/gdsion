@@ -19,6 +19,17 @@ using namespace godot;
 
 MMLExecutor *MMLSequencer::_temp_executor = nullptr;
 
+static void _refresh_bpm_settings_for_sample_rate(const Ref<MMLData> &p_data, int p_sample_rate) {
+	if (p_data.is_null() || p_sample_rate <= 0) {
+		return;
+	}
+
+	Ref<BeatsPerMinute> bpm_settings = p_data->get_bpm_settings();
+	if (bpm_settings.is_valid() && bpm_settings->get_bpm() > 0) {
+		bpm_settings->update(bpm_settings->get_bpm(), p_sample_rate);
+	}
+}
+
 void MMLSequencer::initialize() {
 	_temp_executor = memnew(MMLExecutor);
 }
@@ -360,7 +371,7 @@ void MMLSequencer::_extract_global_sequence() {
 	}
 
 	if (initial_bpm > 0) {
-		Ref<BeatsPerMinute> bpm_obj = memnew(BeatsPerMinute(initial_bpm, 48000, _parser_settings->resolution));
+		Ref<BeatsPerMinute> bpm_obj = memnew(BeatsPerMinute(initial_bpm, 0, _parser_settings->resolution));
 		mml_data->set_bpm_settings(bpm_obj);
 	}
 }
@@ -411,11 +422,12 @@ double MMLSequencer::compile(int p_interval) {
 }
 
 void MMLSequencer::prepare_process(const Ref<MMLData> &p_data, int p_sample_rate, int p_buffer_length) {
-	ERR_FAIL_COND_MSG((p_sample_rate != 22050 && p_sample_rate != 44100 && p_sample_rate != 48000), "MMLSequencer: Sampling rate can only be 22050, 44100 or 48000.");
+	ERR_FAIL_COND_MSG(p_sample_rate <= 0, "MMLSequencer: Sampling rate must be positive.");
 
 	mml_data = p_data;
 	_sample_rate = p_sample_rate;
 	_buffer_length = p_buffer_length;
+	_refresh_bpm_settings_for_sample_rate(mml_data, p_sample_rate);
 
 	if (mml_data.is_valid() && mml_data->get_bpm() > 0) {
 		_adjustible_bpm->update(mml_data->get_bpm(), p_sample_rate);

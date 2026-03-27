@@ -37,21 +37,18 @@ static double _beat_division_to_ms(int p_division, double p_bpm) {
 }
 
 // Convert milliseconds to LFO timer step.
-// Based on set_lfo_cycle_time formula:
-// coef = sampling_rate / (1000.0 * 255.0)
-// timer_step = (LFO_TIMER_INITIAL / (ms * coef)) << sample_rate_pitch_shift
-static int _ms_to_lfo_timer_step(double p_ms, int p_sampling_rate, int p_sample_rate_pitch_shift) {
-	if (p_ms <= 0) {
+// Timer math already scales from the active sample rate, so no extra sample-rate shift is needed.
+static int _ms_to_lfo_timer_step(double p_ms, int p_sampling_rate) {
+	if (p_ms <= 0 || p_sampling_rate <= 0) {
 		return 0;
 	}
 	double coef = p_sampling_rate / (1000.0 * 256.0);
-	int timer_step = (int)(SiOPMRefTable::LFO_TIMER_INITIAL / (p_ms * coef));
-	return timer_step << p_sample_rate_pitch_shift;
+	return (int)(SiOPMRefTable::LFO_TIMER_INITIAL / (p_ms * coef));
 }
 
 // Calculate LFO timer step based on time mode, beat division, and BPM.
 // This is the main conversion function used by the engine.
-static int _calculate_lfo_timer_step(int p_time_mode, int p_value, double p_bpm, int p_sampling_rate, int p_sample_rate_pitch_shift) {
+static int _calculate_lfo_timer_step(int p_time_mode, int p_value, double p_bpm, int p_sampling_rate) {
 	switch (p_time_mode) {
 		case SiOPMChannelBase::LFO_TIME_MODE_RATE:
 			// Rate mode: value is the raw timer step (current behavior)
@@ -59,24 +56,24 @@ static int _calculate_lfo_timer_step(int p_time_mode, int p_value, double p_bpm,
 
 		case SiOPMChannelBase::LFO_TIME_MODE_TIME:
 			// Time mode: value is period in milliseconds
-			return _ms_to_lfo_timer_step((double)p_value, p_sampling_rate, p_sample_rate_pitch_shift);
+			return _ms_to_lfo_timer_step((double)p_value, p_sampling_rate);
 
 		case SiOPMChannelBase::LFO_TIME_MODE_SYNCED: {
 			// Synced mode: value is beat division, calculate period from BPM
 			double ms = _beat_division_to_ms(p_value, p_bpm);
-			return _ms_to_lfo_timer_step(ms, p_sampling_rate, p_sample_rate_pitch_shift);
+			return _ms_to_lfo_timer_step(ms, p_sampling_rate);
 		}
 
 		case SiOPMChannelBase::LFO_TIME_MODE_DOTTED: {
 			// Dotted mode: multiply period by 1.5
 			double ms = _beat_division_to_ms(p_value, p_bpm) * 1.5;
-			return _ms_to_lfo_timer_step(ms, p_sampling_rate, p_sample_rate_pitch_shift);
+			return _ms_to_lfo_timer_step(ms, p_sampling_rate);
 		}
 
 		case SiOPMChannelBase::LFO_TIME_MODE_TRIPLET: {
 			// Triplet mode: multiply period by 2/3
 			double ms = _beat_division_to_ms(p_value, p_bpm) * (2.0 / 3.0);
-			return _ms_to_lfo_timer_step(ms, p_sampling_rate, p_sample_rate_pitch_shift);
+			return _ms_to_lfo_timer_step(ms, p_sampling_rate);
 		}
 
 		default:
@@ -192,9 +189,7 @@ void SiOPMChannelBase::initialize_lfo(int p_waveform, Vector<int> p_custom_wave_
 
 void SiOPMChannelBase::set_lfo_cycle_time(double p_ms) {
 	_lfo_timer = 0;
-	// Coefficient = sampling_rate / (1000 * 255)
-	double coef = _table->sampling_rate / (1000.0 * 255.0);
-	_lfo_timer_step = ((int)(SiOPMRefTable::LFO_TIMER_INITIAL/(p_ms * coef))) << _table->sample_rate_pitch_shift;
+	_lfo_timer_step = _ms_to_lfo_timer_step(p_ms, _table->sampling_rate);
 	_lfo_timer_step_buffer = _lfo_timer_step;
 }
 
@@ -212,8 +207,7 @@ void SiOPMChannelBase::set_lfo_frequency_step(int p_value) {
 		_lfo_time_mode,
 		p_value,
 		bpm,
-		_table->sampling_rate,
-		_table->sample_rate_pitch_shift
+		_table->sampling_rate
 	);
 	_lfo_timer = (timer_step > 0 ? 1 : 0);
 	_lfo_timer_step = timer_step;
@@ -229,8 +223,7 @@ void SiOPMChannelBase::set_lfo_time_mode(int p_mode) {
 			_lfo_time_mode,
 			_lfo_beat_division,
 			bpm,
-			_table->sampling_rate,
-			_table->sample_rate_pitch_shift
+			_table->sampling_rate
 		);
 		_lfo_timer = (timer_step > 0 ? 1 : 0);
 		_lfo_timer_step = timer_step;
@@ -246,8 +239,7 @@ void SiOPMChannelBase::update_lfo_for_bpm() {
 			_lfo_time_mode,
 			_lfo_beat_division,
 			bpm,
-			_table->sampling_rate,
-			_table->sample_rate_pitch_shift
+			_table->sampling_rate
 		);
 		_lfo_timer = (timer_step > 0 ? 1 : 0);
 		_lfo_timer_step = timer_step;
@@ -769,4 +761,3 @@ SiOPMChannelBase::~SiOPMChannelBase() {
 }
 
 #undef COPY_TL_TABLE
-

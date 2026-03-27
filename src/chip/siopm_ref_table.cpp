@@ -8,6 +8,7 @@
 
 #include <godot_cpp/core/memory.hpp>
 #include <godot_cpp/classes/random_number_generator.hpp>
+#include "sion_driver.h"
 #include "sequencer/simml_voice.h"
 
 #include <godot_cpp/core/math.hpp>
@@ -21,13 +22,21 @@ const double SiOPMRefTable::NOISE_WAVE_OUTPUT  = 1;
 const double SiOPMRefTable::SQUARE_WAVE_OUTPUT = 1;
 const double SiOPMRefTable::OUTPUT_MAX         = 1.0;
 
+static int _resolve_initial_sampling_rate() {
+    const int rate = SiONDriver::get_backend_sample_rate();
+    return rate > 0 ? rate : 48000; // AudioServer not ready yet, driver rebuild fixes later
+}
+
+
 void SiOPMRefTable::initialize() {
 	if (_instance) {
 		return;
 	}
 
-	// Sets the instance internally.
-	memnew(SiOPMRefTable());
+	// Seed the singleton from the real backend rate when AudioServer is already
+	// available so preset generation that runs before SiONDriver initialization
+	// still lands on the correct table set at 44.1/48 kHz startup.
+	memnew(SiOPMRefTable(3580000, 1789772.5, _resolve_initial_sampling_rate()));
 }
 
 void SiOPMRefTable::finalize() {
@@ -182,14 +191,11 @@ void SiOPMRefTable::clear_sampler_table_stencil(int p_index) {
 //
 
 void SiOPMRefTable::_set_constants(int p_fm_clock, double p_psg_clock, int p_sampling_rate) {
-	// Allow 48000 Hz in addition to 44100 and 22050
-	ERR_FAIL_COND_MSG((p_sampling_rate != 44100 && p_sampling_rate != 22050 && p_sampling_rate != 48000),
-						vformat("SiOPMRefTable: Invalid sampling rate '%d', only 44100, 48000, and 22050 are allowed.", p_sampling_rate));
+	ERR_FAIL_COND_MSG(p_sampling_rate <= 0, vformat("SiOPMRefTable: Invalid sampling rate '%d', it must be positive.", p_sampling_rate));
 
 	fm_clock = p_fm_clock;
 	psg_clock = p_psg_clock;
 	sampling_rate  = p_sampling_rate;
-	sample_rate_pitch_shift = (sampling_rate == 48000 ? 0 : 1);
 	clock_ratio = ((fm_clock / 64) << CLOCK_RATIO_BITS) / sampling_rate;
 }
 

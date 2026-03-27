@@ -20,7 +20,8 @@ double MMLData::get_bpm() const {
 
 void MMLData::set_bpm(double p_value) {
 	if (p_value > 0) {
-		Ref<BeatsPerMinute> bpm = memnew(BeatsPerMinute(p_value, 48000));
+		// Sample-rate-dependent values are filled in when playback is prepared for a real backend.
+		Ref<BeatsPerMinute> bpm = memnew(BeatsPerMinute(p_value, 0));
 		_initial_bpm = bpm;
 	} else {
 		Ref<BeatsPerMinute> bpm;
