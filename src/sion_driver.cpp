@@ -10,6 +10,7 @@
 #include <algorithm>
 
 #include <godot_cpp/classes/time.hpp>
+#include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
@@ -64,6 +65,11 @@ bool SiONDriver::_is_supported_backend_sample_rate(int p_sample_rate) {
 }
 
 int SiONDriver::get_backend_sample_rate() {
+	Engine *engine = Engine::get_singleton();
+	if (!engine || !engine->has_singleton(AudioServer::get_class_static())) {
+		return 0;
+	}
+
 	AudioServer *audio_server = AudioServer::get_singleton();
 	if (!audio_server) {
 		return 0;
