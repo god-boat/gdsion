@@ -6,6 +6,7 @@
 	<description>
 		The driver is your main tool for controlling the GDSiON synthesizer. It exposes methods to initialize streaming or rendering of the output buffer, to get internal components and modules, and to configure high level properties.
 		A new instance can be created using the factory method [method create]. Note, that [SiONDriver] is a node and must be added to the scene tree.
+		The default sample-rate argument to [method create] is a preferred request, not a guaranteed backend fact. Use [method get_sample_rate] for the actual rate the driver ended up using after backend readback, and [method get_preferred_sample_rate] to inspect the original request.
 		[codeblocks]
 		[gdscript]
 			var driver := SiONDriver.create()
@@ -54,6 +55,7 @@
 			<return type="int" />
 			<description>
 				Returns the current backend mix rate reported by Godot's audio server, or [code]0[/code] if it cannot be read.
+				This is the canonical engine/runtime readback path for the Godot backend. Prefer this over scattering fresh [code]AudioServer.get_mix_rate()[/code] calls through runtime code.
 			</description>
 		</method>
 		<method name="get_audio_playback" qualifiers="const">
@@ -149,7 +151,7 @@
 		<method name="get_preferred_sample_rate" qualifiers="const">
 			<return type="int" />
 			<description>
-				Returns the preferred sample rate that was requested when the driver was created.
+				Returns the preferred sample rate that was requested when the driver was created. The default request is [code]48000[/code] Hz, but the backend may still run at [code]44100[/code] Hz and the driver will follow that actual rate.
 			</description>
 		</method>
 		<method name="get_sequencer" qualifiers="const">
