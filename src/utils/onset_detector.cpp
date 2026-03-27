@@ -6,8 +6,8 @@
 
 #include "onset_detector.h"
 
+#include <godot_cpp/classes/audio_stream_wav.hpp>
 #include <godot_cpp/core/class_db.hpp>
-#include <godot_cpp/variant/variant.hpp>
 #include <cmath>
 #include <algorithm>
 
@@ -15,13 +15,31 @@
 
 using namespace godot;
 
+namespace {
+
+static constexpr double WINDOW_TIME_SECONDS = 0.010666666666666666;
+static constexpr double HOP_TIME_SECONDS = 0.005333333333333333;
+static constexpr double MIN_ONSET_INTERVAL_SECONDS = 0.05;
+
+int _resolve_stream_sample_rate(const Ref<AudioStream> &p_stream) {
+	Ref<AudioStreamWAV> wav_stream = p_stream;
+	ERR_FAIL_COND_V_MSG(wav_stream.is_null(), 0, "OnsetDetector: stream analysis only supports AudioStreamWAV with an explicit mix rate.");
+
+	const int sample_rate = wav_stream->get_mix_rate();
+	ERR_FAIL_COND_V_MSG(sample_rate <= 0, 0, vformat("OnsetDetector: AudioStreamWAV returned an invalid mix rate (%d).", sample_rate));
+
+	return sample_rate;
+}
+
+} // namespace
+
 void OnsetDetector::_bind_methods() {
 	ClassDB::bind_static_method("OnsetDetector", D_METHOD("detect_onsets", "wave_data", "channel_count", "sensitivity", "sample_rate"),
-		&OnsetDetector::detect_onsets, DEFVAL(2), DEFVAL(50), DEFVAL(48000));
+		&OnsetDetector::detect_onsets, DEFVAL(2), DEFVAL(50), DEFVAL(0));
 	ClassDB::bind_static_method("OnsetDetector", D_METHOD("detect_onsets_from_stream", "stream", "sensitivity"),
 		&OnsetDetector::detect_onsets_from_stream, DEFVAL(50));
 	ClassDB::bind_static_method("OnsetDetector", D_METHOD("estimate_bpm", "wave_data", "channel_count", "sample_rate"),
-		&OnsetDetector::estimate_bpm, DEFVAL(2), DEFVAL(48000));
+		&OnsetDetector::estimate_bpm, DEFVAL(2), DEFVAL(0));
 	ClassDB::bind_static_method("OnsetDetector", D_METHOD("estimate_bpm_from_stream", "stream"),
 		&OnsetDetector::estimate_bpm_from_stream);
 }
@@ -38,6 +56,8 @@ PackedInt32Array OnsetDetector::detect_onsets(
 	for (int i = 0; i < p_wave_data.size(); i++) {
 		wave_data.write[i] = static_cast<double>(p_wave_data[i]);
 	}
+
+	ERR_FAIL_COND_V_MSG(p_sample_rate <= 0, PackedInt32Array(), vformat("OnsetDetector: detect_onsets() requires an explicit positive sample rate, got %d.", p_sample_rate));
 
 	Vector<int> onsets = detect_onsets_internal(wave_data, p_channel_count, p_sensitivity, p_sample_rate);
 
@@ -60,20 +80,15 @@ PackedInt32Array OnsetDetector::detect_onsets_from_stream(
 		return result;
 	}
 
+	const int sample_rate = _resolve_stream_sample_rate(p_stream);
+	if (sample_rate <= 0) {
+		return result;
+	}
+
 	int channel_count = 2;
 	Vector<double> wave_data = SiOPMWaveBase::extract_wave_data(p_stream, &channel_count);
 	if (wave_data.is_empty() || channel_count < 1) {
 		return result;
-	}
-
-	int sample_rate = 48000;
-	if (p_stream->has_method("get_mix_rate")) {
-		Variant v_rate = p_stream->call("get_mix_rate");
-		if (v_rate.get_type() == Variant::INT) {
-			sample_rate = (int)v_rate;
-		} else if (v_rate.get_type() == Variant::FLOAT) {
-			sample_rate = (int)((double)v_rate);
-		}
 	}
 
 	Vector<int> onsets = detect_onsets_internal(wave_data, channel_count, p_sensitivity, sample_rate);
@@ -98,27 +113,29 @@ Vector<int> OnsetDetector::detect_onsets_internal(
 		return onsets;
 	}
 
+	ERR_FAIL_COND_V_MSG(p_sample_rate <= 0, onsets, vformat("OnsetDetector: detect_onsets_internal() requires an explicit positive sample rate, got %d.", p_sample_rate));
+
+	int sample_rate = p_sample_rate;
+
+	int window_size = static_cast<int>(sample_rate * WINDOW_TIME_SECONDS);
+	int hop_size = static_cast<int>(sample_rate * HOP_TIME_SECONDS);
+	int min_onset_interval = static_cast<int>(sample_rate * MIN_ONSET_INTERVAL_SECONDS);
+
+	// Ensure minimum sizes.
+	window_size = MAX(window_size, 64);
+	hop_size = MAX(hop_size, 32);
+	min_onset_interval = MAX(min_onset_interval, hop_size * 2);
+
 	// Clamp sensitivity to valid range and convert from 1-100 to 0.0-1.0.
 	int clamped_sensitivity = CLAMP(p_sensitivity, 1, 100);
 	double sensitivity = (clamped_sensitivity - 1) / 99.0;
 
 	// Calculate frame count (samples per channel).
 	int frame_count = p_wave_data.size() / p_channel_count;
-	if (frame_count < DEFAULT_WINDOW_SIZE * 2) {
+	if (frame_count < window_size * 2) {
 		// Audio too short for meaningful analysis.
 		return onsets;
 	}
-
-	// Scale window and hop size based on sample rate.
-	double rate_scale = static_cast<double>(p_sample_rate) / 48000.0;
-	int window_size = static_cast<int>(DEFAULT_WINDOW_SIZE * rate_scale);
-	int hop_size = static_cast<int>(DEFAULT_HOP_SIZE * rate_scale);
-	int min_onset_interval = static_cast<int>(DEFAULT_MIN_ONSET_INTERVAL * rate_scale);
-
-	// Ensure minimum sizes.
-	window_size = MAX(window_size, 64);
-	hop_size = MAX(hop_size, 32);
-	min_onset_interval = MAX(min_onset_interval, hop_size * 2);
 
 	// Step 1: Compute RMS envelope.
 	int num_windows = (frame_count - window_size) / hop_size + 1;
@@ -298,6 +315,7 @@ double OnsetDetector::estimate_bpm(
 	}
 
 	// Use moderate sensitivity (50) for BPM estimation — we want clear hits.
+	ERR_FAIL_COND_V_MSG(p_sample_rate <= 0, 0.0, vformat("OnsetDetector: estimate_bpm() requires an explicit positive sample rate, got %d.", p_sample_rate));
 	Vector<int> onsets = detect_onsets_internal(wave_data, p_channel_count, 50, p_sample_rate);
 
 	return _estimate_bpm_from_onsets(onsets, p_sample_rate);
@@ -308,20 +326,15 @@ double OnsetDetector::estimate_bpm_from_stream(const Ref<AudioStream> &p_stream)
 		return 0.0;
 	}
 
+	const int sample_rate = _resolve_stream_sample_rate(p_stream);
+	if (sample_rate <= 0) {
+		return 0.0;
+	}
+
 	int channel_count = 2;
 	Vector<double> wave_data = SiOPMWaveBase::extract_wave_data(p_stream, &channel_count);
 	if (wave_data.is_empty() || channel_count < 1) {
 		return 0.0;
-	}
-
-	int sample_rate = 48000;
-	if (p_stream->has_method("get_mix_rate")) {
-		Variant v_rate = p_stream->call("get_mix_rate");
-		if (v_rate.get_type() == Variant::INT) {
-			sample_rate = (int)v_rate;
-		} else if (v_rate.get_type() == Variant::FLOAT) {
-			sample_rate = (int)((double)v_rate);
-		}
 	}
 
 	// Use moderate sensitivity (50) for BPM estimation.

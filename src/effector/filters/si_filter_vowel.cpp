@@ -9,16 +9,21 @@
 // Formants.
 
 bool SiFilterVowel::Formant::_initialized = false;
+int SiFilterVowel::Formant::_table_sample_rate = 0;
 double SiFilterVowel::Formant::_alpha_table[BAND_TABLE_MAX][FREQ_TABLE_MAX];
 double SiFilterVowel::Formant::_cos_table[FREQ_TABLE_MAX];
 double SiFilterVowel::Formant::_gain_table[GAIN_TABLE_MAX];
 double SiFilterVowel::Formant::_band_list[BAND_TABLE_MAX] = { 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4 };
 
-void SiFilterVowel::Formant::initialize() {
-	if (_initialized) {
+void SiFilterVowel::Formant::initialize(int p_sample_rate) {
+	int sampling_rate = MAX(p_sample_rate, 1);
+	if (_initialized && _table_sample_rate == sampling_rate) {
 		return;
 	}
 	_initialized = true;
+	_table_sample_rate = sampling_rate;
+
+	double omega_scale = (2.0 * M_PI) / sampling_rate;
 
 	// Generate alpha table.
 	for (int i = 0; i < BAND_TABLE_MAX; i++) {
@@ -27,7 +32,7 @@ void SiFilterVowel::Formant::initialize() {
 		for (int j = 0; j < FREQ_TABLE_MAX; j++) {
 			// TODO: Pick better names for these variables, maybe?
 
-			double omg  = frequency * 0.0001308996938995747; // 2*pi/48000
+			double omg  = frequency * omega_scale;
 			double sin  = Math::sin(omg);
 			double ang = 0.34657359027997264 * band * omg / sin; // log(2)*0.5
 
@@ -41,7 +46,7 @@ void SiFilterVowel::Formant::initialize() {
 	{
 		double frequency = 50.0;
 		for (int j = 0; j < FREQ_TABLE_MAX; j++) {
-			_cos_table[j] = Math::cos(frequency * 0.0001308996938995747);
+			_cos_table[j] = Math::cos(frequency * omega_scale);
 
 			frequency *= 1.0218971486541166; // 2^(1/32)
 		}
@@ -77,7 +82,7 @@ void SiFilterVowel::set_vowel_formants(double p_output_level, double p_frequency
 	int freq_index1 = Formant::calculate_freq_index(p_frequency1);
 	int freq_index2 = Formant::calculate_freq_index(p_frequency2);
 
-	FormantEvent *event = memnew(FormantEvent(p_delay, p_output_level, p_frequency1, p_gain1, p_frequency2, p_gain2));
+	FormantEvent *event = memnew(FormantEvent(p_delay, p_output_level, freq_index1, p_gain1, freq_index2, p_gain2));
 	_event_queue = event->insert_to(_event_queue);
 }
 
@@ -128,20 +133,20 @@ int SiFilterVowel::FormantEvent::update_time(int p_delta) {
 	return delta;
 }
 
-SiFilterVowel::FormantEvent::FormantEvent(int p_time, double p_output_level, int p_frequency1, int p_gain1, int p_frequency2, int p_gain2) {
+SiFilterVowel::FormantEvent::FormantEvent(int p_time, double p_output_level, int p_freq_index1, int p_gain1, int p_freq_index2, int p_gain2) {
 	time = p_time;
 	output_level = p_output_level;
 
-	frequency1 = p_frequency1;
+	freq_index1 = p_freq_index1;
 	gain1 = p_gain1;
-	frequency2 = p_frequency2;
+	freq_index2 = p_freq_index2;
 	gain2 = p_gain2;
 }
 
 int SiFilterVowel::_update_event(int p_time) {
 	while (_event_queue && _event_queue->time == 0) {
-		_formants.write[0].update(_event_queue->frequency1, _event_queue->gain1, 3);
-		_formants.write[1].update(_event_queue->frequency2, _event_queue->gain2, 2);
+		_formants.write[0].update(_event_queue->freq_index1, _event_queue->gain1, 3);
+		_formants.write[1].update(_event_queue->freq_index2, _event_queue->gain2, 2);
 
 		_output_level = _event_queue->output_level;
 
@@ -257,7 +262,7 @@ void SiFilterVowel::_bind_methods() {
 
 SiFilterVowel::SiFilterVowel() :
 		SiEffectBase() {
-	Formant::initialize();
+	Formant::initialize((int)_get_sampling_rate());
 
 	_formants.resize_zeroed(FORMANT_COUNT);
 	for (int i = 0; i < _formants.size(); i++) {

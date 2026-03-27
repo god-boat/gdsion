@@ -25,8 +25,6 @@ using namespace godot;
 class SiEffectLinkwitzRileyFilter : public SiEffectBase {
 	GDCLASS(SiEffectLinkwitzRileyFilter, SiEffectBase)
 
-	static const int SAMPLE_RATE = 48000;
-	static const double PI;
 	static const double SQRT2;
 
 	double _cutoff = 1000.0;

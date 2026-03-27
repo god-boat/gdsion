@@ -26,6 +26,7 @@ class SiFilterVowel : public SiEffectBase {
 
 	struct Formant {
 		static bool _initialized;
+		static int _table_sample_rate;
 		static double _alpha_table[BAND_TABLE_MAX][FREQ_TABLE_MAX];
 		static double _cos_table[FREQ_TABLE_MAX];
 		static double _gain_table[GAIN_TABLE_MAX];
@@ -36,7 +37,7 @@ class SiFilterVowel : public SiEffectBase {
 		double b0 = 1;
 		double b2 = 0;
 
-		static void initialize();
+		static void initialize(int p_sample_rate);
 		static int calculate_freq_index(double p_frequency);
 
 		void update(int p_freq_index, int p_gain, int p_band_index);
@@ -73,9 +74,9 @@ class SiFilterVowel : public SiEffectBase {
 	struct FormantEvent {
 		FormantEvent *next = nullptr;
 
-		int frequency1 = 0;
+		int freq_index1 = 0;
 		int gain1 = 0;
-		int frequency2 = 0;
+		int freq_index2 = 0;
 		int gain2 = 0;
 
 		double output_level = 0;
@@ -84,7 +85,7 @@ class SiFilterVowel : public SiEffectBase {
 		FormantEvent *insert_to(FormantEvent *p_chain);
 		int update_time(int p_delta);
 
-		FormantEvent(int p_time, double p_output_level, int p_frequency1, int p_gain1, int p_frequency2, int p_gain2);
+		FormantEvent(int p_time, double p_output_level, int p_freq_index1, int p_gain1, int p_freq_index2, int p_gain2);
 	};
 
 	FormantEvent *_event_queue = nullptr;

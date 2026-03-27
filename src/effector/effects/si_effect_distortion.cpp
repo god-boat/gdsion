@@ -16,7 +16,7 @@ void SiEffectDistortion::set_params(double p_pre_gain, double p_post_gain, doubl
 	if (_filter_enabled) {
 		// TODO: Pick better names for these variables.
 
-		double omg = p_lpf_frequency * 0.0001308996938995747; // 2*pi/48000
+		double omg = _get_angular_frequency(p_lpf_frequency);
 		double cos = Math::cos(omg);
 		double sin = Math::sin(omg);
 

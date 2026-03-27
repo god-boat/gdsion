@@ -57,6 +57,7 @@ protected:
 
 	_FORCE_INLINE_ double _get_sampling_rate() const { return _sampling_rate; }
 	_FORCE_INLINE_ double _get_samples_per_ms() const { return _sampling_rate / 1000.0; }
+	_FORCE_INLINE_ double _get_angular_frequency(double p_frequency) const { return (2.0 * M_PI * p_frequency) / _sampling_rate; }
 
 public:
 	bool is_free() const { return _is_free; }

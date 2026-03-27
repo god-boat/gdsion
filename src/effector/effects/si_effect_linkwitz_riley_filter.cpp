@@ -16,7 +16,6 @@
 
 #include "si_effect_linkwitz_riley_filter.h"
 
-const double SiEffectLinkwitzRileyFilter::PI = 3.14159265358979323846;
 const double SiEffectLinkwitzRileyFilter::SQRT2 = 1.41421356237309504880;
 
 void SiEffectLinkwitzRileyFilter::set_params(double p_cutoff_frequency, int p_output_mode) {
@@ -35,7 +34,7 @@ void SiEffectLinkwitzRileyFilter::set_output_mode(int p_value) {
 }
 
 void SiEffectLinkwitzRileyFilter::_compute_coefficients(double p_frequency) {
-	double warp = 1.0 / Math::tan(PI * p_frequency / SAMPLE_RATE);
+	double warp = 1.0 / Math::tan(_get_angular_frequency(p_frequency) * 0.5);
 	double warp2 = warp * warp;
 	double mult = 1.0 / (1.0 + SQRT2 * warp + warp2);
 

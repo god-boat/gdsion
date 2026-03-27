@@ -20,13 +20,6 @@ using namespace godot;
 class OnsetDetector : public RefCounted {
 	GDCLASS(OnsetDetector, RefCounted)
 
-	// Default analysis window size in samples (~10ms at 48kHz).
-	static const int DEFAULT_WINDOW_SIZE = 512;
-	// Default hop size between analysis windows.
-	static const int DEFAULT_HOP_SIZE = 256;
-	// Minimum inter-onset interval in samples (~50ms at 48kHz).
-	static const int DEFAULT_MIN_ONSET_INTERVAL = 2400;
-
 protected:
 	static void _bind_methods();
 
@@ -35,13 +28,13 @@ public:
 	// p_wave_data: Interleaved audio samples (mono or stereo) in [-1.0, 1.0] range.
 	// p_channel_count: Number of audio channels (1 = mono, 2 = stereo).
 	// p_sensitivity: Detection sensitivity from 1 (least sensitive) to 100 (most sensitive).
-	// p_sample_rate: Sample rate of the audio data (default 48000 Hz).
+	// p_sample_rate: Sample rate of the audio data in Hz. Must be > 0.
 	// Returns: Array of sample indices where onsets (transients) were detected.
 	static PackedInt32Array detect_onsets(
 		const PackedFloat32Array &p_wave_data,
 		int p_channel_count = 2,
 		int p_sensitivity = 50,
-		int p_sample_rate = 48000
+		int p_sample_rate = 0
 	);
 
 	// Detect onset (transient) positions directly from an AudioStream (WAV supported).
@@ -53,9 +46,9 @@ public:
 	// Overload accepting Vector<double> for internal C++ use.
 	static Vector<int> detect_onsets_internal(
 		const Vector<double> &p_wave_data,
-		int p_channel_count = 2,
-		int p_sensitivity = 50,
-		int p_sample_rate = 48000
+		int p_channel_count,
+		int p_sensitivity,
+		int p_sample_rate
 	);
 
 	// Estimate the dominant BPM of audio sample data using onset-based analysis.
@@ -63,7 +56,7 @@ public:
 	static double estimate_bpm(
 		const PackedFloat32Array &p_wave_data,
 		int p_channel_count = 2,
-		int p_sample_rate = 48000
+		int p_sample_rate = 0
 	);
 
 	// Estimate the dominant BPM directly from an AudioStream (WAV supported).
