@@ -1495,11 +1495,12 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_clip_bpm", "track_id", "bpm"), &SiONDriver::mailbox_stream_set_clip_bpm);
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_grain_size", "track_id", "grain_size"), &SiONDriver::mailbox_stream_set_grain_size);
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_flux", "track_id", "flux"), &SiONDriver::mailbox_stream_set_flux);
-	ClassDB::bind_method(D_METHOD("mailbox_stream_seek", "track_id", "position_sample"), &SiONDriver::mailbox_stream_seek);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_seek", "track_id", "position_sample", "track_instance_id"), &SiONDriver::mailbox_stream_seek, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_looping", "track_id", "looping"), &SiONDriver::mailbox_stream_set_looping);
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_loop_region", "track_id", "start_sample", "end_sample"), &SiONDriver::mailbox_stream_set_loop_region);
 	// Note control (thread-safe) - track_instance_id targets specific track by Godot object ID
 	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "track_instance_id"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("mailbox_stream_key_on", "track_id", "note", "tick_length", "start_sample", "track_instance_id"), &SiONDriver::mailbox_stream_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_key_off", "track_id", "immediate", "track_instance_id"), &SiONDriver::mailbox_key_off, DEFVAL(false), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_set_expression", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_expression, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_set_velocity", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_velocity, DEFVAL(0));
@@ -2736,9 +2737,10 @@ void SiONDriver::mailbox_stream_set_clip_bpm(int p_track_id, double p_bpm) {
 }
 
 
-void SiONDriver::mailbox_stream_seek(int p_track_id, int64_t p_position_sample) {
+void SiONDriver::mailbox_stream_seek(int p_track_id, int64_t p_position_sample, uint64_t p_track_instance_id) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
+	u.track_instance_id = p_track_instance_id;
 	u.has_stream_seek = true;
 	u.stream_seek_sample = p_position_sample;
 	_mb_try_push(u);
@@ -2768,6 +2770,20 @@ void SiONDriver::mailbox_key_on(int p_track_id, int p_note, int p_tick_length, u
     u.has_key_on = true;
     u.key_on_note = p_note;
     u.key_on_length = p_tick_length;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_stream_key_on(int p_track_id, int p_note, int p_tick_length, int64_t p_start_sample, uint64_t p_track_instance_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.track_instance_id = p_track_instance_id;
+    u.has_key_on = true;
+    u.key_on_note = p_note;
+    u.key_on_length = p_tick_length;
+    if (p_start_sample >= 0) {
+        u.has_key_on_stream_start_sample = true;
+        u.key_on_stream_start_sample = p_start_sample;
+    }
     _mb_try_push(u);
 }
 
@@ -3289,9 +3305,6 @@ void SiONDriver::_drain_track_mailbox() {
                 if (u.has_stream_flux) {
                     stream_ch->set_stream_flux(u.stream_flux);
                 }
-                if (u.has_stream_seek) {
-                    stream_ch->seek_to(u.stream_seek_sample);
-                }
                 if (u.has_stream_looping) {
                     stream_ch->set_stream_looping(u.stream_looping);
                 }
@@ -3312,7 +3325,20 @@ void SiONDriver::_drain_track_mailbox() {
             // Note control commands - these can target specific track instances
             bool instance_match = (u.track_instance_id == 0 || trk->get_instance_id() == u.track_instance_id);
             if (instance_match) {
+                // Live seek (immediate transport reposition, instance-scoped).
+                if (u.has_stream_seek) {
+                    SiOPMChannelStream *seek_ch = Object::cast_to<SiOPMChannelStream>(ch);
+                    if (seek_ch) {
+                        seek_ch->seek_to(u.stream_seek_sample);
+                    }
+                }
                 if (u.has_key_on) {
+                    // If a stream start sample is bundled with this key-on,
+                    // set it as pending context so the deferred _key_on() path
+                    // calls note_on_at() instead of plain note_on().
+                    if (u.has_key_on_stream_start_sample) {
+                        trk->set_pending_key_on_stream_start(u.key_on_stream_start_sample);
+                    }
                     trk->key_on(u.key_on_note, u.key_on_length, 0);
                 }
                 if (u.has_key_off) {

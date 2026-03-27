@@ -470,6 +470,11 @@ private:
 		bool has_key_on = false;
 		int key_on_note = 0;
 		int key_on_length = 0;  // tick length, 0 = indefinite
+		// Stream start sample: when set alongside has_key_on, the deferred note_on
+		// uses note_on_at() instead of plain note_on(), starting playback from this
+		// absolute source frame. This is note-on metadata, not a transport seek.
+		bool has_key_on_stream_start_sample = false;
+		int64_t key_on_stream_start_sample = 0;
 		bool has_key_off = false;
 		bool key_off_immediate = false;
 		bool has_expression = false;
@@ -842,12 +847,16 @@ public:
 	void mailbox_stream_set_clip_bpm(int p_track_id, double p_bpm);
 	void mailbox_stream_set_grain_size(int p_track_id, double p_grain_size);
 	void mailbox_stream_set_flux(int p_track_id, double p_flux);
-	void mailbox_stream_seek(int p_track_id, int64_t p_position_sample);
+	void mailbox_stream_seek(int p_track_id, int64_t p_position_sample, uint64_t p_track_instance_id = 0);
 	void mailbox_stream_set_looping(int p_track_id, bool p_looping);
 	void mailbox_stream_set_loop_region(int p_track_id, int64_t p_start_sample, int64_t p_end_sample);
 	// Note control (thread-safe alternatives to direct track method calls)
 	// p_track_instance_id: If non-zero, targets specific track by Godot object ID (for pooled tracks)
 	void mailbox_key_on(int p_track_id, int p_note, int p_tick_length = 0, uint64_t p_track_instance_id = 0);
+	// Stream key-on: starts a stream note from an explicit source-frame position.
+	// Bundles key_on + start_sample into a single message so the deferred note_on
+	// uses note_on_at() instead of plain note_on(). p_start_sample = -1 uses _in_sample.
+	void mailbox_stream_key_on(int p_track_id, int p_note, int p_tick_length = 0, int64_t p_start_sample = -1, uint64_t p_track_instance_id = 0);
 	void mailbox_key_off(int p_track_id, bool p_immediate = false, uint64_t p_track_instance_id = 0);
 	void mailbox_set_expression(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);
 	void mailbox_set_velocity(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);

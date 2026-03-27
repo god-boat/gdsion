@@ -78,6 +78,9 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	// Compute fade envelope multiplier for the given source-domain frame position.
 	double _compute_fade_envelope(double p_source_frame) const;
 
+	// Shared note_on implementation: resets playback state and starts from p_start_sample.
+	void _start_playback_at(int64_t p_start_sample);
+
 	// Stream writers (mirror sampler channel pattern).
 	void _write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length);
 	void _write_stream_stereo(SinglyLinkedList<int>::Element *p_output_left, SinglyLinkedList<int>::Element *p_output_right, int p_length);
@@ -103,6 +106,9 @@ public:
 	// Processing.
 
 	virtual void note_on() override;
+	// Start playback from an explicit source-frame position instead of _in_sample.
+	// Used when the track's deferred key-on carries a start offset (arrangement phase).
+	void note_on_at(int64_t p_start_sample);
 	virtual void note_off() override;
 
 	virtual void buffer(int p_length) override;

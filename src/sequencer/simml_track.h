@@ -184,6 +184,19 @@ private:
 
 	void _default_update_register(int p_address, int p_data);
 
+	// Stream note-on context: carries start-sample metadata through
+	// the deferred key-on path so note_on_at() can be called instead
+	// of plain note_on() when the track fires.
+	struct PendingKeyOnContext {
+		bool has_stream_start_sample = false;
+		int64_t stream_start_sample = 0;
+		void clear() {
+			has_stream_start_sample = false;
+			stream_start_sample = 0;
+		}
+	};
+	PendingKeyOnContext _pending_key_on_ctx;
+
 	// Playback.
 
 	int _key_on_counter = 0;
@@ -393,6 +406,12 @@ public:
 	void limit_key_length(int p_stop_delay);
 	void change_note_length(int p_length);
 	void set_key_on_delay(int p_delay) { _key_on_delay = p_delay; }
+
+	// Set stream start-sample context for the next deferred key-on.
+	void set_pending_key_on_stream_start(int64_t p_start_sample) {
+		_pending_key_on_ctx.has_stream_start_sample = true;
+		_pending_key_on_ctx.stream_start_sample = p_start_sample;
+	}
 
 	//
 

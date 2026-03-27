@@ -170,7 +170,7 @@ double SiOPMChannelStream::_compute_fade_envelope(double p_source_frame) const {
 // Processing: note_on / note_off
 // ---------------------------------------------------------------------------
 
-void SiOPMChannelStream::note_on() {
+void SiOPMChannelStream::_start_playback_at(int64_t p_start_sample) {
 	if (_stream_data.is_null() || !_stream_data->is_valid()) {
 		_is_idling = true;
 		return;
@@ -180,12 +180,15 @@ void SiOPMChannelStream::note_on() {
 
 	// Reset playback state.
 	_playback_pos = 0.0;
-	_source_frames_elapsed = 0.0;
 	_playing = true;
 	_reached_end = false;
 	_is_idling = false;
 	_is_note_on = true;
 	_loops_completed = 0;
+
+	// Compute source frames elapsed relative to in_sample.
+	int64_t relative = p_start_sample - _in_sample;
+	_source_frames_elapsed = (relative > 0) ? (double)relative : 0.0;
 
 	// Sync trim to stream data.
 	_stream_data->set_in_sample(_in_sample);
@@ -204,20 +207,27 @@ void SiOPMChannelStream::note_on() {
 		_warp.set_flux(fl);
 	}
 
-	// Seek the stream data back to the clip start so the ring buffer is
-	// refilled from in_sample. This handles retrigger/loop: without it the
-	// ring buffer would still be positioned at the end of the previous
-	// playback. seek() is lock-free (atomics + Treiber-stack enqueue) so
-	// it is safe to call from the audio thread. The loader thread picks up
-	// the refill request and fills the ring buffer asynchronously; buffer()
-	// handles any brief underrun with silence until data arrives.
-	_stream_data->seek(_in_sample);
+	// Seek the stream data to the target position so the ring buffer is
+	// refilled correctly. seek() is lock-free (atomics + Treiber-stack
+	// enqueue) so it is safe to call from the audio thread. The loader
+	// thread picks up the refill request and fills the ring buffer
+	// asynchronously; buffer() handles any brief underrun with silence
+	// until data arrives.
+	_stream_data->seek(p_start_sample);
 
 	// Activate the stream (registers with loader if not already).
 	_stream_data->activate();
 
 	// Trigger filter EG start.
 	SiOPMChannelBase::note_on();
+}
+
+void SiOPMChannelStream::note_on() {
+	_start_playback_at(_in_sample);
+}
+
+void SiOPMChannelStream::note_on_at(int64_t p_start_sample) {
+	_start_playback_at(p_start_sample);
 }
 
 void SiOPMChannelStream::note_off() {

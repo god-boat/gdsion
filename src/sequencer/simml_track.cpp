@@ -10,6 +10,7 @@
 #include "sion_enums.h"
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/channels/siopm_channel_manager.h"
+#include "chip/channels/siopm_channel_stream.h"
 #include "chip/siopm_ref_table.h"
 #include "chip/wave/siopm_wave_sampler_table.h"
 #include "chip/wave/siopm_wave_table.h"
@@ -810,7 +811,19 @@ void SiMMLTrack::_key_on() {
 		}
 
 		_update_process(1);
-		_channel->note_on();
+
+		// If the pending key-on context carries a stream start sample,
+		// use note_on_at() so playback begins from that offset instead
+		// of _in_sample. This is how arrangement-phase starts work:
+		// the start sample rides with the key-on through the deferred
+		// execution path rather than being a separate seek command.
+		SiOPMChannelStream *stream_ch = Object::cast_to<SiOPMChannelStream>(_channel);
+		if (stream_ch && _pending_key_on_ctx.has_stream_start_sample) {
+			stream_ch->note_on_at(_pending_key_on_ctx.stream_start_sample);
+		} else {
+			_channel->note_on();
+		}
+		_pending_key_on_ctx.clear();
 	}
 
 	_flag_no_key_on = false;
@@ -821,6 +834,9 @@ void SiMMLTrack::_key_off() {
 	if (unlikely(_channel == nullptr)) {
 		return;
 	}
+
+	// Don't let stale stream start context leak into a later key_on.
+	_pending_key_on_ctx.clear();
 
 	if (_callback_before_note_off.is_valid()) {
 		_callback_before_note_off.call(this);
