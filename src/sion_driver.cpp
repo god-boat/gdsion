@@ -1498,6 +1498,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_stream_seek", "track_id", "position_sample", "track_instance_id"), &SiONDriver::mailbox_stream_seek, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_looping", "track_id", "looping"), &SiONDriver::mailbox_stream_set_looping);
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_loop_region", "track_id", "start_sample", "end_sample"), &SiONDriver::mailbox_stream_set_loop_region);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_clip_envelope", "track_id", "clip_time_steps", "fade_in_steps", "fade_out_start_steps", "clip_end_steps"), &SiONDriver::mailbox_stream_set_clip_envelope);
 	// Note control (thread-safe) - track_instance_id targets specific track by Godot object ID
 	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "track_instance_id"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_key_on", "track_id", "note", "tick_length", "start_sample", "track_instance_id"), &SiONDriver::mailbox_stream_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(0));
@@ -2763,6 +2764,17 @@ void SiONDriver::mailbox_stream_set_loop_region(int p_track_id, int64_t p_start_
 	_mb_try_push(u);
 }
 
+void SiONDriver::mailbox_stream_set_clip_envelope(int p_track_id, double p_clip_time_steps, double p_fade_in_steps, double p_fade_out_start_steps, double p_clip_end_steps) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.has_stream_clip_envelope = true;
+	u.stream_clip_time_steps = p_clip_time_steps;
+	u.stream_clip_fade_in_steps = p_fade_in_steps;
+	u.stream_clip_fade_out_start_steps = p_fade_out_start_steps;
+	u.stream_clip_end_steps = p_clip_end_steps;
+	_mb_try_push(u);
+}
+
 void SiONDriver::mailbox_key_on(int p_track_id, int p_note, int p_tick_length, uint64_t p_track_instance_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -3310,6 +3322,14 @@ void SiONDriver::_drain_track_mailbox() {
                 }
                 if (u.has_stream_loop_region) {
                     stream_ch->set_stream_loop_region(u.stream_loop_start_sample, u.stream_loop_end_sample);
+                }
+                if (u.has_stream_clip_envelope) {
+                    stream_ch->set_stream_clip_envelope(
+                        u.stream_clip_time_steps,
+                        u.stream_clip_fade_in_steps,
+                        u.stream_clip_fade_out_start_steps,
+                        u.stream_clip_end_steps
+                    );
                 }
             }
             if (u.has_lfo_wave) {

@@ -20,8 +20,9 @@ class SiOPMWaveBase;
 // Streaming audio channel for clip playback.
 //
 // Reads source frames from a SiOPMWaveStreamData ring buffer,
-// applies dB-based gain (-36..+36 dB, matching sampler), fade in/out ramps,
-// pitch shifting via variable playback rate, and writes to SiON output streams.
+// applies dB-based gain (-36..+36 dB, matching sampler), scheduler-driven
+// clip fades, pitch shifting via variable playback rate, and writes to
+// SiON output streams.
 //
 // Unlike SiOPMChannelSampler, this channel has no ADSR envelope, no LFO,
 // and no voice-stealing declick. Playback continues until out_sample / EOF
@@ -45,10 +46,21 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	double _clip_gain = 1.0;        // Linear gain derived from _gain_db: pow(2, dB/6).
 	double _pitch_step = 1.0;       // Source-frame advance per output sample.
 	int _pitch_cents = 0;           // Pitch shift in cents.
-	int _fade_in_frames = 0;        // Fade-in length in source frames.
-	int _fade_out_frames = 0;       // Fade-out length in source frames.
+	int _fade_in_frames = 0;        // Raw user fade-in param (cached for UI/live param parity).
+	int _fade_out_frames = 0;       // Raw user fade-out param (cached for UI/live param parity).
 	int _declick_in_remaining = 0;  // Remaining output samples for automatic start/seek declick ramp (0→1).
 	int _declick_in_total = 0;      // Total output samples for the current declick-in ramp.
+
+	// ---- Clip envelope (scheduler-driven, clip-time fades) ----
+	// The scheduler sends the current clip-time position plus clip-time
+	// fade boundaries. The channel advances clip-time per output sample
+	// using the actual driver sample rate and evaluates the envelope
+	// sample-accurately, independent of source-domain playback progress.
+	double _clip_envelope = 1.0;             // Current clip envelope multiplier (0.0-1.0).
+	double _clip_time_steps = 0.0;           // Current clip-time position relative to placement start.
+	double _clip_fade_in_steps = 0.0;        // Fade-in duration in clip-time steps.
+	double _clip_fade_out_start_steps = 0.0; // Fade-out start boundary in clip-time steps.
+	double _clip_end_steps = 0.0;            // Placement end boundary in clip-time steps.
 	int64_t _in_sample = 0;         // Start trim in source frames.
 	int64_t _out_sample = 0;        // End trim (0 = EOF).
 	int _warp_mode = 0;             // 0 = OFF, 1 = REPITCH, 2 = BEATS, 3 = TONES, 4 = TEXTURE, 5 = COMPLEX.
@@ -77,8 +89,11 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	// Compute the effective clip length in source frames (accounts for trim).
 	int64_t _effective_clip_length() const;
 
-	// Compute fade envelope multiplier for the given source-domain frame position.
-	double _compute_fade_envelope(double p_source_frame) const;
+	// Compute technical envelope multiplier (loop crossfade, one-shot end declick).
+	// User clip fades (fade-in/fade-out) are handled by _clip_envelope from the scheduler.
+	double _compute_technical_envelope(double p_source_frame) const;
+	double _get_clip_steps_per_output_sample() const;
+	double _evaluate_clip_envelope(double p_clip_time_steps) const;
 
 	// Shared note_on implementation: resets playback state and starts from p_start_sample.
 	void _start_playback_at(int64_t p_start_sample);
@@ -137,6 +152,12 @@ public:
 
 	void set_stream_fade_out(int p_frames);
 	int get_stream_fade_out() const { return _fade_out_frames; }
+
+	// Scheduler-driven clip envelope state. The channel advances clip-time
+	// per output sample from p_clip_time_steps and evaluates fades against
+	// the supplied clip-time boundaries.
+	void set_stream_clip_envelope(double p_clip_time_steps, double p_fade_in_steps, double p_fade_out_start_steps, double p_clip_end_steps);
+	double get_stream_clip_envelope() const { return _clip_envelope; }
 
 	void set_stream_in_sample(int64_t p_sample);
 	int64_t get_stream_in_sample() const { return _in_sample; }

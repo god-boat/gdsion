@@ -514,6 +514,11 @@ private:
 		bool has_stream_loop_region = false;
 		int64_t stream_loop_start_sample = 0;
 		int64_t stream_loop_end_sample = 0;
+		bool has_stream_clip_envelope = false;
+		double stream_clip_time_steps = 0.0;
+		double stream_clip_fade_in_steps = 0.0;
+		double stream_clip_fade_out_start_steps = 0.0;
+		double stream_clip_end_steps = 0.0;
 
 		// Track effects (applied to per-track SiEffectStream, not per-voice channels)
 		enum FxOp {
@@ -850,6 +855,7 @@ public:
 	void mailbox_stream_seek(int p_track_id, int64_t p_position_sample, uint64_t p_track_instance_id = 0);
 	void mailbox_stream_set_looping(int p_track_id, bool p_looping);
 	void mailbox_stream_set_loop_region(int p_track_id, int64_t p_start_sample, int64_t p_end_sample);
+	void mailbox_stream_set_clip_envelope(int p_track_id, double p_clip_time_steps, double p_fade_in_steps, double p_fade_out_start_steps, double p_clip_end_steps);
 	// Note control (thread-safe alternatives to direct track method calls)
 	// p_track_instance_id: If non-zero, targets specific track by Godot object ID (for pooled tracks)
 	void mailbox_key_on(int p_track_id, int p_note, int p_tick_length = 0, uint64_t p_track_instance_id = 0);

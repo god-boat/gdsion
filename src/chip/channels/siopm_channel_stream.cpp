@@ -140,16 +140,15 @@ int64_t SiOPMChannelStream::_effective_clip_length() const {
 }
 
 // ---------------------------------------------------------------------------
-// Fade envelope
+// Technical envelope (loop crossfade + one-shot end declick only)
 // ---------------------------------------------------------------------------
 
-double SiOPMChannelStream::_compute_fade_envelope(double p_source_frame) const {
+double SiOPMChannelStream::_compute_technical_envelope(double p_source_frame) const {
 	double env = 1.0;
 
-	// Fade-in ramp: only on the very first loop iteration.
-	if (_fade_in_frames > 0 && _loops_completed == 0 && p_source_frame < (double)_fade_in_frames) {
-		env *= p_source_frame / (double)_fade_in_frames;
-	}
+	// NOTE: User clip fades (fade-in / fade-out) are now handled by
+	// _clip_envelope, which is driven by the scheduler in clip-time.
+	// This function only handles source-domain technical ramps.
 
 	int source_sr = _stream_data.is_valid() ? _stream_data->get_source_sample_rate() : 0;
 	int min_declick = (source_sr > 0) ? (int)(source_sr * 0.002) : 96;
@@ -171,22 +170,54 @@ double SiOPMChannelStream::_compute_fade_envelope(double p_source_frame) const {
 			}
 		}
 	} else {
-		// One-shot fade-out: always apply at least a short declick at clip end.
+		// One-shot end declick: apply a short ~2ms ramp at clip end for
+		// click-safe stop. User fade-out length is handled by _clip_envelope.
 		int64_t total_length = _effective_clip_length();
 		if (total_length > 0) {
-			int fade_frames = MAX(_fade_out_frames, min_declick);
-			int64_t fade_start = total_length - fade_frames;
+			int64_t fade_start = total_length - min_declick;
 			if (fade_start < 0) {
 				fade_start = 0;
 			}
 			if (p_source_frame >= (double)fade_start && p_source_frame < (double)total_length) {
 				double remaining = (double)total_length - p_source_frame;
-				env *= remaining / (double)fade_frames;
+				env *= remaining / (double)min_declick;
 			}
 		}
 	}
 
 	return env;
+}
+
+double SiOPMChannelStream::_get_clip_steps_per_output_sample() const {
+	const int driver_rate = _table ? _table->sampling_rate : 0;
+	if (driver_rate <= 0) {
+		return 0.0;
+	}
+
+	double bpm = _sound_chip ? _sound_chip->get_bpm() : 120.0;
+	if (bpm <= 0.0) {
+		bpm = 120.0;
+	}
+
+	return (bpm * 64.0 / 60.0) / (double)driver_rate;
+}
+
+double SiOPMChannelStream::_evaluate_clip_envelope(double p_clip_time_steps) const {
+	if (_clip_end_steps <= 0.0) {
+		return 1.0;
+	}
+
+	double env = 1.0;
+	if (_clip_fade_in_steps > 0.0 && p_clip_time_steps < _clip_fade_in_steps) {
+		env = p_clip_time_steps / _clip_fade_in_steps;
+	}
+
+	const double fade_out_steps = _clip_end_steps - _clip_fade_out_start_steps;
+	if (fade_out_steps > 0.0 && p_clip_time_steps >= _clip_fade_out_start_steps) {
+		env = MIN(env, 1.0 - ((p_clip_time_steps - _clip_fade_out_start_steps) / fade_out_steps));
+	}
+
+	return CLAMP(env, 0.0, 1.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -208,6 +239,14 @@ void SiOPMChannelStream::_start_playback_at(int64_t p_start_sample) {
 	_is_idling = false;
 	_is_note_on = true;
 	_loops_completed = 0;
+
+	// Reset clip envelope to unity. The scheduler sends the correct
+	// clip-time state via mailbox after key_on.
+	_clip_envelope = 1.0;
+	_clip_time_steps = 0.0;
+	_clip_fade_in_steps = 0.0;
+	_clip_fade_out_start_steps = 0.0;
+	_clip_end_steps = 0.0;
 
 	// Short declick-in ramp (~2ms) to avoid a hard discontinuity at the start position.
 	const int sr = (_table ? _table->sampling_rate : 0);
@@ -323,6 +362,7 @@ void SiOPMChannelStream::buffer(int p_length) {
 
 	// Branch: granular modes (TONES=3, TEXTURE=4) vs standard playback.
 	bool granular_mode = (_warp_mode == 3 || _warp_mode == 4);
+	const double clip_step_advance = _get_clip_steps_per_output_sample();
 
 	if (granular_mode) {
 		// Granular overlap-add engine (delegated to SiOPMWarpProcessor).
@@ -381,14 +421,15 @@ void SiOPMChannelStream::buffer(int p_length) {
 				? _warp.read_granular(ring_reader, avail, 1, channels, _pitch_step)
 				: sampleL;
 
-			// Apply gain, fade envelope, and declick-in ramp.
-			double fade = _compute_fade_envelope(_source_frames_elapsed);
+			// Apply gain, technical envelope, clip envelope, and declick-in ramp.
+			double tech_env = _compute_technical_envelope(_source_frames_elapsed);
 			double declick = 1.0;
 			if (_declick_in_remaining > 0) {
 				declick = 1.0 - (double)_declick_in_remaining / (double)_declick_in_total;
 				_declick_in_remaining--;
 			}
-			double amplitude = _clip_gain * fade * declick;
+			_clip_envelope = _evaluate_clip_envelope(_clip_time_steps);
+			double amplitude = _clip_gain * tech_env * _clip_envelope * declick;
 			double outL = sampleL * amplitude;
 			double outR = sampleR * amplitude;
 
@@ -405,6 +446,8 @@ void SiOPMChannelStream::buffer(int p_length) {
 			// Advance source position at the BPM-sync rate.
 			_warp.advance(source_advance);
 			_source_frames_elapsed += source_advance;
+			_clip_time_steps += clip_step_advance;
+			_clip_envelope = _evaluate_clip_envelope(_clip_time_steps);
 
 			// Advance the ring buffer read pointer to keep up with the
 			// granular source position. We keep a margin of ring data ahead
@@ -492,6 +535,8 @@ void SiOPMChannelStream::buffer(int p_length) {
 				}
 				_source_frames_elapsed += _pitch_step;
 				_playback_pos += _pitch_step;
+				_clip_time_steps += clip_step_advance;
+				_clip_envelope = _evaluate_clip_envelope(_clip_time_steps);
 				continue;
 			}
 
@@ -510,14 +555,15 @@ void SiOPMChannelStream::buffer(int p_length) {
 						- _stream_data->ring_read_sample(base_idx, 1)) * frac;
 			}
 
-			// Apply native gain, fade envelope, and declick-in ramp.
-			double fade = _compute_fade_envelope(_source_frames_elapsed);
+			// Apply native gain, technical envelope, clip envelope, and declick-in ramp.
+			double tech_env = _compute_technical_envelope(_source_frames_elapsed);
 			double declick = 1.0;
 			if (_declick_in_remaining > 0) {
 				declick = 1.0 - (double)_declick_in_remaining / (double)_declick_in_total;
 				_declick_in_remaining--;
 			}
-			double amplitude = _clip_gain * fade * declick;
+			_clip_envelope = _evaluate_clip_envelope(_clip_time_steps);
+			double amplitude = _clip_gain * tech_env * _clip_envelope * declick;
 			double outL = sampleL * amplitude;
 			double outR = sampleR * amplitude;
 
@@ -535,6 +581,8 @@ void SiOPMChannelStream::buffer(int p_length) {
 			// _pitch_step source frames).
 			_playback_pos += _pitch_step;
 			_source_frames_elapsed += _pitch_step;
+			_clip_time_steps += clip_step_advance;
+			_clip_envelope = _evaluate_clip_envelope(_clip_time_steps);
 
 			// Consume integer frames from the ring buffer.
 			int new_base = (int)_playback_pos;
@@ -648,6 +696,11 @@ void SiOPMChannelStream::reset() {
 	_fade_out_frames = 0;
 	_declick_in_remaining = 0;
 	_declick_in_total = 0;
+	_clip_envelope = 1.0;
+	_clip_time_steps = 0.0;
+	_clip_fade_in_steps = 0.0;
+	_clip_fade_out_start_steps = 0.0;
+	_clip_end_steps = 0.0;
 	_in_sample = 0;
 	_out_sample = 0;
 	_warp_mode = 0;
@@ -738,6 +791,14 @@ void SiOPMChannelStream::set_stream_fade_in(int p_frames) {
 
 void SiOPMChannelStream::set_stream_fade_out(int p_frames) {
 	_fade_out_frames = MAX(p_frames, 0);
+}
+
+void SiOPMChannelStream::set_stream_clip_envelope(double p_clip_time_steps, double p_fade_in_steps, double p_fade_out_start_steps, double p_clip_end_steps) {
+	_clip_time_steps = MAX(p_clip_time_steps, 0.0);
+	_clip_fade_in_steps = MAX(p_fade_in_steps, 0.0);
+	_clip_end_steps = MAX(p_clip_end_steps, 0.0);
+	_clip_fade_out_start_steps = CLAMP(p_fade_out_start_steps, 0.0, _clip_end_steps);
+	_clip_envelope = _evaluate_clip_envelope(_clip_time_steps);
 }
 
 void SiOPMChannelStream::set_stream_in_sample(int64_t p_sample) {
