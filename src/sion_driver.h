@@ -477,6 +477,10 @@ private:
 		int64_t key_on_stream_start_sample = 0;
 		bool has_key_off = false;
 		bool key_off_immediate = false;
+		// Stream-specific key-off: hard-stops only SiOPMChannelStream channels
+		// (with declick kill fade) and finishes the track. Does not affect
+		// synth/sampler channels, preserving their release tails.
+		bool has_stream_key_off = false;
 		bool has_expression = false;
 		int expression_value = 128;
 		bool has_velocity = false;
@@ -864,6 +868,10 @@ public:
 	// uses note_on_at() instead of plain note_on(). p_start_sample = -1 uses _in_sample.
 	void mailbox_stream_key_on(int p_track_id, int p_note, int p_tick_length = 0, int64_t p_start_sample = -1, uint64_t p_track_instance_id = 0);
 	void mailbox_key_off(int p_track_id, bool p_immediate = false, uint64_t p_track_instance_id = 0);
+	// Stream-specific key-off: hard-stops only stream channels (with declick
+	// kill fade) and finishes the track executor. Synth/sampler channels on the
+	// same track_id are left untouched, preserving their release tails.
+	void mailbox_stream_key_off(int p_track_id, uint64_t p_track_instance_id = 0);
 	void mailbox_set_expression(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);
 	void mailbox_set_velocity(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);
 

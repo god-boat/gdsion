@@ -728,20 +728,18 @@ void SiMMLTrack::buffer(int p_length) {
 			_executor->stop();
 
 			if (_stop_with_reset) {
-				_key_off();
+				bool stream_hard_stop = _key_off_stream_aware(true);
 				_note = -1;
-				if (_channel) {
+				if (_channel && !stream_hard_stop) {
 					_channel->start_kill_fade(-1);
 				}
 			}
 		} else if (_channel->is_note_on()) {
-			_key_off();
+			bool stream_hard_stop = _key_off_stream_aware(_stop_with_reset);
 			_note = -1;
 
-			if (_stop_with_reset) {
-				if (_channel) {
-					_channel->start_kill_fade(-1);
-				}
+			if (_stop_with_reset && _channel && !stream_hard_stop) {
+				_channel->start_kill_fade(-1);
 			}
 		}
 
@@ -807,7 +805,7 @@ void SiMMLTrack::_key_on() {
 			if (_callback_before_note_off.is_valid()) {
 				_callback_before_note_off.call(this);
 			}
-			_channel->note_off();
+			_note_off_channel(true);
 		}
 
 		_update_process(1);
@@ -830,9 +828,24 @@ void SiMMLTrack::_key_on() {
 	_key_on_counter = _key_on_length;
 }
 
-void SiMMLTrack::_key_off() {
+bool SiMMLTrack::_note_off_channel(bool p_stream_hard_stop) {
 	if (unlikely(_channel == nullptr)) {
-		return;
+		return false;
+	}
+
+	SiOPMChannelStream *stream_ch = Object::cast_to<SiOPMChannelStream>(_channel);
+	if (stream_ch && p_stream_hard_stop) {
+		stream_ch->hard_stop();
+		return true;
+	}
+
+	_channel->note_off();
+	return false;
+}
+
+bool SiMMLTrack::_key_off_stream_aware(bool p_stream_hard_stop) {
+	if (unlikely(_channel == nullptr)) {
+		return false;
 	}
 
 	// Don't let stale stream start context leak into a later key_on.
@@ -842,12 +855,17 @@ void SiMMLTrack::_key_off() {
 		_callback_before_note_off.call(this);
 	}
 
-	_channel->note_off();
+	bool handled_stream_hard_stop = _note_off_channel(p_stream_hard_stop);
 	_key_on_counter = 0;
 	_update_process(0);
 
 	// Lower the priority.
 	_priority += 32;
+	return handled_stream_hard_stop;
+}
+
+void SiMMLTrack::_key_off() {
+	_key_off_stream_aware(false);
 }
 
 void SiMMLTrack::_update_process(int p_key_on) {
@@ -928,13 +946,13 @@ void SiMMLTrack::key_off(int p_sample_delay, bool p_with_reset) {
 	if (p_sample_delay != 0) {
 		_track_stop_delay = p_sample_delay;
 	} else {
-		_key_off();
+		bool stream_hard_stop = _key_off_stream_aware(_stop_with_reset);
 		_note = -1;
 
 		if (_stop_with_reset) {
 			// Click-safe "immediate" stop: fade the channel to 0, then reset when silent.
 			// This prevents hard discontinuities that cause audible clicks.
-			if (_channel) {
+			if (_channel && !stream_hard_stop) {
 				_channel->start_kill_fade(-1);
 			}
 		}
@@ -950,6 +968,35 @@ void SiMMLTrack::key_off(int p_sample_delay, bool p_with_reset) {
 			}
 		}
 	}
+}
+
+bool SiMMLTrack::stream_key_off() {
+	if (unlikely(_channel == nullptr)) {
+		return false;
+	}
+
+	SiOPMChannelStream *stream_ch = Object::cast_to<SiOPMChannelStream>(_channel);
+	if (!stream_ch) {
+		return false;
+	}
+
+	_pending_key_on_ctx.clear();
+
+	if (_callback_before_note_off.is_valid()) {
+		_callback_before_note_off.call(this);
+	}
+
+	stream_ch->hard_stop();
+	_key_on_counter = 0;
+	_note = -1;
+	_update_process(0);
+	_priority += 32;
+
+	if (_executor) {
+		_executor->stop();
+	}
+
+	return true;
 }
 
 void SiMMLTrack::bend_note(int p_to_note, int p_tick_length) {

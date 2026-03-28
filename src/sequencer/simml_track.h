@@ -212,6 +212,8 @@ private:
 
 	void _toggle_key();
 	void _key_on();
+	bool _note_off_channel(bool p_stream_hard_stop);
+	bool _key_off_stream_aware(bool p_stream_hard_stop);
 	void _key_off();
 	void _update_process(int p_key_on);
 
@@ -398,6 +400,10 @@ public:
 
 	void key_on(int p_note, int p_tick_length = 0, int p_sample_delay = 0);
 	void key_off(int p_sample_delay = 0, bool p_with_reset = false);
+	// Stream-specific key-off: if the channel is a SiOPMChannelStream, performs
+	// hard_stop() (declick kill fade) and finishes the track. Non-stream channels
+	// are left untouched. Returns true if a stream hard stop was performed.
+	bool stream_key_off();
 	void bend_note(int p_to_note, int p_tick_length);
 
 	void sequence_on(const Ref<SiMMLData> &p_data, MMLSequence *p_sequence, int p_sample_length = 0, int p_sample_delay = 0);

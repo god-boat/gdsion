@@ -298,11 +298,26 @@ void SiOPMChannelStream::note_on_at(int64_t p_start_sample) {
 }
 
 void SiOPMChannelStream::note_off() {
+	// Normal placement end: the scheduler-owned clip envelope has already
+	// reached zero, so we can stop transport state directly without routing
+	// through the technical hard-stop fade.
 	if (!_playing) {
+		reset();
 		return;
 	}
 
-	_is_note_on = false;
+	if (_kill_fade_remaining_samples > 0) {
+		return;
+	}
+
+	SiOPMChannelBase::note_off();
+	reset();
+}
+
+void SiOPMChannelStream::hard_stop() {
+	if (!_playing) {
+		return;
+	}
 
 	// Keep _playing = true so buffer() continues running and the kill fade
 	// can attenuate the audio to zero over ~2ms. The kill fade calls reset()
@@ -443,7 +458,7 @@ void SiOPMChannelStream::buffer(int p_length) {
 				right_write = right_write->next();
 			}
 
-			// Advance source position at the BPM-sync rate.
+			// Advance source position at the BPMsync rate.
 			_warp.advance(source_advance);
 			_source_frames_elapsed += source_advance;
 			_clip_time_steps += clip_step_advance;
@@ -526,17 +541,19 @@ void SiOPMChannelStream::buffer(int p_length) {
 			int needed = (int)_playback_pos + 2;
 
 			if (available < needed) {
-				// Underrun — output silence for this sample.
+				// Underrun: output silence but do NOT advance source/ring
+				// counters. After a mid-clip seek flushes the ring buffer,
+				// advancing _source_frames_elapsed can push it past
+				// effective_loop_end (premature clip termination before
+				// audio data arrives from the loader). Advancing
+				// _playback_pos makes the underrun permanent (needed >
+				// available even after the ring refills).
 				left_write->value = 0;
 				left_write = left_write->next();
 				if (channels == 2 && right_write) {
 					right_write->value = 0;
 					right_write = right_write->next();
 				}
-				_source_frames_elapsed += _pitch_step;
-				_playback_pos += _pitch_step;
-				_clip_time_steps += clip_step_advance;
-				_clip_envelope = _evaluate_clip_envelope(_clip_time_steps);
 				continue;
 			}
 
@@ -673,6 +690,11 @@ void SiOPMChannelStream::buffer_no_process(int p_length) {
 void SiOPMChannelStream::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	SiOPMChannelBase::initialize(p_prev, p_buffer_index);
 	reset();
+	// Full channel recycle: release the wave data binding.
+	// reset() deliberately preserves _stream_data so that stale key_off
+	// messages (from _uc_silence_all) cannot null it between the main
+	// thread's set_wave_data() and the audio thread's note_on_at().
+	_stream_data = Ref<SiOPMWaveStreamData>();
 	_out_pipe2 = _sound_chip->get_pipe(3, p_buffer_index);
 	_filter_variables2[0] = 0;
 	_filter_variables2[1] = 0;
@@ -685,7 +707,16 @@ void SiOPMChannelStream::reset() {
 	_playing = false;
 	_reached_end = false;
 
-	_stream_data = Ref<SiOPMWaveStreamData>();
+	// NOTE: _stream_data is intentionally NOT cleared here.
+	// It is a voice binding set by set_wave_data() on the main thread.
+	// Clearing it in reset() creates a cross-thread race: stale key_off
+	// messages (from _uc_silence_all during transport restart) trigger
+	// note_off() -> reset() on the audio thread, which runs AFTER the
+	// main thread already called set_wave_data() for the new clip but
+	// BEFORE the audio thread processes the new key_on. The result is
+	// note_on_at() finding _stream_data null and going idle (no sound).
+	// _stream_data is only cleared in initialize() (full channel recycle).
+
 	_playback_pos = 0.0;
 	_source_frames_elapsed = 0.0;
 	_gain_db = 0;

@@ -126,7 +126,12 @@ public:
 	// Start playback from an explicit source-frame position instead of _in_sample.
 	// Used when the track's deferred key-on carries a start offset (arrangement phase).
 	void note_on_at(int64_t p_start_sample);
+	// Normal clip-end stop. The scheduler has already driven the clip envelope
+	// to zero at the placement edge, so this path does not add a technical
+	// hard-stop fade.
 	virtual void note_off() override;
+	// Hard stop / cut / voice-steal path. Uses the technical kill fade.
+	void hard_stop();
 
 	virtual void buffer(int p_length) override;
 	virtual void buffer_no_process(int p_length) override;

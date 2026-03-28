@@ -1503,6 +1503,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "track_instance_id"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_key_on", "track_id", "note", "tick_length", "start_sample", "track_instance_id"), &SiONDriver::mailbox_stream_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_key_off", "track_id", "immediate", "track_instance_id"), &SiONDriver::mailbox_key_off, DEFVAL(false), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("mailbox_stream_key_off", "track_id", "track_instance_id"), &SiONDriver::mailbox_stream_key_off, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_set_expression", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_expression, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_set_velocity", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_velocity, DEFVAL(0));
 
@@ -2808,6 +2809,14 @@ void SiONDriver::mailbox_key_off(int p_track_id, bool p_immediate, uint64_t p_tr
     _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_stream_key_off(int p_track_id, uint64_t p_track_instance_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.track_instance_id = p_track_instance_id;
+    u.has_stream_key_off = true;
+    _mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_expression(int p_track_id, int p_value, uint64_t p_track_instance_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -3360,6 +3369,9 @@ void SiONDriver::_drain_track_mailbox() {
                         trk->set_pending_key_on_stream_start(u.key_on_stream_start_sample);
                     }
                     trk->key_on(u.key_on_note, u.key_on_length, 0);
+                }
+                if (u.has_stream_key_off) {
+                    trk->stream_key_off();
                 }
                 if (u.has_key_off) {
                     trk->key_off(0, u.key_off_immediate);
