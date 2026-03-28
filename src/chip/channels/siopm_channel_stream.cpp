@@ -240,13 +240,11 @@ void SiOPMChannelStream::_start_playback_at(int64_t p_start_sample) {
 	_is_note_on = true;
 	_loops_completed = 0;
 
-	// Reset clip envelope to unity. The scheduler sends the correct
-	// clip-time state via mailbox after key_on.
-	_clip_envelope = 1.0;
-	_clip_time_steps = 0.0;
-	_clip_fade_in_steps = 0.0;
-	_clip_fade_out_start_steps = 0.0;
-	_clip_end_steps = 0.0;
+	// Preserve any scheduler-owned clip envelope state that was already armed
+	// via mailbox before the deferred note_on executes. reset() clears these
+	// fields between clips, so on a fresh start they are either valid state for
+	// this key_on or the default zero/unity values from reset().
+	_clip_envelope = _evaluate_clip_envelope(_clip_time_steps);
 
 	// Short declick-in ramp (~2ms) to avoid a hard discontinuity at the start position.
 	const int sr = (_table ? _table->sampling_rate : 0);
