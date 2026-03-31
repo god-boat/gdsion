@@ -286,6 +286,7 @@ void SiOPMWaveSamplerData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_pan"), &SiOPMWaveSamplerData::get_pan);
 	ClassDB::bind_method(D_METHOD("set_gain_db", "db"), &SiOPMWaveSamplerData::set_gain_db);
 	ClassDB::bind_method(D_METHOD("get_gain_db"), &SiOPMWaveSamplerData::get_gain_db);
+	ClassDB::bind_method(D_METHOD("get_sample_rate"), &SiOPMWaveSamplerData::get_sample_rate);
 	ClassDB::bind_method(D_METHOD("set_ignore_note_off", "ignore"), &SiOPMWaveSamplerData::set_ignore_note_off);
 	ClassDB::bind_method(D_METHOD("get_ignore_note_off"), &SiOPMWaveSamplerData::get_ignore_note_off);
 	ClassDB::bind_method(D_METHOD("set_start_point", "start"), &SiOPMWaveSamplerData::set_start_point);
