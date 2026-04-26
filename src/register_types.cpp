@@ -18,6 +18,7 @@
 
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/channels/siopm_channel_fm.h"
+#include "chip/channels/siopm_channel_guitar6.h"
 #include "chip/channels/siopm_channel_ks.h"
 #include "chip/channels/siopm_channel_pcm.h"
 #include "chip/channels/siopm_channel_sampler.h"
@@ -114,6 +115,7 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 
 		ClassDB::register_internal_class<SiOPMChannelBase>();
 		ClassDB::register_internal_class<SiOPMChannelFM>();
+		ClassDB::register_internal_class<SiOPMChannelGuitar6>();
 		ClassDB::register_internal_class<SiOPMChannelKS>();
 		ClassDB::register_internal_class<SiOPMChannelPCM>();
 		ClassDB::register_internal_class<SiOPMChannelSampler>();

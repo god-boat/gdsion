@@ -71,6 +71,10 @@ public:
 	void set_sampler_table(const Ref<SiOPMWaveSamplerTable> &p_table);
 
 	void set_pms_guitar(int p_attack_rate = 48, int p_decay_rate = 48, int p_total_level = 0, int p_fixed_pitch = 69, int p_wave_shape = 20, int p_tension = 8);
+	void set_guitar6(double p_character_seed = 65535, double p_character_variation = 0.5,
+			double p_string_damp = 0.5, double p_string_damp_variation = 0.25,
+			double p_plug_damp = 0.5, double p_plug_damp_variation = 0.25,
+			double p_string_tension = 0.0, double p_stereo_spread = 0.2, bool p_body_bypass = false);
 	void set_analog_like(int p_connection_type, int p_wave_shape1 = 1, int p_wave_shape2 = 1, int p_balance = 0, int p_pitch_difference = 0);
 
 	void set_envelope(int p_attack_rate, int p_decay_rate, int p_sustain_rate, int p_release_rate, int p_sustain_level, int p_total_level);

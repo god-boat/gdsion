@@ -336,6 +336,14 @@ SiMMLRefTable::SiMMLRefTable() {
 			cs->set_suitable_for_fm_voice(false);
 		}
 
+		// Guitar6 settings.
+		channel_settings_map[SiONModuleType::MODULE_GUITAR6] = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_GUITAR6, SiONPulseGeneratorType::PULSE_SINE, 1, 1, 1));
+		{
+			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_GUITAR6];
+			cs->set_channel_type(SiOPMChannelManager::CHANNEL_GUITAR6);
+			cs->set_suitable_for_fm_voice(false);
+		}
+
 		// Stream settings.
 		{
 			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_STREAM];

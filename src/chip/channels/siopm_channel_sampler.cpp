@@ -23,6 +23,23 @@ static _FORCE_INLINE_ double _am_gain_from_log_delta(int p_delta) {
 	return std::pow(2.0, -(double)p_delta / 512.0);
 }
 
+// Track routing redirects the channel's main send into a per-track effect stream,
+// where track pan is applied later as post-pan. Neutral sampler pan must remain a
+// no-op here to preserve the ac6351b fix for doubled center-pan attenuation on
+// redirected streams. When sampler pan is non-neutral, preserve only that offset
+// upstream and leave track pan to the downstream effect stream.
+static _FORCE_INLINE_ int _get_sampler_write_pan(bool p_is_redirected_main_stream, int p_track_pan, int p_sample_pan) {
+	if (p_is_redirected_main_stream) {
+		if (p_sample_pan == 0) {
+			return SiOPMStream::PAN_NONE;
+		}
+
+		return CLAMP(64 + p_sample_pan, 0, 128);
+	}
+
+	return CLAMP(p_track_pan + p_sample_pan, 0, 128);
+}
+
 void SiOPMChannelSampler::get_channel_params(const Ref<SiOPMChannelParams> &p_params) const {
 	p_params->set_operator_count(1);
 
@@ -833,8 +850,9 @@ void SiOPMChannelSampler::_stop_click_guard() {
 
 void SiOPMChannelSampler::_write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length) {
 	double volume_coef = _expression * _sound_chip->get_sampler_volume() * _instrument_gain;
-	int pan = CLAMP(_pan + _sample_pan, 0, 128);
 	const bool is_redirected_main_stream = (_streams[0] != nullptr && _streams[0] != _sound_chip->get_output_stream());
+	const int combined_pan = CLAMP(_pan + _sample_pan, 0, 128);
+	const int redirected_main_pan = _get_sampler_write_pan(is_redirected_main_stream, _pan, _sample_pan);
 
 	if (_kill_fade_remaining_samples > 0) {
 		_apply_kill_fade(p_output, p_length);
@@ -846,7 +864,7 @@ void SiOPMChannelSampler::_write_stream_mono(SinglyLinkedList<int>::Element *p_o
 				SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 				if (stream) {
 					const double volume = (i == 0 && is_redirected_main_stream) ? volume_coef : (_volumes[i] * volume_coef);
-					const int write_pan = (i == 0 && is_redirected_main_stream) ? SiOPMStream::PAN_NONE : pan;
+					const int write_pan = (i == 0 && is_redirected_main_stream) ? redirected_main_pan : combined_pan;
 					stream->write(p_output, _buffer_index, p_length, volume, write_pan);
 				}
 			}
@@ -854,15 +872,16 @@ void SiOPMChannelSampler::_write_stream_mono(SinglyLinkedList<int>::Element *p_o
 	} else {
 		SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
 		const double volume = is_redirected_main_stream ? volume_coef : (_volumes[0] * volume_coef);
-		const int write_pan = is_redirected_main_stream ? SiOPMStream::PAN_NONE : pan;
+		const int write_pan = is_redirected_main_stream ? redirected_main_pan : combined_pan;
 		stream->write(p_output, _buffer_index, p_length, volume, write_pan);
 	}
 }
 
 void SiOPMChannelSampler::_write_stream_stereo(SinglyLinkedList<int>::Element *p_output_left, SinglyLinkedList<int>::Element *p_output_right, int p_length) {
 	double volume_coef = _expression * _sound_chip->get_sampler_volume() * _instrument_gain;
-	int pan = CLAMP(_pan + _sample_pan, 0, 128);
 	const bool is_redirected_main_stream = (_streams[0] != nullptr && _streams[0] != _sound_chip->get_output_stream());
+	const int combined_pan = CLAMP(_pan + _sample_pan, 0, 128);
+	const int redirected_main_pan = _get_sampler_write_pan(is_redirected_main_stream, _pan, _sample_pan);
 
 	if (_kill_fade_remaining_samples > 0) {
 		_apply_kill_fade_stereo(p_output_left, p_output_right, p_length);
@@ -874,7 +893,7 @@ void SiOPMChannelSampler::_write_stream_stereo(SinglyLinkedList<int>::Element *p
 				SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 				if (stream) {
 					const double volume = (i == 0 && is_redirected_main_stream) ? volume_coef : (_volumes[i] * volume_coef);
-					const int write_pan = (i == 0 && is_redirected_main_stream) ? SiOPMStream::PAN_NONE : pan;
+					const int write_pan = (i == 0 && is_redirected_main_stream) ? redirected_main_pan : combined_pan;
 					stream->write_stereo(p_output_left, p_output_right, _buffer_index, p_length, volume, write_pan);
 				}
 			}
@@ -882,7 +901,7 @@ void SiOPMChannelSampler::_write_stream_stereo(SinglyLinkedList<int>::Element *p
 	} else {
 		SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
 		const double volume = is_redirected_main_stream ? volume_coef : (_volumes[0] * volume_coef);
-		const int write_pan = is_redirected_main_stream ? SiOPMStream::PAN_NONE : pan;
+		const int write_pan = is_redirected_main_stream ? redirected_main_pan : combined_pan;
 		stream->write_stereo(p_output_left, p_output_right, _buffer_index, p_length, volume, write_pan);
 	}
 }
@@ -969,7 +988,7 @@ void SiOPMChannelSampler::set_sampler_pan(int p_pan) {
 	if (_sample_data.is_valid()) {
 		_sample_data->set_pan(p_pan);
 		// Update the channel's sample pan immediately.
-		_sample_pan = p_pan;
+		_sample_pan = _sample_data->get_pan();
 	}
 }
 

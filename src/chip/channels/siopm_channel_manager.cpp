@@ -12,6 +12,7 @@
 #include "chip/channels/siopm_channel_ks.h"
 #include "chip/channels/siopm_channel_pcm.h"
 #include "chip/channels/siopm_channel_sampler.h"
+#include "chip/channels/siopm_channel_guitar6.h"
 #include "chip/channels/siopm_channel_stream.h"
 #include "chip/siopm_sound_chip.h"
 
@@ -28,6 +29,7 @@ void SiOPMChannelManager::initialize(SiOPMSoundChip *p_chip) {
 	_channel_managers[CHANNEL_SAMPLER] = memnew(SiOPMChannelManager(CHANNEL_SAMPLER));
 	_channel_managers[CHANNEL_KS]      = memnew(SiOPMChannelManager(CHANNEL_KS));
 	_channel_managers[CHANNEL_STREAM]  = memnew(SiOPMChannelManager(CHANNEL_STREAM));
+	_channel_managers[CHANNEL_GUITAR6] = memnew(SiOPMChannelManager(CHANNEL_GUITAR6));
 }
 
 void SiOPMChannelManager::finalize() {
@@ -38,6 +40,7 @@ void SiOPMChannelManager::finalize() {
 	memdelete(_channel_managers[CHANNEL_SAMPLER]);
 	memdelete(_channel_managers[CHANNEL_KS]);
 	memdelete(_channel_managers[CHANNEL_STREAM]);
+	memdelete(_channel_managers[CHANNEL_GUITAR6]);
 	_channel_managers.clear();
 }
 
@@ -87,11 +90,14 @@ SiOPMChannelBase *SiOPMChannelManager::_create_channel(SiOPMChannelBase *p_prev,
 			case CHANNEL_KS: {
 				new_channel = memnew(SiOPMChannelKS(_sound_chip));
 			} break;
-			case CHANNEL_STREAM: {
-				new_channel = memnew(SiOPMChannelStream(_sound_chip));
-			} break;
+		case CHANNEL_STREAM: {
+			new_channel = memnew(SiOPMChannelStream(_sound_chip));
+		} break;
+		case CHANNEL_GUITAR6: {
+			new_channel = memnew(SiOPMChannelGuitar6(_sound_chip));
+		} break;
 
-			default: break; // Silences enum warnings.
+		default: break; // Silences enum warnings.
 		}
 
 		ERR_FAIL_NULL_V(new_channel, nullptr);

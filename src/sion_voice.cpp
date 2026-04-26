@@ -134,6 +134,20 @@ String SiONVoice::get_mml(int p_index, SiONChipType p_chip_type, bool p_append_p
 		case SiONChipType::CHIP_ANALOG_LIKE:
 			mml = "#AL@"  + itos(p_index) + ::TranslatorUtil::get_al_params_as_mml(channel_params, " ", "\n", _name);
 			break;
+		case SiONChipType::CHIP_GUITAR6: {
+			String data = "{";
+			data += rtos(guitar6_character_seed) + ",";
+			data += rtos(guitar6_character_variation) + ",";
+			data += rtos(guitar6_string_damp) + ",";
+			data += rtos(guitar6_string_damp_variation) + ",";
+			data += rtos(guitar6_plug_damp) + ",";
+			data += rtos(guitar6_plug_damp_variation) + ",";
+			data += rtos(guitar6_string_tension) + ",";
+			data += rtos(guitar6_stereo_spread) + ",";
+			data += itos(guitar6_body_bypass ? 1 : 0);
+			data += "}";
+			mml = "#G6@" + itos(p_index) + data;
+		} break;
 		default:
 			ERR_FAIL_V_MSG("", vformat("SiONVoice: Chip type %d is unsupported for MML strings.", type));
 	}
@@ -188,6 +202,18 @@ int SiONVoice::set_by_mml(String p_mml) {
 		int ws, ar, dr, tl, fn, tn;
 		::TranslatorUtil::parse_ks_params(channel_params, data, ws, ar, dr, tl, fn, tn);
 		set_pms_guitar(ar, dr, tl, fn, ws, tn);
+	} else if (command == "#G6@") {
+		PackedStringArray parts = data.split(",");
+		double cs = parts.size() > 0 ? parts[0].strip_edges().to_float() : 65535.0;
+		double cv = parts.size() > 1 ? parts[1].strip_edges().to_float() : 0.5;
+		double sd = parts.size() > 2 ? parts[2].strip_edges().to_float() : 0.5;
+		double sdv = parts.size() > 3 ? parts[3].strip_edges().to_float() : 0.25;
+		double pd = parts.size() > 4 ? parts[4].strip_edges().to_float() : 0.5;
+		double pdv = parts.size() > 5 ? parts[5].strip_edges().to_float() : 0.25;
+		double st = parts.size() > 6 ? parts[6].strip_edges().to_float() : 0.0;
+		double ss = parts.size() > 7 ? parts[7].strip_edges().to_float() : 0.2;
+		bool bb = parts.size() > 8 ? parts[8].strip_edges().to_int() != 0 : false;
+		set_guitar6(cs, cv, sd, sdv, pd, pdv, st, ss, bb);
 	} else {
 		return -1;
 	}
@@ -289,6 +315,25 @@ void SiONVoice::set_pms_guitar(int p_attack_rate, int p_decay_rate, int p_total_
 	set_params(param_args);
 	pms_tension = p_tension;
 	chip_type = SiONChipType::CHIP_PMS_GUITAR;
+}
+
+void SiONVoice::set_guitar6(double p_character_seed, double p_character_variation,
+		double p_string_damp, double p_string_damp_variation,
+		double p_plug_damp, double p_plug_damp_variation,
+		double p_string_tension, double p_stereo_spread, bool p_body_bypass) {
+	module_type = SiONModuleType::MODULE_GUITAR6;
+	channel_num = 0;
+	chip_type = SiONChipType::CHIP_GUITAR6;
+
+	guitar6_character_seed = p_character_seed;
+	guitar6_character_variation = p_character_variation;
+	guitar6_string_damp = p_string_damp;
+	guitar6_string_damp_variation = p_string_damp_variation;
+	guitar6_plug_damp = p_plug_damp;
+	guitar6_plug_damp_variation = p_plug_damp_variation;
+	guitar6_string_tension = p_string_tension;
+	guitar6_stereo_spread = p_stereo_spread;
+	guitar6_body_bypass = p_body_bypass;
 }
 
 void SiONVoice::set_analog_like(int p_connection_type, int p_wave_shape1, int p_wave_shape2, int p_balance, int p_pitch_difference) {
@@ -422,6 +467,7 @@ void SiONVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_by_mml", "mml"), &SiONVoice::set_by_mml);
 
 	ClassDB::bind_method(D_METHOD("set_pms_guitar", "attack_rate", "decay_rate", "total_level", "fixed_pitch", "wave_shape", "tension"), &SiONVoice::set_pms_guitar, DEFVAL(48), DEFVAL(48), DEFVAL(0), DEFVAL(69), DEFVAL(20), DEFVAL(8));
+	ClassDB::bind_method(D_METHOD("set_guitar6", "character_seed", "character_variation", "string_damp", "string_damp_variation", "plug_damp", "plug_damp_variation", "string_tension", "stereo_spread", "body_bypass"), &SiONVoice::set_guitar6, DEFVAL(65535.0), DEFVAL(0.5), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.0), DEFVAL(0.2), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("set_analog_like", "connection_type", "wave_shape1", "wave_shape2", "balance", "pitch_difference"), &SiONVoice::set_analog_like, DEFVAL(1), DEFVAL(1), DEFVAL(0), DEFVAL(0));
 
 	ClassDB::bind_method(D_METHOD("set_envelope", "attack_rate", "decay_rate", "sustain_rate", "release_rate", "sustain_level", "total_level"), &SiONVoice::set_envelope);

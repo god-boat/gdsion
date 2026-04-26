@@ -11,6 +11,7 @@
 #include <godot_cpp/core/object.hpp>
 
 #include "sion_enums.h"
+#include "chip/channels/siopm_channel_guitar6.h"
 #include "chip/channels/siopm_channel_ks.h"
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/siopm_operator_params.h"
@@ -102,7 +103,6 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 		} break;
 
 		case SiONModuleType::MODULE_KS: {
-			// Check if already a KS channel
 			SiOPMChannelKS *ks_ch = existing_ch ? dynamic_cast<SiOPMChannelKS *>(existing_ch) : nullptr;
 			if (!ks_ch) {
 				p_track->set_channel_module_type(SiONModuleType::MODULE_KS, 1);
@@ -115,6 +115,21 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 				if (is_pcm_voice() && wave_data.is_valid()) {
 					ks_ch->set_wave_data(wave_data);
 				}
+			}
+		} break;
+
+		case SiONModuleType::MODULE_GUITAR6: {
+			SiOPMChannelGuitar6 *g6_ch = existing_ch ? dynamic_cast<SiOPMChannelGuitar6 *>(existing_ch) : nullptr;
+			if (!g6_ch) {
+				p_track->set_channel_module_type(SiONModuleType::MODULE_GUITAR6, 0);
+				g6_ch = dynamic_cast<SiOPMChannelGuitar6 *>(p_track->get_channel());
+			}
+			if (g6_ch) {
+				g6_ch->set_guitar6_params(guitar6_character_seed, guitar6_character_variation,
+						guitar6_string_damp, guitar6_string_damp_variation,
+						guitar6_plug_damp, guitar6_plug_damp_variation,
+						guitar6_string_tension, guitar6_stereo_spread, guitar6_body_bypass);
+				p_track->reset_volume_offset();
 			}
 		} break;
 
@@ -212,6 +227,16 @@ void SiMMLVoice::reset() {
 	wave_data = Ref<SiOPMWaveBase>();
 	pms_tension = 8;
 
+	guitar6_character_seed = 65535.0;
+	guitar6_character_variation = 0.5;
+	guitar6_string_damp = 0.5;
+	guitar6_string_damp_variation = 0.25;
+	guitar6_plug_damp = 0.5;
+	guitar6_plug_damp_variation = 0.25;
+	guitar6_string_tension = 0.0;
+	guitar6_stereo_spread = 0.2;
+	guitar6_body_bypass = false;
+
 	default_gate_time = NAN;
 	default_gate_ticks = -1;
 	default_key_on_delay_ticks = -1;
@@ -273,6 +298,16 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	channel_params->copy_from(p_source->channel_params);
 	wave_data = p_source->wave_data;
 	pms_tension = p_source->pms_tension;
+
+	guitar6_character_seed = p_source->guitar6_character_seed;
+	guitar6_character_variation = p_source->guitar6_character_variation;
+	guitar6_string_damp = p_source->guitar6_string_damp;
+	guitar6_string_damp_variation = p_source->guitar6_string_damp_variation;
+	guitar6_plug_damp = p_source->guitar6_plug_damp;
+	guitar6_plug_damp_variation = p_source->guitar6_plug_damp_variation;
+	guitar6_string_tension = p_source->guitar6_string_tension;
+	guitar6_stereo_spread = p_source->guitar6_stereo_spread;
+	guitar6_body_bypass = p_source->guitar6_body_bypass;
 
 	default_gate_time = p_source->default_gate_time;
 	default_gate_ticks = p_source->default_gate_ticks;

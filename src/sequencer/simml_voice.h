@@ -75,6 +75,17 @@ protected:
 	// PMS guitar tension.
 	int pms_tension = 8;
 
+	// Guitar6 physical model params.
+	double guitar6_character_seed = 65535.0;
+	double guitar6_character_variation = 0.5;
+	double guitar6_string_damp = 0.5;
+	double guitar6_string_damp_variation = 0.25;
+	double guitar6_plug_damp = 0.5;
+	double guitar6_plug_damp_variation = 0.25;
+	double guitar6_string_tension = 0.0;
+	double guitar6_stereo_spread = 0.2;
+	bool guitar6_body_bypass = false;
+
 	void set_note_on_pitch_envelope(const Ref<SiMMLEnvelopeTable> &p_envelope, int p_step = 1) {
 		note_on_pitch_envelope = p_envelope;
 		note_on_pitch_envelope_step = p_step;

@@ -850,6 +850,39 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 		/*wave*/SiONPulseGeneratorType::PULSE_NOISE_WHITE,
 		/*AR*/55, /*DR*/36, /*SL*/4, /*RR*/22, /*TL*/6);
 
+	_begin_category("Guitar6");
+	_create_guitar6_voice("extra.guitar6", "Guitar6 Default");
+
+	_create_guitar6_voice("extra.guitar6.nylon", "Nylon Guitar6",
+		/*seed*/42, /*char_var*/0.3,
+		/*str_damp*/0.35, /*str_damp_var*/0.15,
+		/*plg_damp*/0.6, /*plg_damp_var*/0.2,
+		/*tension*/0.0, /*stereo*/0.15, /*body_bypass*/false);
+
+	_create_guitar6_voice("extra.guitar6.steel", "Steel Guitar6",
+		/*seed*/7777, /*char_var*/0.6,
+		/*str_damp*/0.55, /*str_damp_var*/0.3,
+		/*plg_damp*/0.4, /*plg_damp_var*/0.15,
+		/*tension*/0.05, /*stereo*/0.25, /*body_bypass*/false);
+
+	_create_guitar6_voice("extra.guitar6.muted", "Muted Guitar6",
+		/*seed*/2024, /*char_var*/0.4,
+		/*str_damp*/0.85, /*str_damp_var*/0.1,
+		/*plg_damp*/0.8, /*plg_damp_var*/0.1,
+		/*tension*/0.0, /*stereo*/0.1, /*body_bypass*/false);
+
+	_create_guitar6_voice("extra.guitar6.bright", "Bright Guitar6",
+		/*seed*/31337, /*char_var*/0.7,
+		/*str_damp*/0.25, /*str_damp_var*/0.2,
+		/*plg_damp*/0.3, /*plg_damp_var*/0.3,
+		/*tension*/0.1, /*stereo*/0.3, /*body_bypass*/false);
+
+	_create_guitar6_voice("extra.guitar6.raw", "Raw Guitar6 (No Body)",
+		/*seed*/65535, /*char_var*/0.5,
+		/*str_damp*/0.5, /*str_damp_var*/0.25,
+		/*plg_damp*/0.5, /*plg_damp_var*/0.25,
+		/*tension*/0.0, /*stereo*/0.2, /*body_bypass*/true);
+
 	_begin_category("FM (OPL)");
 	// AL, FB,
 	// (WS,AR,DR,RR,ET,SL,TL,KR,KL,ML,AM) × 2
@@ -1002,6 +1035,9 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 		/*wave*/SiONPulseGeneratorType::PULSE_NOISE_PINK,
 		/*AR*/63, /*DR*/44, /*SL*/0, /*RR*/28, /*TL*/4);
 
+	// Guitar6: six-string physical model with default parameters
+	_create_guitar6_voice("template.guitar6", "Init Guitar6");
+
 	// SCC (wave table): wave shape 0, sustained tone.
 	// Requires INCLUDE_WAVETABLE to have run first (populates _wave_tables).
 	if (!_wave_tables.is_empty()) {
@@ -1043,6 +1079,22 @@ op_params->set_release_rate(p_release_rate);
 
 voice->set_name(p_name);
 _register_voice(p_key, voice);
+}
+
+void SiONVoicePresetUtil::_create_guitar6_voice(const String &p_key, const String &p_name,
+	double p_character_seed, double p_character_variation,
+	double p_string_damp, double p_string_damp_variation,
+	double p_plug_damp, double p_plug_damp_variation,
+	double p_string_tension, double p_stereo_spread, bool p_body_bypass) {
+
+	Ref<SiONVoice> voice = memnew(SiONVoice);
+	voice->set_guitar6(p_character_seed, p_character_variation,
+		p_string_damp, p_string_damp_variation,
+		p_plug_damp, p_plug_damp_variation,
+		p_string_tension, p_stereo_spread, p_body_bypass);
+
+	voice->set_name(p_name);
+	_register_voice(p_key, voice);
 }
 
 void SiONVoicePresetUtil::_create_opl_voice(const String &p_key, const String &p_name, Vector<int> p_params) {
