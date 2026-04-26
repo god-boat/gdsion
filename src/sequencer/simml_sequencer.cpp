@@ -1268,7 +1268,7 @@ MMLEvent *SiMMLSequencer::_on_mml_lf_oscillator(MMLEvent *p_event) {
 
 	cycle_time *= 1000/60; // Convert to ms.
 
-	if (waveform > 7 && waveform < 255) { // Custom table.
+	if (waveform >= SiOPMRefTable::LFO_WAVE_MAX && waveform < 255) { // Custom table.
 		Ref<SiMMLEnvelopeTable> ev_table = SiMMLRefTable::get_instance()->get_envelope_table(ev_params[1]);
 		if (ev_table.is_valid()) {
 			Vector<int> table_vector;

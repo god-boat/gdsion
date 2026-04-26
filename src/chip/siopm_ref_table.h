@@ -127,7 +127,9 @@ public:
 		// New sine wave shapes.
 		LFO_WAVE_SINE     = 8,
 		LFO_WAVE_SINE_INV = 9,
-		LFO_WAVE_MAX      = 10 // Total count of LFO wave shapes (0-9)
+		LFO_WAVE_SAMPLE_HOLD     = 10,
+		LFO_WAVE_SAMPLE_HOLD_INV = 11,
+		LFO_WAVE_MAX             = 12 // Total count of LFO wave shapes (0-11)
 	};
 
 	// All reference properties are made public to simplify code.

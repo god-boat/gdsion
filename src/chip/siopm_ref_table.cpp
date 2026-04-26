@@ -1265,6 +1265,20 @@ void SiOPMRefTable::_create_lfo_tables() {
 			lfo_wave_tables[LFO_WAVE_SINE][i] = value;
 			lfo_wave_tables[LFO_WAVE_SINE_INV][i] = 255 - value;
 		}
+
+		// Sample-and-hold wave.
+		const int sample_hold_segment_size = 16;
+		for (int i = 0; i < LFO_TABLE_SIZE; i += sample_hold_segment_size) {
+			int value = rng->randi_range(0, 255);
+			int segment_end = i + sample_hold_segment_size;
+			if (segment_end > LFO_TABLE_SIZE) {
+				segment_end = LFO_TABLE_SIZE;
+			}
+			for (int j = i; j < segment_end; j++) {
+				lfo_wave_tables[LFO_WAVE_SAMPLE_HOLD][j] = value;
+				lfo_wave_tables[LFO_WAVE_SAMPLE_HOLD_INV][j] = 255 - value;
+			}
+		}
 	}
 
 	// Chorus tables.
