@@ -142,6 +142,7 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 			}
 			if (strata_ch) {
 				strata_ch->set_strata_params(strata_shape, strata_timbre, strata_color);
+				strata_ch->set_channel_params(channel_params, update_volumes, true);
 				p_track->reset_volume_offset();
 			}
 		} break;

@@ -6,6 +6,7 @@
 
 using namespace godot;
 
+class SiOPMChannelParams;
 class SiOPMSoundChip;
 
 // SiOPM channel wrapper around Mutable Instruments Braids' MacroOscillator.
@@ -65,6 +66,9 @@ public:
 
 	virtual int get_pitch() const override { return _current_pitch; }
 	virtual void set_pitch(int p_value) override { _current_pitch = p_value; }
+
+	virtual void get_channel_params(const Ref<SiOPMChannelParams> &p_params) const override;
+	virtual void set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation = true) override;
 
 	virtual void set_all_attack_rate(int p_value) override {}
 	virtual void set_all_release_rate(int p_value) override {}
