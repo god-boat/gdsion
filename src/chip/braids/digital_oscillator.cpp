@@ -2231,6 +2231,141 @@ void DigitalOscillator::RenderDigitalModulation(
   state_.dmd.data_byte = data_byte;
 }
 
+void DigitalOscillator::Render808(
+    const uint8_t* sync,
+    int16_t* buffer,
+    size_t size) {
+  if (init_) {
+    pulse_[0].Init();
+    pulse_[0].set_delay(0);
+    pulse_[0].set_decay(3340);
+
+    pulse_[1].Init();
+    pulse_[1].set_delay(static_cast<uint16_t>(0.5e-3 * 48000));
+    pulse_[1].set_decay(3072);
+
+    pulse_[2].Init();
+    pulse_[2].set_delay(0);
+    pulse_[2].set_decay(4080);
+
+    pulse_[3].Init();
+    pulse_[3].set_delay(0);
+    pulse_[3].set_decay(1536);
+
+    svf_[0].Init();
+    svf_[0].set_mode(SVF_MODE_BP);
+    svf_[0].set_punch(32768);
+
+    svf_[1].Init();
+    svf_[1].set_mode(SVF_MODE_HP);
+    svf_[1].set_resonance(16384);
+
+    init_ = false;
+  }
+
+  if (strike_) {
+    strike_ = false;
+
+    int32_t body = parameter_[0];
+    int32_t pitch_drop_depth = 640 + (body * 2432 >> 15);
+    int32_t pitch_decay = 4060 + (body * 33 >> 15);
+
+    pulse_[0].Trigger(static_cast<int32_t>(12 * 32768 * 0.7));
+    pulse_[1].Trigger(static_cast<int32_t>(-19662 * 0.7));
+
+    pulse_[2].Init();
+    pulse_[2].set_delay(0);
+    pulse_[2].set_decay(static_cast<uint16_t>(pitch_decay));
+    pulse_[2].Trigger(pitch_drop_depth);
+
+    pulse_[3].Init();
+    pulse_[3].set_delay(0);
+    pulse_[3].set_decay(1536);
+    pulse_[3].Trigger(16384);
+
+    svf_[0].set_punch(24000);
+  }
+
+  int32_t body = parameter_[0];
+  int32_t heat = parameter_[1];
+
+  // Body -> resonance: higher body = higher resonance = longer sustain.
+  uint32_t decay_raw = 65535 - (static_cast<uint32_t>(body) << 1);
+  uint32_t decay_sq = decay_raw * decay_raw >> 16;
+  decay_raw = decay_sq * decay_raw >> 18;
+  svf_[0].set_resonance(32768 - 8 - (decay_raw >> 2));
+
+  // Body -> pitch drop speed (live update for mid-note body changes).
+  int32_t pitch_decay = 4060 + (body * 33 >> 15);
+  pulse_[2].set_decay(static_cast<uint16_t>(pitch_decay));
+
+  // Body -> body low-pass openness: dark at 0, open at max.
+  int32_t body_lp_coeff = 200 + (body * 600 >> 15);
+
+  // Heat -> drive amount (quadratic for musical taper).
+  int32_t heat_sq = heat * heat >> 15;
+  int32_t drive_gain = 4096 + (heat_sq * 28672 >> 15);
+
+  // Heat -> even-order asymmetry bias.
+  int32_t asym_bias = heat * 2048 >> 15;
+
+  // Heat -> harmonic layer mix.
+  int32_t harmonic_gain = heat * 26214 >> 15;
+
+  // Heat -> click/noise transient gain.
+  int32_t click_gain = heat * 6554 >> 15;
+
+  // Heat -> harmonic HP cutoff (~90 Hz .. ~250 Hz).
+  int32_t hp_freq = (42 << 7) + (heat * (17 << 7) >> 15);
+  svf_[1].set_frequency(static_cast<int16_t>(hp_freq));
+
+  int32_t body_lp_state = state_.trap808.body_lp;
+
+  while (size--) {
+    // Excitation: main pulse + delayed negative transient with offset.
+    int32_t excitation = 0;
+    excitation += pulse_[0].Process();
+    excitation += !pulse_[1].done() ? 16384 : 0;
+    excitation += pulse_[1].Process();
+
+    // Smooth pitch drop envelope.
+    int32_t pitch_env = pulse_[2].Process();
+    svf_[0].set_frequency(pitch_ + static_cast<int16_t>(pitch_env));
+
+    // Body resonator (band-pass).
+    int32_t resonator_output = (excitation >> 4) + svf_[0].Process(excitation);
+
+    // One-pole LP on body for smoothing / brightness control.
+    body_lp_state += (resonator_output - body_lp_state) * body_lp_coeff >> 15;
+    CLIP(body_lp_state);
+    int32_t clean_body = body_lp_state;
+
+    // Parallel saturation: drive the body through a waveshaper.
+    int32_t driven = clean_body * drive_gain >> 12;
+    driven += asym_bias;
+    int32_t ws_input = driven + 32768;
+    if (ws_input < 0) { ws_input = 0; }
+    if (ws_input > 65535) { ws_input = 65535; }
+    int32_t saturated = Interpolate88(ws_moderate_overdrive,
+                                      static_cast<uint16_t>(ws_input));
+
+    // High-pass the saturated signal to isolate upper harmonics.
+    int32_t harmonics = svf_[1].Process(saturated);
+
+    // Click / noise transient.
+    int32_t click_env = pulse_[3].Process();
+    int32_t click = (Random::GetSample() * click_env >> 16) * click_gain >> 15;
+
+    // Mix: clean sub body + harmonics layer + click.
+    int32_t output = clean_body + (harmonics * harmonic_gain >> 15) + click;
+    CLIP(output);
+
+    *buffer++ = static_cast<int16_t>(output);
+  }
+
+  state_.trap808.body_lp = body_lp_state;
+}
+
 void DigitalOscillator::RenderQuestionMark(
     const uint8_t* sync,
     int16_t* buffer,
@@ -2558,7 +2693,7 @@ DigitalOscillator::RenderFn DigitalOscillator::fn_table_[] = {
   &DigitalOscillator::RenderGranularCloud,
   &DigitalOscillator::RenderParticleNoise,
   &DigitalOscillator::RenderDigitalModulation,
-  // &DigitalOscillator::RenderYourAlgo,
+  &DigitalOscillator::Render808,
 
   &DigitalOscillator::RenderQuestionMark
 };

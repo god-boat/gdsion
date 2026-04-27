@@ -97,6 +97,8 @@ enum DigitalOscillatorShape {
 
   OSC_SHAPE_DIGITAL_MODULATION,
 
+  OSC_SHAPE_808,
+
   OSC_SHAPE_QUESTION_MARK_LAST
 };
 
@@ -216,6 +218,10 @@ struct HatState {
   uint32_t rng_state;
 };
 
+struct Trap808State {
+  int32_t body_lp;
+};
+
 union DigitalOscillatorState {
   ResoSquareState res;
   VowelSynthesizerState vow;
@@ -233,6 +239,7 @@ union DigitalOscillatorState {
   ClockedNoiseState clk;
   HatState hat;
   HarmonicsState hrm;
+  Trap808State trap808;
   uint32_t modulator_phase;
 };
 
@@ -328,7 +335,7 @@ class DigitalOscillator {
   void RenderCymbal(const uint8_t*, int16_t*, size_t);
   void RenderQuestionMark(const uint8_t*, int16_t*, size_t);
   
-  // void RenderYourAlgo(const uint8_t*, int16_t*, size_t);
+  void Render808(const uint8_t*, int16_t*, size_t);
   
   uint32_t ComputePhaseIncrement(int16_t midi_pitch);
   uint32_t ComputeDelay(int16_t midi_pitch);
