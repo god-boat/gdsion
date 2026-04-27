@@ -11,6 +11,7 @@
 #include <godot_cpp/core/object.hpp>
 
 #include "sion_enums.h"
+#include "chip/channels/siopm_channel_strata.h"
 #include "chip/channels/siopm_channel_guitar6.h"
 #include "chip/channels/siopm_channel_ks.h"
 #include "chip/channels/siopm_channel_base.h"
@@ -133,6 +134,18 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 			}
 		} break;
 
+		case SiONModuleType::MODULE_STRATA: {
+			SiOPMChannelStrata *strata_ch = existing_ch ? dynamic_cast<SiOPMChannelStrata *>(existing_ch) : nullptr;
+			if (!strata_ch) {
+				p_track->set_channel_module_type(SiONModuleType::MODULE_STRATA, 0);
+				strata_ch = dynamic_cast<SiOPMChannelStrata *>(p_track->get_channel());
+			}
+			if (strata_ch) {
+				strata_ch->set_strata_params(strata_shape, strata_timbre, strata_color);
+				p_track->reset_volume_offset();
+			}
+		} break;
+
 		default: { // Other sound modules.
 			// For wave data, check if the wave's module type matches
 			if (wave_data.is_valid()) {
@@ -237,6 +250,10 @@ void SiMMLVoice::reset() {
 	guitar6_stereo_spread = 0.2;
 	guitar6_body_bypass = false;
 
+	strata_shape = 0;
+	strata_timbre = 0;
+	strata_color = 0;
+
 	default_gate_time = NAN;
 	default_gate_ticks = -1;
 	default_key_on_delay_ticks = -1;
@@ -308,6 +325,10 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	guitar6_string_tension = p_source->guitar6_string_tension;
 	guitar6_stereo_spread = p_source->guitar6_stereo_spread;
 	guitar6_body_bypass = p_source->guitar6_body_bypass;
+
+	strata_shape = p_source->strata_shape;
+	strata_timbre = p_source->strata_timbre;
+	strata_color = p_source->strata_color;
 
 	default_gate_time = p_source->default_gate_time;
 	default_gate_ticks = p_source->default_gate_ticks;

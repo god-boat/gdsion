@@ -457,6 +457,11 @@ private:
 		// Envelope frequency ratio (channel)
 		bool has_env_freq_ratio = false;
 		int env_freq_ratio = 100;
+		// strata macro-oscillator grouped params
+		bool has_strata = false;
+		int strata_shape = 0;
+		int strata_timbre = 0;
+		int strata_color = 0;
 		// Analog-Like (AL) live params
 		bool has_al_ws1 = false;
 		int al_ws1 = 0;
@@ -839,6 +844,8 @@ public:
 	void mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id = -1);
 	void mailbox_set_lfo_time_mode(int p_track_id, int p_mode, int64_t p_voice_scope_id = -1);
 	void mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, int64_t p_voice_scope_id = -1);
+	// strata macro-oscillator mailbox
+	void mailbox_set_strata_params(int p_track_id, int p_shape, int p_timbre, int p_color, int64_t p_voice_scope_id = -1);
 	// Analog-Like (AL) mailboxes
 	void mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id = -1);
 	void mailbox_set_ch_al_ws2(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id = -1);

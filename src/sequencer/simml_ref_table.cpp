@@ -344,6 +344,14 @@ SiMMLRefTable::SiMMLRefTable() {
 			cs->set_suitable_for_fm_voice(false);
 		}
 
+		// strata settings.
+		channel_settings_map[SiONModuleType::MODULE_STRATA] = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_STRATA, SiONPulseGeneratorType::PULSE_SINE, 1, 1, 1));
+		{
+			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_STRATA];
+			cs->set_channel_type(SiOPMChannelManager::CHANNEL_STRATA);
+			cs->set_suitable_for_fm_voice(false);
+		}
+
 		// Stream settings.
 		{
 			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_STREAM];

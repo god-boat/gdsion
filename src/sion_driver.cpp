@@ -49,6 +49,7 @@
 #include "chip/channels/siopm_channel_fm.h"
 #include "chip/channels/siopm_channel_sampler.h"
 #include "chip/channels/siopm_channel_stream.h"
+#include "chip/channels/siopm_channel_strata.h"
 #include "utils/fader_util.h"
 #include "utils/transformer_util.h"
 #include <atomic>
@@ -1478,6 +1479,8 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_wave_shape", "track_id", "wave_shape", "voice_scope_id"), &SiONDriver::mailbox_set_lfo_wave_shape, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_time_mode", "track_id", "mode", "voice_scope_id"), &SiONDriver::mailbox_set_lfo_time_mode, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_envelope_freq_ratio", "track_id", "ratio", "voice_scope_id"), &SiONDriver::mailbox_set_envelope_freq_ratio, DEFVAL(-1));
+	// Strata macro-oscillator
+	ClassDB::bind_method(D_METHOD("mailbox_set_strata_params", "track_id", "shape", "timbre", "color", "voice_scope_id"), &SiONDriver::mailbox_set_strata_params, DEFVAL(-1));
 	// Analog-Like (AL)
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws1", "track_id", "wave_shape", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_ws1, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws2", "track_id", "wave_shape", "voice_scope_id"), &SiONDriver::mailbox_set_ch_al_ws2, DEFVAL(-1));
@@ -1646,6 +1649,7 @@ void SiONDriver::_bind_methods() {
 	BIND_ENUM_CONSTANT(CHIP_PMS_GUITAR);
 	BIND_ENUM_CONSTANT(CHIP_ANALOG_LIKE);
 	BIND_ENUM_CONSTANT(CHIP_GUITAR6);
+	BIND_ENUM_CONSTANT(CHIP_STRATA);
 	BIND_ENUM_CONSTANT(CHIP_MAX);
 
 	BIND_ENUM_CONSTANT(MODULE_PSG);
@@ -1671,6 +1675,7 @@ void SiONDriver::_bind_methods() {
 	BIND_ENUM_CONSTANT(MODULE_FM_MA3);
 	BIND_ENUM_CONSTANT(MODULE_STREAM);
 	BIND_ENUM_CONSTANT(MODULE_GUITAR6);
+	BIND_ENUM_CONSTANT(MODULE_STRATA);
 	BIND_ENUM_CONSTANT(MODULE_MAX);
 
 	BIND_ENUM_CONSTANT(PITCH_TABLE_OPM);
@@ -2614,6 +2619,17 @@ void SiONDriver::mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, in
     _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_strata_params(int p_track_id, int p_shape, int p_timbre, int p_color, int64_t p_voice_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.voice_scope_id = p_voice_scope_id;
+	u.has_strata = true;
+	u.strata_shape = p_shape;
+	u.strata_timbre = p_timbre;
+	u.strata_color = p_color;
+	_mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape, int64_t p_voice_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -3200,6 +3216,13 @@ void SiONDriver::_drain_track_mailbox() {
 					sampler->set_sampler_gain_db(u.sampler_gain_db);
 				}
 			}
+            // strata macro-oscillator updates
+            if (u.has_strata) {
+                SiOPMChannelStrata *strata_ch = Object::cast_to<SiOPMChannelStrata>(ch);
+                if (strata_ch) {
+                    strata_ch->set_strata_params(u.strata_shape, u.strata_timbre, u.strata_color);
+                }
+            }
             // FM operator updates and Analog-Like live params
             SiOPMChannelFM *fm = Object::cast_to<SiOPMChannelFM>(ch);
             if (fm) {

@@ -850,6 +850,13 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 		/*wave*/SiONPulseGeneratorType::PULSE_NOISE_WHITE,
 		/*AR*/55, /*DR*/36, /*SL*/4, /*RR*/22, /*TL*/6);
 
+	_begin_category("strata");
+	_create_strata_voice("extra.strata.csaw", "Strata CSAW", 0, 0, 0);
+	_create_strata_voice("extra.strata.morph", "Strata Morph", 1, 16384, 0);
+	_create_strata_voice("extra.strata.fm", "Strata FM", 27, 8192, 8192);
+	_create_strata_voice("extra.strata.plucked", "Strata Plucked", 31, 16384, 8192);
+	_create_strata_voice("extra.strata.kicked", "Strata Kick", 37, 16384, 0);
+
 	_begin_category("Guitar6");
 	_create_guitar6_voice("extra.guitar6", "Guitar6 Default");
 
@@ -1038,6 +1045,9 @@ void SiONVoicePresetUtil::_generate_extra_voices() {
 	// Guitar6: six-string physical model with default parameters
 	_create_guitar6_voice("template.guitar6", "Init Guitar6");
 
+	// Strata: Mutable Instruments macro-oscillator with CSAW default
+	_create_strata_voice("template.strata", "Init Strata", 0, 0, 0);
+
 	// SCC (wave table): wave shape 0, sustained tone.
 	// Requires INCLUDE_WAVETABLE to have run first (populates _wave_tables).
 	if (!_wave_tables.is_empty()) {
@@ -1093,6 +1103,15 @@ void SiONVoicePresetUtil::_create_guitar6_voice(const String &p_key, const Strin
 		p_plug_damp, p_plug_damp_variation,
 		p_string_tension, p_stereo_spread, p_body_bypass);
 
+	voice->set_name(p_name);
+	_register_voice(p_key, voice);
+}
+
+void SiONVoicePresetUtil::_create_strata_voice(const String &p_key, const String &p_name,
+	int p_shape, int p_timbre, int p_color) {
+
+	Ref<SiONVoice> voice = memnew(SiONVoice);
+	voice->set_strata(p_shape, p_timbre, p_color);
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
 }

@@ -86,6 +86,11 @@ protected:
 	double guitar6_stereo_spread = 0.2;
 	bool guitar6_body_bypass = false;
 
+	// strata macro-oscillator params.
+	int strata_shape = 0;   // braids::MacroOscillatorShape
+	int strata_timbre = 0;  // 0..32767
+	int strata_color = 0;   // 0..32767
+
 	void set_note_on_pitch_envelope(const Ref<SiMMLEnvelopeTable> &p_envelope, int p_step = 1) {
 		note_on_pitch_envelope = p_envelope;
 		note_on_pitch_envelope_step = p_step;

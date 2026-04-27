@@ -3,7 +3,3 @@
 Import("env")
 
 env.add_source_files(env.library_sources, "*.cpp")
-
-SConscript("channels/SCsub")
-SConscript("wave/SCsub")
-SConscript("braids/SCsub")

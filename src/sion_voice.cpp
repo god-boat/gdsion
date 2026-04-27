@@ -148,6 +148,14 @@ String SiONVoice::get_mml(int p_index, SiONChipType p_chip_type, bool p_append_p
 			data += "}";
 			mml = "#G6@" + itos(p_index) + data;
 		} break;
+		case SiONChipType::CHIP_STRATA: {
+			String data = "{";
+			data += itos(strata_shape) + ",";
+			data += itos(strata_timbre) + ",";
+			data += itos(strata_color);
+			data += "}";
+			mml = "#BR@" + itos(p_index) + data;
+		} break;
 		default:
 			ERR_FAIL_V_MSG("", vformat("SiONVoice: Chip type %d is unsupported for MML strings.", type));
 	}
@@ -214,6 +222,12 @@ int SiONVoice::set_by_mml(String p_mml) {
 		double ss = parts.size() > 7 ? parts[7].strip_edges().to_float() : 0.2;
 		bool bb = parts.size() > 8 ? parts[8].strip_edges().to_int() != 0 : false;
 		set_guitar6(cs, cv, sd, sdv, pd, pdv, st, ss, bb);
+	} else if (command == "#BR@") {
+		PackedStringArray parts = data.split(",");
+		int shape = parts.size() > 0 ? parts[0].strip_edges().to_int() : 0;
+		int timbre = parts.size() > 1 ? parts[1].strip_edges().to_int() : 0;
+		int color = parts.size() > 2 ? parts[2].strip_edges().to_int() : 0;
+		set_strata(shape, timbre, color);
 	} else {
 		return -1;
 	}
@@ -334,6 +348,16 @@ void SiONVoice::set_guitar6(double p_character_seed, double p_character_variatio
 	guitar6_string_tension = p_string_tension;
 	guitar6_stereo_spread = p_stereo_spread;
 	guitar6_body_bypass = p_body_bypass;
+}
+
+void SiONVoice::set_strata(int p_shape, int p_timbre, int p_color) {
+	module_type = SiONModuleType::MODULE_STRATA;
+	channel_num = 0;
+	chip_type = SiONChipType::CHIP_STRATA;
+
+	strata_shape = p_shape;
+	strata_timbre = p_timbre;
+	strata_color = p_color;
 }
 
 void SiONVoice::set_analog_like(int p_connection_type, int p_wave_shape1, int p_wave_shape2, int p_balance, int p_pitch_difference) {
@@ -468,6 +492,7 @@ void SiONVoice::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_pms_guitar", "attack_rate", "decay_rate", "total_level", "fixed_pitch", "wave_shape", "tension"), &SiONVoice::set_pms_guitar, DEFVAL(48), DEFVAL(48), DEFVAL(0), DEFVAL(69), DEFVAL(20), DEFVAL(8));
 	ClassDB::bind_method(D_METHOD("set_guitar6", "character_seed", "character_variation", "string_damp", "string_damp_variation", "plug_damp", "plug_damp_variation", "string_tension", "stereo_spread", "body_bypass"), &SiONVoice::set_guitar6, DEFVAL(65535.0), DEFVAL(0.5), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.0), DEFVAL(0.2), DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("set_strata", "shape", "timbre", "color"), &SiONVoice::set_strata, DEFVAL(0), DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_analog_like", "connection_type", "wave_shape1", "wave_shape2", "balance", "pitch_difference"), &SiONVoice::set_analog_like, DEFVAL(1), DEFVAL(1), DEFVAL(0), DEFVAL(0));
 
 	ClassDB::bind_method(D_METHOD("set_envelope", "attack_rate", "decay_rate", "sustain_rate", "release_rate", "sustain_level", "total_level"), &SiONVoice::set_envelope);
