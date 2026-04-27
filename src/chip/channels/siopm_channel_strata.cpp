@@ -2,9 +2,11 @@
 
 #include <cmath>
 #include <cstring>
+#include <godot_cpp/core/class_db.hpp>
 #include "chip/siopm_ref_table.h"
 #include "chip/siopm_sound_chip.h"
 #include "chip/siopm_stream.h"
+#include "templates/singly_linked_list.h"
 
 void SiOPMChannelStrata::_recompute_pitch_correction(double p_sample_rate) {
 	if (p_sample_rate <= 0) {
@@ -51,41 +53,36 @@ void SiOPMChannelStrata::offset_volume(int p_expression, int p_velocity) {
 }
 
 void SiOPMChannelStrata::note_on() {
+	_osc.Strike();
 	_is_note_on = true;
 	_is_idling = false;
-	_osc.Strike();
+	_declick_target = 1.0;
+	SiOPMChannelBase::note_on();
 }
 
 void SiOPMChannelStrata::note_off() {
 	_is_note_on = false;
+	_declick_target = 0.0;
+	SiOPMChannelBase::note_off();
 }
 
 void SiOPMChannelStrata::reset_channel_buffer_status() {
-	_buffer_index = 0;
-	// Most Braids shapes are self-sustaining, so we don't try to detect idle
-	// energy here. Caller-side gating (via the SiON amp envelope or expression)
-	// is responsible for silencing the channel when the note is released.
-	_is_idling = !_is_note_on;
+	SiOPMChannelBase::reset_channel_buffer_status();
+	_is_idling = !_is_note_on && _declick_level <= 0.0;
 }
 
-void SiOPMChannelStrata::buffer(int p_length) {
-	if (_is_idling) {
-		buffer_no_process(p_length);
-		return;
-	}
-	if (p_length <= 0 || p_length > 2048) {
-		buffer_no_process(p_length);
-		return;
-	}
-
-	memset(_scratch_left, 0, sizeof(double) * p_length);
-	memset(_scratch_right, 0, sizeof(double) * p_length);
+void SiOPMChannelStrata::_process_strata(int p_length) {
+	SinglyLinkedList<int>::Element *in_pipe   = _in_pipe->get();
+	SinglyLinkedList<int>::Element *base_pipe = _base_pipe->get();
+	SinglyLinkedList<int>::Element *out_pipe  = _out_pipe->get();
 
 	_set_strata_pitch();
 	_osc.set_shape((braids::MacroOscillatorShape)_shape);
 	_osc.set_parameters((int16_t)_timbre, (int16_t)_color);
 
-	const double inv_int16 = 1.0 / 32768.0;
+	// Braids int16 peak = 32768, SiON pipe peak = 1 << LOG_VOLUME_BITS = 8192.
+	// Scale factor = 8192/32768 = 0.25, combined with per-note expression.
+	const double gain = _expression * 0.25;
 
 	int written = 0;
 	while (written < p_length) {
@@ -93,68 +90,36 @@ void SiOPMChannelStrata::buffer(int p_length) {
 		if (chunk > BRAIDS_BLOCK_SIZE) {
 			chunk = BRAIDS_BLOCK_SIZE;
 		}
-		// Braids drum render functions decrement size by 2 per iteration; an odd
-		// size causes unsigned underflow in size_t, producing a runaway write.
-		// Round up to the next even number for Render, but only read `chunk`
-		// samples from the output.
+		// Braids drum shapes decrement size by 2 per iteration; an odd size
+		// causes unsigned underflow in size_t. Round up to the next even number
+		// for Render, but only read `chunk` samples from the output.
 		int render_size = (chunk + 1) & ~1;
 		memset(_sync_buffer, 0, sizeof(_sync_buffer));
 		_osc.Render(_sync_buffer, _render_buffer, (size_t)render_size);
 
 		for (int i = 0; i < chunk; i++) {
-			double s = (double)_render_buffer[i] * inv_int16;
-			_scratch_left[written + i] = s;
-			_scratch_right[written + i] = s;
+			if (_declick_level < _declick_target) {
+				_declick_level = MIN(_declick_level + DECLICK_INCREMENT, _declick_target);
+			} else if (_declick_level > _declick_target) {
+				_declick_level = MAX(_declick_level - DECLICK_INCREMENT, 0.0);
+				if (_declick_level <= 0.0) {
+					_is_idling = true;
+				}
+			}
+
+			int sample = (int)((double)_render_buffer[i] * gain * _declick_level);
+			out_pipe->value = sample + base_pipe->value;
+
+			in_pipe   = in_pipe->next();
+			base_pipe = base_pipe->next();
+			out_pipe  = out_pipe->next();
 		}
 		written += chunk;
 	}
 
-	if (_output_mode == OutputMode::OUTPUT_STANDARD && !_mute) {
-		SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-		if (stream) {
-			const double volume_coef = _expression * _instrument_gain;
-			const bool is_redirected = (_streams[0] != nullptr && _streams[0] != _sound_chip->get_output_stream());
-
-			Vector<double> *buf_ptr = stream->get_buffer_ptr();
-			double *buf = buf_ptr->ptrw();
-			int buf_size = buf_ptr->size();
-
-			double vol = is_redirected ? volume_coef : (_volumes[0] * volume_coef);
-			int offset = _buffer_index * 2;
-
-			for (int i = 0; i < p_length; i++) {
-				int idx = offset + i * 2;
-				if (idx + 1 < buf_size) {
-					buf[idx] += _scratch_left[i] * vol;
-					buf[idx + 1] += _scratch_right[i] * vol;
-				}
-			}
-
-			if (_has_effect_send) {
-				for (int send = 1; send < SiOPMSoundChip::STREAM_SEND_SIZE; send++) {
-					if (_volumes[send] > 0) {
-						SiOPMStream *send_stream = _streams[send] ? _streams[send] : _sound_chip->get_stream_slot(send);
-						if (send_stream) {
-							double send_vol = _volumes[send] * volume_coef;
-							Vector<double> *send_buf_ptr = send_stream->get_buffer_ptr();
-							double *send_buf = send_buf_ptr->ptrw();
-							int send_buf_size = send_buf_ptr->size();
-							int send_offset = _buffer_index * 2;
-							for (int i = 0; i < p_length; i++) {
-								int sidx = send_offset + i * 2;
-								if (sidx + 1 < send_buf_size) {
-									send_buf[sidx] += _scratch_left[i] * send_vol;
-									send_buf[sidx + 1] += _scratch_right[i] * send_vol;
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	_buffer_index += p_length;
+	_in_pipe->set(in_pipe);
+	_base_pipe->set(base_pipe);
+	_out_pipe->set(out_pipe);
 }
 
 void SiOPMChannelStrata::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
@@ -168,19 +133,22 @@ void SiOPMChannelStrata::initialize(SiOPMChannelBase *p_prev, int p_buffer_index
 	_color = 0;
 	_current_pitch = 0;
 	_expression = 1.0;
+	_declick_level = 0.0;
+	_declick_target = 0.0;
 
 	_osc.Init();
 	_osc.set_shape((braids::MacroOscillatorShape)_shape);
 	_osc.set_parameters((int16_t)_timbre, (int16_t)_color);
 
-	_is_idling = true;
-	_is_note_on = false;
+	_process_function = Callable(this, "_process_strata");
 }
 
 void SiOPMChannelStrata::reset() {
 	_osc.Init();
 	_osc.set_shape((braids::MacroOscillatorShape)_shape);
 	_osc.set_parameters((int16_t)_timbre, (int16_t)_color);
+	_declick_level = 0.0;
+	_declick_target = 0.0;
 
 	SiOPMChannelBase::reset();
 }
@@ -196,6 +164,11 @@ String SiOPMChannelStrata::_to_string() const {
 	return "SiOPMChannelStrata: " + params;
 }
 
+void SiOPMChannelStrata::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("_process_strata", "length"), &SiOPMChannelStrata::_process_strata);
+}
+
 SiOPMChannelStrata::SiOPMChannelStrata(SiOPMSoundChip *p_chip) : SiOPMChannelBase(p_chip) {
 	_osc.Init();
+	_process_function = Callable(this, "_process_strata");
 }
