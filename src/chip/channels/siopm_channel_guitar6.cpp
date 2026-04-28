@@ -64,6 +64,9 @@ void SiOPMChannelGuitar6::GuitarString::init(int p_index, double p_sample_rate) 
 
 	char_noise_step = REFERENCE_SAMPLE_RATE / p_sample_rate;
 
+	static constexpr double DC_REJECT_CUTOFF_HZ = 1.0;
+	dc_reject_coef = 1.0 - 2.0 * Math_PI * DC_REJECT_CUTOFF_HZ / p_sample_rate;
+
 	string_noise_gen.seed = 4095;
 	damp_noise_gen.seed = 65535;
 
@@ -112,7 +115,7 @@ void SiOPMChannelGuitar6::GuitarString::process(double *p_left, double *p_right,
 				pending_pluck_count--;
 			} else if (pluck_offset < p_num_samples) {
 				int to_process = pluck_offset - sample_index;
-				process_add(p_left, p_right, sample_index, to_process, p_char_noise, p_char_noise_len);
+				process_add(p_left, p_right, sample_index, to_process);
 				sample_index += to_process;
 			} else {
 				break;
@@ -120,7 +123,7 @@ void SiOPMChannelGuitar6::GuitarString::process(double *p_left, double *p_right,
 		}
 
 		if (sample_index < p_num_samples) {
-			process_add(p_left, p_right, sample_index, p_num_samples - sample_index, p_char_noise, p_char_noise_len);
+			process_add(p_left, p_right, sample_index, p_num_samples - sample_index);
 			sample_index = p_num_samples;
 		}
 	}
@@ -141,11 +144,7 @@ void SiOPMChannelGuitar6::GuitarString::execute_pluck(const PluckEvent &p_pluck,
 		period_n = 2;
 	}
 
-	feed_noise = true;
 	velocity = p_pluck.velocity * 0.25;
-	write_index = -1;
-	char_noise_pos = 0;
-	noise_lp0 = noise_lp1 = 0;
 
 	double normalized_tone = (double)(note - 19) / 44.0;
 	if (normalized_tone < 0.0) {
@@ -158,89 +157,133 @@ void SiOPMChannelGuitar6::GuitarString::execute_pluck(const PluckEvent &p_pluck,
 	double sr_scale = REFERENCE_SAMPLE_RATE / p_sample_rate;
 	double adjusted_scale = sr_scale + (1.0 - sr_scale) * 0.1;
 
-	double base_dc = p_string_damp + pow(normalized_tone, 0.5) * (1.0 - p_string_damp) * 0.5 +
-			(1.0 - p_string_damp) * damp_noise_gen.norm() * p_string_damp_variation;
+	double damp_random = damp_noise_gen.bipolar() * p_string_damp_variation * 0.5;
+	double damp_amount = CLAMP(p_string_damp + damp_random, 0.0, 1.0);
+
+	// Map Damp to a true release-time control (T60), independent of pitch.
+	static constexpr double MIN_T60_SECONDS = 0.2;
+	static constexpr double MAX_T60_SECONDS = 8.0;
+	double decay_t60 = MIN_T60_SECONDS * pow(MAX_T60_SECONDS / MIN_T60_SECONDS, 1.0 - damp_amount);
+
+	// Real strings lose energy slightly faster on higher notes.
+	decay_t60 *= (1.0 - normalized_tone * 0.25);
+	if (decay_t60 < MIN_T60_SECONDS) {
+		decay_t60 = MIN_T60_SECONDS;
+	}
+	double cycles_to_t60 = MAX(freq * decay_t60, 1.0);
+	loop_gain = pow(0.001, 1.0 / cycles_to_t60);
+	loop_gain = CLAMP(loop_gain, 0.6, 0.99995);
+
+	// Keep damp coupled to tone darkening in the loop.
+	double base_dc = 0.12 + (1.0 - damp_amount) * 0.86;
 	dc = 1.0 - pow(1.0 - base_dc, adjusted_scale);
+	dc = CLAMP(dc, 0.02, 1.0);
 
 	double min_damp = 0.1;
 	double max_damp = 0.9;
 	double v0 = p_plug_damp_param - (p_plug_damp_param - min_damp) * p_plug_damp_variation;
 	double v1 = p_plug_damp_param + (max_damp - p_plug_damp_param) * p_plug_damp_variation;
 	double base_plug_damp = v0 + damp_noise_gen.norm() * (v1 - v0);
-	plug_damp = 1.0 - pow(1.0 - base_plug_damp, adjusted_scale);
+	double plug_damp = 1.0 - pow(1.0 - base_plug_damp, adjusted_scale);
 
-	char_variation = p_character_variation;
 	read_offset = p_string_tension * (period_n - 1);
 
 	double pan = p_stereo_spread * pre_pan;
 	gain_l = (1.0 - pan) * 0.5;
 	gain_r = (pan + 1.0) * 0.5;
+
+	// Fill delay buffer with shaped excitation (one-shot).
+	double noise_lp0 = 0.0;
+	double noise_lp1 = 0.0;
+	double char_noise_pos = 0.0;
+	double pluck_state = 0.0;
+
+	for (int i = 0; i < period_n; i++) {
+		int char_idx = (int)floor(char_noise_pos);
+		double char_frac = char_noise_pos - (double)char_idx;
+		int idx0 = char_idx % p_char_noise_len;
+		int idx1 = (char_idx + 1) % p_char_noise_len;
+		double char_sample = p_char_noise[idx0] + (p_char_noise[idx1] - p_char_noise[idx0]) * char_frac;
+		char_noise_pos += char_noise_step;
+
+		double raw_noise = (char_sample * (1.0 - p_character_variation) +
+				string_noise_gen.bipolar() * p_character_variation) * velocity * noise_gain_compensation;
+
+		noise_lp0 += (raw_noise - noise_lp0) * noise_lp_coef;
+		noise_lp1 += (noise_lp0 - noise_lp1) * noise_lp_coef;
+
+		pluck_state += (noise_lp1 - pluck_state) * plug_damp;
+		delay[i] = pluck_state;
+	}
+
+	// Remove DC offset so the initial string state has zero mean.
+	double mean = 0.0;
+	for (int i = 0; i < period_n; i++) {
+		mean += delay[i];
+	}
+	mean /= (double)period_n;
+	for (int i = 0; i < period_n; i++) {
+		delay[i] -= mean;
+	}
+
+	// Reset loop filter state for a clean feedback path.
+	df = 0.0;
+	dc_x1 = 0.0;
+	dc_y1 = 0.0;
+	write_index = 0;
 }
 
-void SiOPMChannelGuitar6::GuitarString::process_add(double *p_left, double *p_right, int p_start, int p_count,
-		const double *p_char_noise, int p_char_noise_len) {
+void SiOPMChannelGuitar6::GuitarString::process_add(double *p_left, double *p_right, int p_start, int p_count) {
 	if (period_n == -1) {
 		return;
 	}
 
 	for (int i = 0; i < p_count; i++) {
+		double r_num = write_index + read_offset;
+		if (r_num >= period_n) {
+			r_num -= period_n;
+		}
+
+		int r_int0 = (int)floor(r_num);
+		int r_int1 = r_int0 + 1;
+		if (r_int1 >= period_n) {
+			r_int1 = 0;
+		}
+
+		double r_alp = r_num - (double)r_int0;
+		double x = delay[r_int0] * (1.0 - r_alp) + delay[r_int1] * r_alp;
+
+		// Loop low-pass filter (string damping).
+		df += (x - df) * dc;
+
+		// DC rejection in the feedback loop — prevents DC/subsonic modes
+		// from being valid resonances of the synthetic string.
+		double dc_out = df - dc_x1 + dc_reject_coef * dc_y1;
+		dc_x1 = df;
+		dc_y1 = dc_out;
+
+		double y = dc_out * loop_gain;
+
+		delay[write_index] = y;
+
+		int idx = p_start + i;
+		p_left[idx] += y * gain_l;
+		p_right[idx] += y * gain_r;
+
 		write_index++;
 		if (write_index >= period_n) {
 			write_index = 0;
-			feed_noise = false;
 		}
-
-		if (feed_noise) {
-			int char_idx = (int)floor(char_noise_pos);
-			double char_frac = char_noise_pos - (double)char_idx;
-			int idx0 = char_idx % p_char_noise_len;
-			int idx1 = (char_idx + 1) % p_char_noise_len;
-			double char_sample = p_char_noise[idx0] + (p_char_noise[idx1] - p_char_noise[idx0]) * char_frac;
-			char_noise_pos += char_noise_step;
-
-			double raw_noise = (char_sample * (1.0 - char_variation) +
-					string_noise_gen.bipolar() * char_variation) * velocity * noise_gain_compensation;
-
-			noise_lp0 += (raw_noise - noise_lp0) * noise_lp_coef;
-			noise_lp1 += (noise_lp0 - noise_lp1) * noise_lp_coef;
-			af += (noise_lp1 - af) * plug_damp;
-		} else {
-			double r_num = write_index + read_offset;
-			if (r_num < 0) {
-				r_num += period_n;
-			}
-			int r_int0 = (int)floor(r_num);
-			int r_int1 = r_int0 + 1;
-			double r_alp = r_num - (double)r_int0;
-
-			if (r_int0 >= period_n) {
-				r_int0 -= period_n;
-			}
-			if (r_int1 >= period_n) {
-				r_int1 -= period_n;
-			}
-
-			af = delay[r_int0] * (1.0 - r_alp) + delay[r_int1] * r_alp;
-		}
-
-		dr = 0;
-		dr += (af - df) * dc;
-		df += dr;
-		delay[write_index] = df;
-
-		int idx = p_start + i;
-		p_left[idx] += df * gain_l;
-		p_right[idx] += df * gain_r;
 	}
 }
 
 void SiOPMChannelGuitar6::GuitarString::reset_state() {
 	memset(delay, 0, sizeof(delay));
-	write_index = -1;
+	write_index = 0;
 	period_n = -1;
-	af = df = dr = 0;
-	noise_lp0 = noise_lp1 = 0;
-	char_noise_pos = 0;
+	df = 0;
+	dc_x1 = dc_y1 = 0;
+	loop_gain = 0.9992;
 	pending_pluck_count = 0;
 }
 
@@ -328,27 +371,23 @@ void SiOPMChannelGuitar6::reset_channel_buffer_status() {
 	_buffer_index = 0;
 	_is_idling = true;
 
+	static constexpr double IDLE_RMS_THRESHOLD = 0.0001;
+
 	for (int s = 0; s < NUM_STRINGS; s++) {
-		if (_strings[s].period_n != -1) {
-			bool has_energy = false;
-			if (fabs(_strings[s].df) > 0.0001) {
-				has_energy = true;
-			}
-			if (!has_energy) {
-				for (int j = 0; j < _strings[s].period_n && !has_energy; j++) {
-					if (fabs(_strings[s].delay[j]) > 0.0001) {
-						has_energy = true;
-					}
-				}
-			}
-			if (has_energy) {
-				_is_idling = false;
-				return;
-			}
-		}
 		if (_strings[s].pending_pluck_count > 0) {
 			_is_idling = false;
 			return;
+		}
+		if (_strings[s].period_n != -1) {
+			double sum_sq = 0.0;
+			for (int j = 0; j < _strings[s].period_n; j++) {
+				sum_sq += _strings[s].delay[j] * _strings[s].delay[j];
+			}
+			double rms = sqrt(sum_sq / (double)_strings[s].period_n);
+			if (rms > IDLE_RMS_THRESHOLD) {
+				_is_idling = false;
+				return;
+			}
 		}
 	}
 }
@@ -390,7 +429,10 @@ void SiOPMChannelGuitar6::buffer(int p_length) {
 	if (_output_mode == OutputMode::OUTPUT_STANDARD && !_mute) {
 		SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
 		if (stream) {
-			const double volume_coef = _expression * _instrument_gain;
+			// Guitar6 excites one string per note and is naturally lower than
+			// int-pipe FM/KS channels; apply fixed make-up gain for parity.
+			static constexpr double OUTPUT_MAKEUP_GAIN = 3.0;
+			const double volume_coef = _expression * _instrument_gain * OUTPUT_MAKEUP_GAIN;
 			const bool is_redirected = (_streams[0] != nullptr && _streams[0] != _sound_chip->get_output_stream());
 
 			Vector<double> *buf_ptr = stream->get_buffer_ptr();

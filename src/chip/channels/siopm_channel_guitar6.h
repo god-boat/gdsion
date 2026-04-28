@@ -58,19 +58,18 @@ class SiOPMChannelGuitar6 : public SiOPMChannelBase {
 		NoiseGen string_noise_gen;
 		NoiseGen damp_noise_gen;
 
-		double af = 0;
 		double df = 0;
-		double dr = 0;
+		double dc_x1 = 0;
+		double dc_y1 = 0;
+		double dc_reject_coef = 0.9999;
 
 		double velocity = 0;
-		int write_index = -1;
-		bool feed_noise = false;
-		double char_variation = 0;
+		int write_index = 0;
 		double pre_pan = 0;
 		double read_offset = 0;
-		double plug_damp = 0;
 		int period_n = -1;
 		double dc = 0;
+		double loop_gain = 0.9992;
 		double gain_l = 0;
 		double gain_r = 0;
 		int semitone = 0;
@@ -78,9 +77,6 @@ class SiOPMChannelGuitar6 : public SiOPMChannelBase {
 		double noise_lp_coef = 0;
 		double noise_gain_compensation = 1.0;
 		double char_noise_step = 1.0;
-		double noise_lp0 = 0;
-		double noise_lp1 = 0;
-		double char_noise_pos = 0;
 
 		PluckEvent pending_plucks[MAX_PENDING_PLUCKS];
 		int pending_pluck_count = 0;
@@ -99,8 +95,7 @@ class SiOPMChannelGuitar6 : public SiOPMChannelBase {
 				double p_character_variation, double p_string_damp, double p_string_damp_variation,
 				double p_plug_damp_param, double p_plug_damp_variation, double p_string_tension,
 				double p_stereo_spread, double p_sample_rate);
-		void process_add(double *p_left, double *p_right, int p_start, int p_count,
-				const double *p_char_noise, int p_char_noise_len);
+		void process_add(double *p_left, double *p_right, int p_start, int p_count);
 	};
 
 	// --- Body resonator ---
