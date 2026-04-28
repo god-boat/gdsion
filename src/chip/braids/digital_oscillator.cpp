@@ -2300,14 +2300,14 @@ void DigitalOscillator::Render808(
   pulse_[2].set_decay(static_cast<uint16_t>(pitch_decay));
 
   // Body -> body low-pass openness: dark at 0, open at max.
-  int32_t body_lp_coeff = 200 + (body * 600 >> 15);
+  int32_t body_lp_coeff = 300 + (body * 1200 >> 15) + (heat * 1000 >> 15);
 
   // Heat -> drive amount (quadratic for musical taper).
   int32_t heat_sq = heat * heat >> 15;
   int32_t drive_gain = 4096 + (heat_sq * 28672 >> 15);
 
   // Heat -> even-order asymmetry bias.
-  int32_t asym_bias = heat * 2048 >> 15;
+  int32_t asym_bias = heat_sq * 6144 >> 15;
 
   // Heat -> harmonic layer mix.
   int32_t harmonic_gain = heat * 26214 >> 15;
