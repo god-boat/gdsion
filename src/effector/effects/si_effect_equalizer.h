@@ -64,7 +64,7 @@ protected:
 	static void _bind_methods();
 
 public:
-	void set_params(double p_low_gain = 1, double p_mid_gain = 1, double p_high_gain = 1, double p_low_frequency = 880, double p_high_frequency = 5000);
+	void set_params(double p_low_gain = 1, double p_mid_gain = 1, double p_high_gain = 1, double p_low_frequency = 880, double p_high_frequency = 5000, double p_gain_scale = 1);
 
 	//
 
@@ -74,7 +74,7 @@ public:
 	virtual void set_by_mml(Vector<double> p_args) override;
 	virtual void reset() override;
 
-	SiEffectEqualizer(double p_low_gain = 1, double p_mid_gain = 1, double p_high_gain = 1, double p_low_frequency = 880, double p_high_frequency = 5000);
+	SiEffectEqualizer(double p_low_gain = 1, double p_mid_gain = 1, double p_high_gain = 1, double p_low_frequency = 880, double p_high_frequency = 5000, double p_gain_scale = 1);
 	~SiEffectEqualizer() {}
 };
 

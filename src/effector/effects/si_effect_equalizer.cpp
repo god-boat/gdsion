@@ -6,10 +6,10 @@
 
 #include "si_effect_equalizer.h"
 
-void SiEffectEqualizer::set_params(double p_low_gain, double p_mid_gain, double p_high_gain, double p_low_frequency, double p_high_frequency) {
-	_low_gain = p_low_gain;
-	_mid_gain = p_mid_gain;
-	_high_gain = p_high_gain;
+void SiEffectEqualizer::set_params(double p_low_gain, double p_mid_gain, double p_high_gain, double p_low_frequency, double p_high_frequency, double p_gain_scale) {
+	_low_gain = p_low_gain * p_gain_scale;
+	_mid_gain = p_mid_gain * p_gain_scale;
+	_high_gain = p_high_gain * p_gain_scale;
 
 	double low_omega = _get_angular_frequency(p_low_frequency) * 0.5;
 	double high_omega = _get_angular_frequency(p_high_frequency) * 0.5;
@@ -80,13 +80,14 @@ int SiEffectEqualizer::process(int p_channels, Vector<double> *r_buffer, int p_s
 }
 
 void SiEffectEqualizer::set_by_mml(Vector<double> p_args) {
+	double gain_scale    = _get_mml_arg(p_args, 5, 1);
 	double low_gain       = _get_mml_arg(p_args, 0, 100) / 100.0;
 	double mid_gain       = _get_mml_arg(p_args, 1, 100) / 100.0;
 	double high_gain      = _get_mml_arg(p_args, 2, 100) / 100.0;
 	double low_frequency  = _get_mml_arg(p_args, 3, 880);
 	double high_frequency = _get_mml_arg(p_args, 4, 5000);
 
-	set_params(low_gain, mid_gain, high_gain, low_frequency, high_frequency);
+	set_params(low_gain, mid_gain, high_gain, low_frequency, high_frequency, gain_scale);
 }
 
 void SiEffectEqualizer::reset() {
@@ -94,10 +95,10 @@ void SiEffectEqualizer::reset() {
 }
 
 void SiEffectEqualizer::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("set_params", "low_gain", "mid_gain", "high_gain", "low_frequency", "high_frequency"), &SiEffectEqualizer::set_params, DEFVAL(1), DEFVAL(1), DEFVAL(1), DEFVAL(880), DEFVAL(5000));
+	ClassDB::bind_method(D_METHOD("set_params", "low_gain", "mid_gain", "high_gain", "low_frequency", "high_frequency", "gain_scale"), &SiEffectEqualizer::set_params, DEFVAL(1), DEFVAL(1), DEFVAL(1), DEFVAL(880), DEFVAL(5000), DEFVAL(1));
 }
 
-SiEffectEqualizer::SiEffectEqualizer(double p_low_gain, double p_mid_gain, double p_high_gain, double p_low_frequency, double p_high_frequency) :
+SiEffectEqualizer::SiEffectEqualizer(double p_low_gain, double p_mid_gain, double p_high_gain, double p_low_frequency, double p_high_frequency, double p_gain_scale) :
 		SiEffectBase() {
-	set_params(p_low_gain, p_mid_gain, p_high_gain, p_low_frequency, p_high_frequency);
+	set_params(p_low_gain, p_mid_gain, p_high_gain, p_low_frequency, p_high_frequency, p_gain_scale);
 }
