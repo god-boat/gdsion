@@ -210,11 +210,10 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 	}
 
 
-	// Default voice scope stamping: use this voice's instance ID.
-	// This provides scope isolation for direct engine calls (fallback behavior).
-	// GDScript Voice wrappers override this with their own instance ID for
-	// finer-grained control (e.g., per-pad isolation in multi-sample instruments).
-	p_track->set_voice_scope_id((int64_t)get_instance_id());
+	// Default entity scope stamping: use this voice's instance ID as a
+	// transitional default. Main-thread slot stamping (Phase C) overwrites
+	// this with the pre-interned entity_scope_id before scoped dispatch.
+	p_track->set_entity_scope_id((int64_t)get_instance_id());
 }
 
 Ref<SiMMLVoice> SiMMLVoice::create_blank_pcm_voice(int p_channel_num) {

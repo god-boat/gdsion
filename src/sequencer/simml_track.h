@@ -76,8 +76,35 @@ private:
 	// This value is unique and set by system, the lower numbered track processes sound first.
 	int _track_number = 0;
 	int _channel_number = 0;
-	// Stamped with the ObjectID of the last voice applied to this track; used to scope RT updates
-	int64_t _voice_scope_id = -1;
+	// Exact resolved entity token stamped by main-thread slot stamping.
+	// Used by the audio-thread mailbox drain to scope realtime updates to
+	// one resolved leaf entity. Default -1 means unscoped.
+	int64_t _entity_scope_id = -1;
+	// Exact live note-instance token, unique across overlapping notes on the
+	// same resolved entity. Default -1 means unscoped.
+	int64_t _slot_scope_id = -1;
+
+public:
+	// Per-track cached filter state for merging partial mailbox updates.
+	// Embedded directly so scoped updates never bleed between sibling
+	// entities or sibling slots that share the same logical track_id.
+	struct FilterState {
+		bool initialized = false;
+		int type = 0;
+		int cutoff = 128;
+		int resonance = 0;
+		int ar = 0;
+		int dr1 = 0;
+		int dr2 = 0;
+		int rr = 0;
+		int dc1 = 128;
+		int dc2 = 64;
+		int sc = 32;
+		int rc = 128;
+	};
+
+private:
+	FilterState _filter_state;
 
 	int _process_mode = ProcessMode::NORMAL;
 	int _track_start_delay = 0;
@@ -259,9 +286,18 @@ public:
 	// Channel number, set by 2nd argument of % command. Usually same as voice index / program number (except for APU).
 	int get_channel_number() const { return _channel_number; }
 	void set_channel_number(int p_number) { _channel_number = p_number; }
-	// Voice scope helper for RT mailbox scoping
-	int64_t get_voice_scope_id() const { return _voice_scope_id; }
-	void set_voice_scope_id(int64_t p_id) { _voice_scope_id = p_id; }
+	// Exact resolved entity token for scoped mailbox dispatch.
+	int64_t get_entity_scope_id() const { return _entity_scope_id; }
+	void set_entity_scope_id(int64_t p_id) { _entity_scope_id = p_id; }
+	// Exact live note-instance token for per-slot mailbox dispatch.
+	int64_t get_slot_scope_id() const { return _slot_scope_id; }
+	void set_slot_scope_id(int64_t p_id) { _slot_scope_id = p_id; }
+	// Temporary compatibility aliases while call sites migrate.
+	int64_t get_voice_scope_id() const { return _entity_scope_id; }
+	void set_voice_scope_id(int64_t p_id) { _entity_scope_id = p_id; }
+
+	// Per-track filter state access for the mailbox drain.
+	FilterState &get_filter_state() { return _filter_state; }
 	// Program number, set by 2nd argument of % command and 1st arg. of &#64; command. Usually same as channel number (except for APU).
 	int get_program_number() const { return _voice_index; }
 

@@ -1065,6 +1065,10 @@ void SiMMLTrack::reset(int p_buffer_index) {
 		_expression_mode = SiOPMRefTable::VM_LINEAR;
 	}
 
+	_entity_scope_id = -1;
+	_slot_scope_id = -1;
+	_filter_state = FilterState();
+
 	_velocity = 256;
 	_expression = 128;
 	_pitch_bend = 0;
@@ -1176,7 +1180,12 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_channel"), &SiMMLTrack::get_channel);
 	ClassDB::bind_method(D_METHOD("get_program_number"), &SiMMLTrack::get_program_number);
 	
-	// Voice scope for pad-scoped mailbox updates
+	// Scope tokens for exact-target mailbox dispatch.
+	ClassDB::bind_method(D_METHOD("get_entity_scope_id"), &SiMMLTrack::get_entity_scope_id);
+	ClassDB::bind_method(D_METHOD("set_entity_scope_id", "id"), &SiMMLTrack::set_entity_scope_id);
+	ClassDB::bind_method(D_METHOD("get_slot_scope_id"), &SiMMLTrack::get_slot_scope_id);
+	ClassDB::bind_method(D_METHOD("set_slot_scope_id", "id"), &SiMMLTrack::set_slot_scope_id);
+	// Temporary compat aliases (retire once all callers use entity_scope_id).
 	ClassDB::bind_method(D_METHOD("get_voice_scope_id"), &SiMMLTrack::get_voice_scope_id);
 	ClassDB::bind_method(D_METHOD("set_voice_scope_id", "id"), &SiMMLTrack::set_voice_scope_id);
 
