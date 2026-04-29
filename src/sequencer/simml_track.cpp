@@ -1185,9 +1185,6 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_entity_scope_id", "id"), &SiMMLTrack::set_entity_scope_id);
 	ClassDB::bind_method(D_METHOD("get_slot_scope_id"), &SiMMLTrack::get_slot_scope_id);
 	ClassDB::bind_method(D_METHOD("set_slot_scope_id", "id"), &SiMMLTrack::set_slot_scope_id);
-	// Temporary compat aliases (retire once all callers use entity_scope_id).
-	ClassDB::bind_method(D_METHOD("get_voice_scope_id"), &SiMMLTrack::get_voice_scope_id);
-	ClassDB::bind_method(D_METHOD("set_voice_scope_id", "id"), &SiMMLTrack::set_voice_scope_id);
 
 	// Track lifetime
 	ClassDB::bind_method(D_METHOD("set_disposable"), &SiMMLTrack::set_disposable);

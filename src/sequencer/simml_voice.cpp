@@ -208,12 +208,6 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 		p_track->set_pitch_envelope(0, note_off_pitch_envelope, note_off_pitch_envelope_step);
 		p_track->set_note_envelope(0, note_off_note_envelope, note_off_note_envelope_step);
 	}
-
-
-	// Default entity scope stamping: use this voice's instance ID as a
-	// transitional default. Main-thread slot stamping (Phase C) overwrites
-	// this with the pre-interned entity_scope_id before scoped dispatch.
-	p_track->set_entity_scope_id((int64_t)get_instance_id());
 }
 
 Ref<SiMMLVoice> SiMMLVoice::create_blank_pcm_voice(int p_channel_num) {

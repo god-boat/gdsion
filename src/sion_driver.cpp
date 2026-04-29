@@ -1428,7 +1428,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("track_effects_set_bypass", "track_id", "index", "bypassed"), &SiONDriver::track_effects_set_bypass);
 	ClassDB::bind_method(D_METHOD("track_effects_set_mute", "track_id", "mute"), &SiONDriver::track_effects_set_mute);
 
-	// Mailbox bindings (entity_scope_id + slot_scope_id replace old voice_scope_id)
+	// Mailbox bindings
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_volume", "track_id", "linear_volume", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_track_volume, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_instrument_gain_db", "track_id", "db", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_track_instrument_gain_db, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_pan", "track_id", "pan", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_track_pan, DEFVAL(-1), DEFVAL(-1));

@@ -292,9 +292,6 @@ public:
 	// Exact live note-instance token for per-slot mailbox dispatch.
 	int64_t get_slot_scope_id() const { return _slot_scope_id; }
 	void set_slot_scope_id(int64_t p_id) { _slot_scope_id = p_id; }
-	// Temporary compatibility aliases while call sites migrate.
-	int64_t get_voice_scope_id() const { return _entity_scope_id; }
-	void set_voice_scope_id(int64_t p_id) { _entity_scope_id = p_id; }
 
 	// Per-track filter state access for the mailbox drain.
 	FilterState &get_filter_state() { return _filter_state; }
