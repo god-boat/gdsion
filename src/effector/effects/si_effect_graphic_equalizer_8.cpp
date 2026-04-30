@@ -12,6 +12,11 @@ const double SiEffectGraphicEqualizer8::DEFAULT_FREQS[NUM_BANDS] = {
 	32.0, 64.0, 125.0, 250.0, 500.0, 1000.0, 4000.0, 8000.0
 };
 
+//  todo: One concern, not a bug: linearly interpolating biquad coefficients across a type change 
+// (e.g., PEAK → LOW_PASS in one block) traverses through coefficient sets that aren't 
+// a valid filter of any type — the transient block can briefly be unstable. 
+// After the block, current = target and stability is restored.
+
 // --- Internal helpers ---
 
 void SiEffectGraphicEqualizer8::_recompute_band(int p_band) {
