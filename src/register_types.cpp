@@ -50,6 +50,7 @@
 #include "effector/effects/si_effect_wave_shaper.h"
 #include "effector/effects/si_effect_mb_compressor.h"
 #include "effector/effects/si_effect_linkwitz_riley_filter.h"
+#include "effector/effects/si_effect_graphic_equalizer_8.h"
 #include "effector/filters/si_controllable_filter_base.h"
 #include "effector/filters/si_controllable_filter_high_pass.h"
 #include "effector/filters/si_controllable_filter_low_pass.h"
@@ -152,6 +153,7 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 		ClassDB::register_class<SiEffectWaveShaper>();
 		ClassDB::register_class<SiEffectMultibandCompressor>();
 		ClassDB::register_class<SiEffectLinkwitzRileyFilter>();
+		ClassDB::register_class<SiEffectGraphicEqualizer8>();
 		ClassDB::register_class<SiFilterAllPass>();
 		ClassDB::register_class<SiFilterBandPass>();
 		ClassDB::register_class<SiFilterHighBoost>();

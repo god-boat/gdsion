@@ -221,7 +221,7 @@ void SiEffectStream::_set_postfix_param(int p_slot, String p_cmd, Vector<double>
 }
 
 void SiEffectStream::parse_mml(int p_slot, String p_mml, String p_postfix) {
-	const int max_argc = 16;
+	const int max_argc = 48;
 
 	// SUS: Slot number is only used to set postfix params, but not the effect itself.
 	// It is possible that the given slot number is incorrect and thus the effect is

@@ -89,7 +89,7 @@ private:
 	};
 
 	static const int TIME_AVERAGING_COUNT = 8;
-	static const int TRACK_EFFECT_ARG_MAX = 32;
+	static const int TRACK_EFFECT_ARG_MAX = 48;
 
 	// Single unique instance.
 	static SiONDriver *_mutex;
