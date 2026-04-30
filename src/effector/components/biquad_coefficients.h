@@ -25,6 +25,14 @@ enum BiquadFilterType {
 struct BiquadCoeffs {
 	double b0 = 1.0, b1 = 0.0, b2 = 0.0;
 	double a1 = 0.0, a2 = 0.0;
+
+	inline bool approx_equal(const BiquadCoeffs &p_other, double p_epsilon = 1e-12) const {
+		return ::fabs(b0 - p_other.b0) <= p_epsilon &&
+				::fabs(b1 - p_other.b1) <= p_epsilon &&
+				::fabs(b2 - p_other.b2) <= p_epsilon &&
+				::fabs(a1 - p_other.a1) <= p_epsilon &&
+				::fabs(a2 - p_other.a2) <= p_epsilon;
+	}
 };
 
 // Compute normalized biquad coefficients for all supported filter types.

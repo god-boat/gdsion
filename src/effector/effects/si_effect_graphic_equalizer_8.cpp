@@ -21,26 +21,46 @@ const double SiEffectGraphicEqualizer8::DEFAULT_FREQS[NUM_BANDS] = {
 
 void SiEffectGraphicEqualizer8::_recompute_band(int p_band) {
 	Band &b = _bands[p_band];
+	BiquadCoeffs new_target;
 	if (!b.enabled) {
-		b.target = BiquadCoeffs{ 1.0, 0.0, 0.0, 0.0, 0.0 };
+		new_target = BiquadCoeffs{ 1.0, 0.0, 0.0, 0.0, 0.0 };
 	} else {
-		b.target = compute_biquad_coefficients(b.type, b.freq_hz, b.q, b.gain_db, _get_sampling_rate());
+		new_target = compute_biquad_coefficients(b.type, b.freq_hz, b.q, b.gain_db, _get_sampling_rate());
 	}
 	if (!_initialized) {
-		b.current = b.target;
+		b.target = new_target;
+		b.current = new_target;
 		b.dirty = false;
 	} else {
+		if (new_target.approx_equal(b.current)) {
+			b.target = new_target;
+			return;
+		}
+		b.target = new_target;
 		b.dirty = true;
 	}
 }
 
 void SiEffectGraphicEqualizer8::_apply_band_params(int p_band, int p_type, bool p_enabled, double p_freq_hz, double p_gain_db, double p_q) {
 	Band &b = _bands[p_band];
-	b.type = CLAMP(p_type, 0, (int)(FILTER_TYPE_MAX - 1));
+	int clamped_type = CLAMP(p_type, 0, (int)(FILTER_TYPE_MAX - 1));
+	double clamped_freq = MAX(p_freq_hz, 10.0);
+	double clamped_q = MAX(p_q, 0.01);
+
+	if (_initialized &&
+			b.type == clamped_type &&
+			b.enabled == p_enabled &&
+			b.freq_hz == clamped_freq &&
+			b.gain_db == p_gain_db &&
+			b.q == clamped_q) {
+		return;
+	}
+
+	b.type = clamped_type;
 	b.enabled = p_enabled;
-	b.freq_hz = MAX(p_freq_hz, 10.0);
+	b.freq_hz = clamped_freq;
 	b.gain_db = p_gain_db;
-	b.q = MAX(p_q, 0.01);
+	b.q = clamped_q;
 	_recompute_band(p_band);
 }
 
@@ -76,11 +96,17 @@ void SiEffectGraphicEqualizer8::set_band_params(int p_band, int p_type, bool p_e
 }
 
 void SiEffectGraphicEqualizer8::set_output_gain_db(double p_gain_db) {
-	_target_output_gain = Math::pow(10.0, CLAMP(p_gain_db, -60.0, 24.0) / 20.0);
+	double new_target = Math::pow(10.0, CLAMP(p_gain_db, -60.0, 24.0) / 20.0);
 	if (!_initialized) {
-		_output_gain = _target_output_gain;
+		_target_output_gain = new_target;
+		_output_gain = new_target;
 		_output_gain_dirty = false;
 	} else {
+		if (::fabs(new_target - _output_gain) < 1e-12) {
+			_target_output_gain = new_target;
+			return;
+		}
+		_target_output_gain = new_target;
 		_output_gain_dirty = true;
 	}
 }
