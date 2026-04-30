@@ -2909,7 +2909,7 @@ void SiONDriver::mailbox_track_effects_set_effect_args(int p_track_id, int p_ind
 	u.has_fx_args = true;
 	u.fx_index = p_index;
 	Vector<double> args = _args_from_variant(p_args);
-	u.fx_argc = MIN(16, args.size());
+	u.fx_argc = MIN(SiONDriver::TRACK_EFFECT_ARG_MAX, args.size());
 	for (int i = 0; i < u.fx_argc; i++) {
 		u.fx_args[i] = args[i];
 	}
@@ -2957,7 +2957,7 @@ void SiONDriver::mailbox_track_effects_set_chain(int p_track_id, const Array &p_
 		strncpy(u.fx_chain_effect_type[count], cs.get_data(), sizeof(u.fx_chain_effect_type[count]) - 1);
 
 		Vector<double> args = _args_from_variant(slot_dict.get("args", Variant()));
-		u.fx_chain_argc[count] = MIN(16, args.size());
+		u.fx_chain_argc[count] = MIN(SiONDriver::TRACK_EFFECT_ARG_MAX, args.size());
 		for (int a = 0; a < u.fx_chain_argc[count]; a++) {
 			u.fx_chain_args[count][a] = args[a];
 		}
@@ -2986,7 +2986,7 @@ void SiONDriver::mailbox_track_effects_insert_effect(int p_track_id, const Dicti
 	strncpy(u.fx_effect_type, cs.get_data(), sizeof(u.fx_effect_type) - 1);
 
 	Vector<double> args = _args_from_variant(p_slot.get("args", Variant()));
-	u.fx_argc = MIN(16, args.size());
+	u.fx_argc = MIN(SiONDriver::TRACK_EFFECT_ARG_MAX, args.size());
 	for (int i = 0; i < u.fx_argc; i++) {
 		u.fx_args[i] = args[i];
 	}
@@ -3704,4 +3704,3 @@ void SiONDriver::track_effects_set_mute(int p_track_id, bool p_mute) {
 		stream->set_mute(p_mute);
 	}
 }
-

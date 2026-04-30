@@ -89,6 +89,7 @@ private:
 	};
 
 	static const int TIME_AVERAGING_COUNT = 8;
+	static const int TRACK_EFFECT_ARG_MAX = 32;
 
 	// Single unique instance.
 	static SiONDriver *_mutex;
@@ -549,7 +550,7 @@ private:
 		int fx_index = 0;
 		int fx_index_b = 0;
 		int fx_argc = 0;
-		double fx_args[16] = { 0.0 };
+		double fx_args[TRACK_EFFECT_ARG_MAX] = { 0.0 };
 		bool fx_bypassed = false;
 		char fx_effect_type[32] = { 0 };
 
@@ -557,7 +558,7 @@ private:
 		int fx_chain_count = 0;
 		char fx_chain_effect_type[4][32] = { { 0 } };
 		int fx_chain_argc[4] = { 0, 0, 0, 0 };
-		double fx_chain_args[4][16] = { { 0.0 } };
+		double fx_chain_args[4][TRACK_EFFECT_ARG_MAX] = { { 0.0 } };
 		bool fx_chain_bypassed[4] = { false, false, false, false };
 	};
 
