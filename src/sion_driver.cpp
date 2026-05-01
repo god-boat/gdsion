@@ -2958,7 +2958,7 @@ void SiONDriver::mailbox_track_effects_set_chain(int p_track_id, const Array &p_
 	u.fx_op = _TrackUpdate::FX_OP_SET_CHAIN;
 
 	int count = 0;
-	for (int i = 0; i < p_slots.size() && count < 4; i++) {
+	for (int i = 0; i < p_slots.size() && count < TRACK_EFFECT_CHAIN_MAX; i++) {
 		Variant slot_variant = p_slots[i];
 		if (slot_variant.get_type() != Variant::DICTIONARY) {
 			continue;

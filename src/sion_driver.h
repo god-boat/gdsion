@@ -90,6 +90,7 @@ private:
 
 	static const int TIME_AVERAGING_COUNT = 8;
 	static const int TRACK_EFFECT_ARG_MAX = 48;
+	static const int TRACK_EFFECT_CHAIN_MAX = 8;
 
 	// Single unique instance.
 	static SiONDriver *_mutex;
@@ -554,12 +555,12 @@ private:
 		bool fx_bypassed = false;
 		char fx_effect_type[32] = { 0 };
 
-		// Chain payload (max 4 slots; Poolie caps FX slots per track to 4).
+		// Chain payload cap for mailbox snapshots. The SiEffectStream itself is vector-backed.
 		int fx_chain_count = 0;
-		char fx_chain_effect_type[4][32] = { { 0 } };
-		int fx_chain_argc[4] = { 0, 0, 0, 0 };
-		double fx_chain_args[4][TRACK_EFFECT_ARG_MAX] = { { 0.0 } };
-		bool fx_chain_bypassed[4] = { false, false, false, false };
+		char fx_chain_effect_type[TRACK_EFFECT_CHAIN_MAX][32] = { { 0 } };
+		int fx_chain_argc[TRACK_EFFECT_CHAIN_MAX] = { 0 };
+		double fx_chain_args[TRACK_EFFECT_CHAIN_MAX][TRACK_EFFECT_ARG_MAX] = { { 0.0 } };
+		bool fx_chain_bypassed[TRACK_EFFECT_CHAIN_MAX] = { false };
 	};
 
 	static const int _MB_CAPACITY = 1024; // power of two for cheap wrap
