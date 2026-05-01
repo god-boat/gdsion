@@ -432,6 +432,7 @@ bool SiONDriver::_rendering() {
 
 	// Processing.
 	_drain_track_mailbox();
+	_drain_fx_arg_mailbox();
 	sound_chip->begin_process();
 	effector->begin_process();
 	sequencer->process();
@@ -1516,6 +1517,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_track_effects_remove_effect", "track_id", "index"), &SiONDriver::mailbox_track_effects_remove_effect);
 	ClassDB::bind_method(D_METHOD("mailbox_track_effects_swap_effects", "track_id", "index_a", "index_b"), &SiONDriver::mailbox_track_effects_swap_effects);
 	ClassDB::bind_method(D_METHOD("mailbox_track_effects_set_effect_args", "track_id", "index", "args"), &SiONDriver::mailbox_track_effects_set_effect_args);
+	ClassDB::bind_method(D_METHOD("mailbox_track_effects_set_effect_arg", "track_id", "fx_index", "arg_index", "value"), &SiONDriver::mailbox_track_effects_set_effect_arg);
 	ClassDB::bind_method(D_METHOD("mailbox_track_effects_set_bypass", "track_id", "index", "bypassed"), &SiONDriver::mailbox_track_effects_set_bypass);
 
 	// User-controllable track API
@@ -1889,6 +1891,7 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 	// Snapshot queued track updates once per audio callback so note/control
 	// changes land on the next callback boundary instead of mid-buffer.
 	_drain_track_mailbox();
+	_drain_fx_arg_mailbox();
 
 	int frames_generated = 0;
 	const int block = _buffer_length; // internal SiON processing block (in frames)
@@ -2916,6 +2919,19 @@ void SiONDriver::mailbox_track_effects_set_effect_args(int p_track_id, int p_ind
 	_mb_try_push(u);
 }
 
+void SiONDriver::mailbox_track_effects_set_effect_arg(int p_track_id, int p_fx_index, int p_arg_index, double p_value) {
+	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for mailbox FX scalar arg.", p_track_id));
+	if (_ensure_track_effect_stream(p_track_id) == nullptr) {
+		return;
+	}
+	_FxArgUpdate u;
+	u.track_id = p_track_id;
+	u.fx_index = p_fx_index;
+	u.arg_index = p_arg_index;
+	u.value = p_value;
+	_mb_fx_arg_try_push(u);
+}
+
 void SiONDriver::mailbox_track_effects_set_bypass(int p_track_id, int p_index, bool p_bypassed) {
 	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for mailbox track effects.", p_track_id));
 	// Ensure the stream exists on the calling thread (main thread).
@@ -3042,6 +3058,33 @@ bool SiONDriver::_mb_try_push(const _TrackUpdate &p_update) {
     _mb_ring[head] = p_update;
     _mb_head.store(next, std::memory_order_release);
     return true;
+}
+
+bool SiONDriver::_mb_fx_arg_try_push(const _FxArgUpdate &p_update) {
+	int head = _fx_arg_head.load(std::memory_order_relaxed);
+	int tail = _fx_arg_tail.load(std::memory_order_acquire);
+	int next = (head + 1) & (_FX_ARG_MB_CAPACITY - 1);
+	if (next == tail) {
+		_fx_arg_tail.store((tail + 1) & (_FX_ARG_MB_CAPACITY - 1), std::memory_order_release);
+	}
+	_fx_arg_ring[head] = p_update;
+	_fx_arg_head.store(next, std::memory_order_release);
+	return true;
+}
+
+void SiONDriver::_drain_fx_arg_mailbox() {
+	int tail = _fx_arg_tail.load(std::memory_order_relaxed);
+	int head = _fx_arg_head.load(std::memory_order_acquire);
+	while (tail != head) {
+		const _FxArgUpdate &u = _fx_arg_ring[tail];
+		tail = (tail + 1) & (_FX_ARG_MB_CAPACITY - 1);
+
+		SiEffectStream *stream = _get_track_effect_stream(u.track_id);
+		if (stream) {
+			stream->set_effect_arg(u.fx_index, u.arg_index, u.value);
+		}
+	}
+	_fx_arg_tail.store(tail, std::memory_order_release);
 }
 
 // --- Mailbox drain ------------------------------------------------------------

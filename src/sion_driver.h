@@ -570,6 +570,21 @@ private:
 	bool _mb_try_push(const _TrackUpdate &p_update);
 	void _drain_track_mailbox();
 
+	struct _FxArgUpdate {
+		int track_id = -1;
+		int fx_index = 0;
+		int arg_index = 0;
+		double value = 0.0;
+	};
+
+	static const int _FX_ARG_MB_CAPACITY = 4096;
+	_FxArgUpdate _fx_arg_ring[_FX_ARG_MB_CAPACITY];
+	std::atomic<int> _fx_arg_head { 0 };
+	std::atomic<int> _fx_arg_tail { 0 };
+
+	bool _mb_fx_arg_try_push(const _FxArgUpdate &p_update);
+	void _drain_fx_arg_mailbox();
+
 	HashMap<int, SiEffectStream *> _track_effect_streams;
 	HashMap<int, SiOPMChannelBase *> _track_effect_channels;
 	SiEffectStream *_ensure_track_effect_stream(int p_track_id);
@@ -877,6 +892,7 @@ public:
 	void mailbox_track_effects_remove_effect(int p_track_id, int p_index);
 	void mailbox_track_effects_swap_effects(int p_track_id, int p_index_a, int p_index_b);
 	void mailbox_track_effects_set_effect_args(int p_track_id, int p_index, const Variant &p_args);
+	void mailbox_track_effects_set_effect_arg(int p_track_id, int p_fx_index, int p_arg_index, double p_value);
 	void mailbox_track_effects_set_bypass(int p_track_id, int p_index, bool p_bypassed);
 
 	void track_effects_set_chain(int p_track_id, const Array &p_slots);

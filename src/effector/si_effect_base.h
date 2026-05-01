@@ -75,6 +75,9 @@ public:
 	virtual int process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) { return p_channels; }
 
 	virtual void set_by_mml(Vector<double> p_args) {}
+	// Sparse single-arg update. Returns true if the effect handled it, false to
+	// fall back to a full set_by_mml() replay with the updated arg vector.
+	virtual bool set_arg(int p_arg_index, double p_value) { return false; }
 	virtual void reset() {}
 
 	SiEffectBase() { _refresh_sampling_rate_cache(); }

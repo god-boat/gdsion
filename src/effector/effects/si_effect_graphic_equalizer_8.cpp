@@ -204,6 +204,58 @@ int SiEffectGraphicEqualizer8::process(int p_channels, Vector<double> *r_buffer,
 	return 2;
 }
 
+bool SiEffectGraphicEqualizer8::set_arg(int p_arg_index, double p_value) {
+	if (!_initialized) {
+		return false;
+	}
+
+	if (p_arg_index == 0) {
+		set_output_gain_db(p_value);
+		return true;
+	}
+
+	int offset = p_arg_index - 1;
+	int band_idx = offset / PARAMS_PER_BAND;
+	int param_idx = offset % PARAMS_PER_BAND;
+
+	if (band_idx < 0 || band_idx >= NUM_BANDS) {
+		return false;
+	}
+
+	Band &b = _bands[band_idx];
+	switch (param_idx) {
+		case 0: {
+			int new_type = CLAMP((int)p_value, 0, (int)(FILTER_TYPE_MAX - 1));
+			if (b.type == new_type) return true;
+			b.type = new_type;
+		} break;
+		case 1: {
+			bool new_enabled = p_value >= 0.5;
+			if (b.enabled == new_enabled) return true;
+			b.enabled = new_enabled;
+		} break;
+		case 2: {
+			double new_freq = MAX(p_value, 10.0);
+			if (b.freq_hz == new_freq) return true;
+			b.freq_hz = new_freq;
+		} break;
+		case 3: {
+			if (b.gain_db == p_value) return true;
+			b.gain_db = p_value;
+		} break;
+		case 4: {
+			double new_q = MAX(p_value, 0.01);
+			if (b.q == new_q) return true;
+			b.q = new_q;
+		} break;
+		default:
+			return false;
+	}
+
+	_recompute_band(band_idx);
+	return true;
+}
+
 void SiEffectGraphicEqualizer8::set_by_mml(Vector<double> p_args) {
 	// Arg layout:
 	//   [0]: output_gain_db

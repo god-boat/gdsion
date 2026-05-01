@@ -48,6 +48,7 @@ public:
 	void remove_effect(int p_index);
 	void swap_effects(int p_index_a, int p_index_b);
 	void set_effect_args(int p_index, Vector<double> p_args);
+	bool set_effect_arg(int p_index, int p_arg_index, double p_value);
 	void set_effect_bypass(int p_index, bool p_bypassed);
 
 	double get_post_fader_gain() const { return _post_fader_gain; }

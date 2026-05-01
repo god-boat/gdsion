@@ -125,6 +125,15 @@ void SiEffectStream::set_effect_args(int p_index, Vector<double> p_args) {
 	}
 }
 
+bool SiEffectStream::set_effect_arg(int p_index, int p_arg_index, double p_value) {
+	ERR_FAIL_INDEX_V_MSG(p_index, _chain.size(), false, vformat("SiEffectStream: Invalid effect index %d for scalar arg update.", p_index));
+	Ref<SiEffectBase> effect = _chain[p_index];
+	if (effect.is_valid()) {
+		return effect->set_arg(p_arg_index, p_value);
+	}
+	return false;
+}
+
 void SiEffectStream::set_effect_bypass(int p_index, bool p_bypassed) {
 	ERR_FAIL_INDEX_MSG(p_index, _chain.size(), vformat("SiEffectStream: Invalid effect index %d for bypass toggle.", p_index));
 	if (_bypassed.size() != _chain.size()) {

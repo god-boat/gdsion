@@ -93,6 +93,7 @@ public:
 	virtual int process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
 
 	virtual void set_by_mml(Vector<double> p_args) override;
+	virtual bool set_arg(int p_arg_index, double p_value) override;
 	virtual void reset() override;
 
 	SiEffectGraphicEqualizer8();
