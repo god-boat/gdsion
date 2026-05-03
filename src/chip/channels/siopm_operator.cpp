@@ -974,14 +974,13 @@ void SiOPMOperator::initialize() {
 	_eg_tl_offset  = 0;
 	_pitch_index_shift2 = 0;
 
-	_super_count = 1;
-	_super_spread = 0;
-	_super_stereo_spread = 0;
-	_super_norm_inv = 1.0;
+	// set_operator_params() already restored the configured super-wave state.
 	for (int i = 0; i < MAX_SUPER_VOICES; i++) {
 		_super_phases[i] = 0;
-		_super_phase_steps[i] = 0;
-		_super_pan_values[i] = 64; // Center
+		if (i >= _super_count) {
+			_super_phase_steps[i] = 0;
+			_super_pan_values[i] = 64; // Center
+		}
 	}
 
 	_pcm_channel_num = 0;

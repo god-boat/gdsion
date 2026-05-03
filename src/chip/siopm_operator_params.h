@@ -50,25 +50,25 @@ private:
 	SiONPitchTableType pitch_table_type = SiONPitchTableType::PITCH_TABLE_OPM;
 
 	// Attack rate [0,63]
-	int attack_rate = 0;
+	int attack_rate = 58;
 	// Decay rate [0,63]
 	int decay_rate = 0;
 	// Sustain rate [0,63]
 	int sustain_rate = 0;
 	// Release rate [0,63]
-	int release_rate = 0;
+	int release_rate = 63;
 	// Sustain level [0,15]
 	int sustain_level = 0;
 	// Total level [0,127]
 	int total_level = 0;
 
 	// Key scaling rate [0,3]
-	int key_scaling_rate = 0;
+	int key_scaling_rate = 1;
 	// Key scaling level [0,3]
 	int key_scaling_level = 0;
 
 	// Fine multiple [0,...]
-	int fine_multiple = 0;
+	int fine_multiple = 128;
 	// Detune 1 [0,7]
 	int detune1 = 0;
 	// Detune 2 [0,...]
@@ -92,9 +92,9 @@ private:
 	// Number of stacked voices [1-16]. 1 = normal single oscillator.
 	int super_count = 1;
 	// Detune spread amount [0-1000]. Higher values = wider detuning.
-	int super_spread = 0;
+	int super_spread = 40;
 	// Stereo spread amount [0-100]. 0 = mono, 100 = full stereo spread.
-	int super_stereo_spread = 0;
+	int super_stereo_spread = 50;
 
 protected:
 	static void _bind_methods();

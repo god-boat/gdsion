@@ -36,7 +36,7 @@ void SiOPMOperatorParams::initialize() {
 	pulse_generator_type = SiONPulseGeneratorType::PULSE_SINE;
 	pitch_table_type = SiONPitchTableType::PITCH_TABLE_OPM;
 
-	attack_rate = 63;
+	attack_rate = 58;
 	decay_rate = 0;
 	sustain_rate = 0;
 	release_rate = 63;
@@ -60,8 +60,8 @@ void SiOPMOperatorParams::initialize() {
 	envelope_reset_on_attack = false;
 
 	super_count = 1;
-	super_spread = 0;
-	super_stereo_spread = 0;
+	super_spread = 40;
+	super_stereo_spread = 50;
 }
 
 void SiOPMOperatorParams::copy_from(const Ref<SiOPMOperatorParams> &p_params) {

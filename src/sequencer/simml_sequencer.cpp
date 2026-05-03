@@ -1733,22 +1733,22 @@ void SiMMLSequencer::_register_event_listeners() {
 void SiMMLSequencer::_reset_initial_operator_params() {
 	Ref<SiOPMOperatorParams> op_params = _sound_chip->get_init_operator_params();
 
-	op_params->set_attack_rate(63);
+	op_params->set_attack_rate(58);
 	op_params->set_decay_rate(0);
 	op_params->set_sustain_rate(0);
-	op_params->set_release_rate(28);
+	op_params->set_release_rate(63);
 	op_params->set_sustain_level(0);
 	op_params->set_total_level(0);
-	op_params->set_key_scaling_rate(0);
+	op_params->set_key_scaling_rate(1);
 	op_params->set_key_scaling_level(0);
 	op_params->set_fine_multiple(128);
 	op_params->set_detune1(0);
 	op_params->set_detune2(0);
-	op_params->set_amplitude_modulation_shift(1);
+	op_params->set_amplitude_modulation_shift(0);
 	op_params->set_initial_phase(0);
 	op_params->set_fixed_pitch(0);
 	op_params->set_frequency_modulation_level(5);
-	op_params->set_pulse_generator_type(SiONPulseGeneratorType::PULSE_SQUARE);
+	op_params->set_pulse_generator_type(SiONPulseGeneratorType::PULSE_SINE);
 }
 
 void SiMMLSequencer::_reset_parser_settings() {
