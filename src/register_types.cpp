@@ -42,6 +42,7 @@
 #include "effector/effects/si_effect_distortion.h"
 #include "effector/effects/si_effect_downsampler.h"
 #include "effector/effects/si_effect_equalizer.h"
+#include "effector/effects/si_effect_bloom_reverb.h"
 #include "effector/effects/si_effect_speaker_simulator.h"
 #include "effector/effects/si_effect_stereo_chorus.h"
 #include "effector/effects/si_effect_stereo_delay.h"
@@ -145,6 +146,7 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 		ClassDB::register_class<SiEffectDistortion>();
 		ClassDB::register_class<SiEffectDownsampler>();
 		ClassDB::register_class<SiEffectEqualizer>();
+		ClassDB::register_class<SiEffectBloomReverb>();
 		ClassDB::register_class<SiEffectSpeakerSimulator>();
 		ClassDB::register_class<SiEffectStereoChorus>();
 		ClassDB::register_class<SiEffectStereoDelay>();

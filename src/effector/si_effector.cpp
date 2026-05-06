@@ -18,6 +18,7 @@
 #include "effector/effects/si_effect_downsampler.h"
 #include "effector/effects/si_effect_equalizer.h"
 #include "effector/effects/si_effect_speaker_simulator.h"
+#include "effector/effects/si_effect_bloom_reverb.h"
 #include "effector/effects/si_effect_stereo_chorus.h"
 #include "effector/effects/si_effect_stereo_delay.h"
 #include "effector/effects/si_effect_stereo_expander.h"
@@ -109,6 +110,7 @@ Ref<SiEffectBase> SiEffector::get_effect_instance(const String &p_name) {
 	CREATE_EFFECT(SiEffectDownsampler, "ds");
 	CREATE_EFFECT(SiEffectEqualizer, "eq");
 	CREATE_EFFECT(SiEffectSpeakerSimulator, "speaker");
+	CREATE_EFFECT(SiEffectBloomReverb, "bloom");
 	CREATE_EFFECT(SiEffectStereoChorus, "chorus");
 	CREATE_EFFECT(SiEffectStereoDelay, "delay");
 	CREATE_EFFECT(SiEffectStereoExpander, "stereo");
@@ -362,6 +364,7 @@ SiEffector::SiEffector(SiOPMSoundChip *p_chip) {
 	register_effect<SiEffectDownsampler>("ds");
 	register_effect<SiEffectEqualizer>("eq");
 	register_effect<SiEffectSpeakerSimulator>("speaker");
+	register_effect<SiEffectBloomReverb>("bloom");
 	register_effect<SiEffectStereoChorus>("chorus");
 	register_effect<SiEffectStereoDelay>("delay");
 	register_effect<SiEffectStereoExpander>("stereo");
