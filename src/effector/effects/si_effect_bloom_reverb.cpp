@@ -261,6 +261,7 @@ void SiEffectBloomReverb::_derive_params(const BloomParams &p_params, DerivedPar
 	r_out.width_gain = Math::lerp(0.3, 1.35, width);
 	r_out.air_gain = Math::pow(air, 1.4) * 0.35;
 	r_out.air_hp_hz = _exp_lerp(1800.0, 6500.0, 1.0 - air);
+	r_out.wet_makeup_gain = 2.0;
 	r_out.duck = duck;
 	r_out.freeze = freeze;
 
@@ -505,11 +506,20 @@ int SiEffectBloomReverb::process(int p_channels, Vector<double> *r_buffer, int p
 			for (int line = 0; line < TANK_LINE_COUNT; line++) {
 				double feedback_gain = Math::lerp(params.tank_feedback_gain[line], 0.9995, params.freeze);
 				double write_value = injected[line] + matrix[line] * feedback_gain;
-				_tank[line].delay.write(_softclip(write_value * 1.15));
+				write_value = CLAMP(write_value, -3.0, 3.0);
+				_tank[line].delay.write(write_value);
 			}
 
-			double wet_l = tank_filtered[0] + 0.6 * tank_filtered[2] - 0.4 * tank_filtered[3];
-			double wet_r = tank_filtered[1] + 0.6 * tank_filtered[3] - 0.4 * tank_filtered[2];
+			double wet_l =
+					0.70 * tank_filtered[0] +
+					0.45 * tank_filtered[1] +
+					0.60 * tank_filtered[2] -
+					0.35 * tank_filtered[3];
+			double wet_r =
+					0.45 * tank_filtered[0] +
+					0.70 * tank_filtered[1] -
+					0.35 * tank_filtered[2] +
+					0.60 * tank_filtered[3];
 
 			double air_l = _process_air_side(_air_left, wet_l, params.air_hp_hz, params.air_delay_left_samples, params.air_mod_rates, params.mod_depth_samples);
 			double air_r = _process_air_side(_air_right, wet_r, params.air_hp_hz, params.air_delay_right_samples, params.air_mod_rates, params.mod_depth_samples);
@@ -521,8 +531,8 @@ int SiEffectBloomReverb::process(int p_channels, Vector<double> *r_buffer, int p
 			wet_l = mid + side;
 			wet_r = mid - side;
 
-			double wet_total_l = _wet_lp_left.process(wet_l + early_l);
-			double wet_total_r = _wet_lp_right.process(wet_r + early_r);
+			double wet_total_l = _wet_lp_left.process((wet_l + early_l) * params.wet_makeup_gain);
+			double wet_total_r = _wet_lp_right.process((wet_r + early_r) * params.wet_makeup_gain);
 
 			double detector = MAX(Math::abs(dry_l), Math::abs(dry_r));
 			double duck_coeff = detector > _duck_env ? params.duck_attack_coeff : params.duck_release_coeff;
@@ -543,7 +553,7 @@ int SiEffectBloomReverb::process(int p_channels, Vector<double> *r_buffer, int p
 }
 
 void SiEffectBloomReverb::set_by_mml(Vector<double> p_args) {
-	BloomParams parsed;
+	BloomParams parsed = _target_params;
 	for (int i = 0; i < ARG_COUNT; i++) {
 		double value = _get_mml_arg(p_args, i, NAN);
 		if (!Math::is_nan(value)) {

@@ -147,6 +147,7 @@ private:
 		double width_gain = 1.0;
 		double air_gain = 0.0;
 		double air_hp_hz = 6500.0;
+		double wet_makeup_gain = 1.0;
 		double duck = 0.0;
 		double duck_attack_coeff = 1.0;
 		double duck_release_coeff = 1.0;
