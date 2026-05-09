@@ -12,6 +12,8 @@
 #include "chip/wave/siopm_wave_stream_data.h"
 #include "templates/singly_linked_list.h"
 
+#include <atomic>
+
 enum SiONPitchTableType : unsigned int;
 class SiOPMChannelParams;
 class SiOPMSoundChip;
@@ -39,6 +41,8 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	double _source_frames_elapsed = 0.0; // Source frames consumed since note_on (pitch-aware).
 	bool _playing = false;
 	bool _reached_end = false;
+	std::atomic<int64_t> _reported_source_sample_abs{0}; // Main-thread readable cursor in absolute source frames.
+	std::atomic<double> _reported_clip_time_steps{0.0}; // Main-thread readable clip-time cursor in steps.
 
 	// ---- Clip params (set via mailbox, read in buffer()) ----
 
@@ -193,6 +197,8 @@ public:
 	int64_t get_stream_loop_end() const { return _loop_end_sample; }
 
 	int64_t get_loops_completed() const { return _loops_completed; }
+	int64_t get_reported_source_sample() const { return _reported_source_sample_abs.load(std::memory_order_relaxed); }
+	double get_reported_clip_time_steps() const { return _reported_clip_time_steps.load(std::memory_order_relaxed); }
 
 	// Seek to an absolute source-frame position. Resets playback cursor and
 	// triggers a ring buffer refill from the new position.

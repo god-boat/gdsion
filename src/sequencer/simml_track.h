@@ -360,6 +360,8 @@ public:
 	void reset_volume_offset();
 
 	int get_master_volume() const;
+	int64_t get_reported_source_sample() const;
+	double get_reported_clip_time_steps() const;
 	void set_master_volume(int p_value);
 
 	int get_effect_send1() const;

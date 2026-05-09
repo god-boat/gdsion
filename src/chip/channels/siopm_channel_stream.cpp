@@ -245,6 +245,7 @@ void SiOPMChannelStream::_start_playback_at(int64_t p_start_sample) {
 	// fields between clips, so on a fresh start they are either valid state for
 	// this key_on or the default zero/unity values from reset().
 	_clip_envelope = _evaluate_clip_envelope(_clip_time_steps);
+	_reported_clip_time_steps.store(_clip_time_steps, std::memory_order_relaxed);
 
 	// Short declick-in ramp (~2ms) to avoid a hard discontinuity at the start position.
 	const int sr = (_table ? _table->sampling_rate : 0);
@@ -254,6 +255,7 @@ void SiOPMChannelStream::_start_playback_at(int64_t p_start_sample) {
 	// Compute source frames elapsed relative to in_sample.
 	int64_t relative = p_start_sample - _in_sample;
 	_source_frames_elapsed = (relative > 0) ? (double)relative : 0.0;
+	_reported_source_sample_abs.store(MAX(p_start_sample, (int64_t)0), std::memory_order_relaxed);
 
 	// Sync trim to stream data.
 	_stream_data->set_in_sample(_in_sample);
@@ -645,6 +647,9 @@ void SiOPMChannelStream::buffer(int p_length) {
 		}
 	}
 
+	_reported_source_sample_abs.store(MAX((int64_t)std::floor((double)_in_sample + _source_frames_elapsed), (int64_t)0), std::memory_order_relaxed);
+	_reported_clip_time_steps.store(_clip_time_steps, std::memory_order_relaxed);
+
 	// Advance pipe cursors.
 	_out_pipe->set(left_write);
 	if (channels == 2 && right_write) {
@@ -730,6 +735,7 @@ void SiOPMChannelStream::reset() {
 	_clip_fade_in_steps = 0.0;
 	_clip_fade_out_start_steps = 0.0;
 	_clip_end_steps = 0.0;
+	_reported_clip_time_steps.store(0.0, std::memory_order_relaxed);
 	_in_sample = 0;
 	_out_sample = 0;
 	_warp_mode = 0;
@@ -740,6 +746,7 @@ void SiOPMChannelStream::reset() {
 	_loop_start_sample = 0;
 	_loop_end_sample = 0;
 	_loops_completed = 0;
+	_reported_source_sample_abs.store(0, std::memory_order_relaxed);
 }
 
 // ---------------------------------------------------------------------------
@@ -828,23 +835,20 @@ void SiOPMChannelStream::set_stream_clip_envelope(double p_clip_time_steps, doub
 	_clip_end_steps = MAX(p_clip_end_steps, 0.0);
 	_clip_fade_out_start_steps = CLAMP(p_fade_out_start_steps, 0.0, _clip_end_steps);
 	_clip_envelope = _evaluate_clip_envelope(_clip_time_steps);
+	_reported_clip_time_steps.store(_clip_time_steps, std::memory_order_relaxed);
 }
 
 void SiOPMChannelStream::set_stream_in_sample(int64_t p_sample) {
+	int64_t old_in = _in_sample;
 	_in_sample = MAX(p_sample, (int64_t)0);
+	double absolute_source_sample = (double)_in_sample;
+	if (_playing) {
+		absolute_source_sample = (double)old_in + _source_frames_elapsed;
+		_source_frames_elapsed = absolute_source_sample - (double)_in_sample;
+	}
+	_reported_source_sample_abs.store(MAX((int64_t)std::floor(absolute_source_sample), (int64_t)0), std::memory_order_relaxed);
 	if (_stream_data.is_valid()) {
-		int64_t old_in = _stream_data->get_in_sample();
 		_stream_data->set_in_sample(_in_sample);
-
-		// If the new in_sample is ahead of current playback position, seek forward.
-		if (_playing && _in_sample > old_in) {
-			int64_t offset = _in_sample - old_in;
-			if (_source_frames_elapsed < (double)offset) {
-				_stream_data->seek(_in_sample);
-				_playback_pos = 0.0;
-				_source_frames_elapsed = 0.0;
-			}
-		}
 	}
 }
 
@@ -852,20 +856,7 @@ void SiOPMChannelStream::set_stream_out_sample(int64_t p_sample) {
 	_out_sample = MAX(p_sample, (int64_t)0);
 	if (_stream_data.is_valid()) {
 		_stream_data->set_out_sample(_out_sample);
-
-		// If current position is past the new end, seek back to the clip
-		// start instead of stopping. This lets the user freely drag the
-		// endpoint without killing the stream — buffer() will handle
-		// natural end-of-clip / loop logic when the position reaches
-		// the new boundary again.
-		if (_playing && _out_sample > 0) {
-			int64_t effective_len = _out_sample - _in_sample;
-			if (effective_len > 0 && _source_frames_elapsed >= (double)effective_len) {
-				_stream_data->seek(_in_sample);
-				_playback_pos = 0.0;
-				_source_frames_elapsed = 0.0;
-			}
-		}
+		
 	}
 }
 
@@ -932,6 +923,7 @@ void SiOPMChannelStream::seek_to(int64_t p_position_sample) {
 	// Compute source frames elapsed relative to in_sample.
 	int64_t relative = p_position_sample - _in_sample;
 	_source_frames_elapsed = (relative > 0) ? (double)relative : 0.0;
+	_reported_source_sample_abs.store(MAX(p_position_sample, (int64_t)0), std::memory_order_relaxed);
 
 	// Short declick-in ramp (~2ms) to avoid a hard discontinuity at the new position.
 	const int sr = (_table ? _table->sampling_rate : 0);
