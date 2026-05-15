@@ -7,15 +7,14 @@
 #ifndef SION_OFFLINE_RENDERER_H
 #define SION_OFFLINE_RENDERER_H
 
+#include <godot_cpp/classes/audio_frame.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
+#include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 
 using namespace godot;
 
 class SiONDriver;
-class SiOPMSoundChip;
-class SiEffector;
-class SiMMLSequencer;
 
 // Block-by-block offline audio renderer for SiONDriver.
 //
@@ -33,28 +32,27 @@ class SiMMLSequencer;
 //   renderer.finish()
 //
 // Each render_block() call processes exactly one internal buffer (buffer_length frames)
-// and returns interleaved stereo float32 samples. The driver's mailbox is drained at
-// the start of each block, so notes queued via mailbox_key_on() etc. take effect
-// immediately on the next block boundary — zero latency, unlike the live capture path
-// which has a deferred-signal frame delay.
+// and returns interleaved stereo float32 samples. Internally this calls the driver's
+// generate_audio() — the exact same code path used by the live audio thread — so the
+// rendered output is bit-identical to what would have been heard live with the same
+// note schedule. The mailbox is drained inside generate_audio(), so notes queued via
+// mailbox_key_on() etc. take effect on the next block boundary.
 //
 // IMPORTANT: The driver must already be in streaming mode with all instruments, effects,
-// and BPM configured before calling begin(). The renderer does NOT modify any driver
-// state — it simply calls the same render pipeline that generate_audio() uses, but
-// synchronously on the calling thread instead of the audio thread.
+// and BPM configured before calling begin(). The caller must also ensure no other thread
+// is invoking generate_audio() concurrently (e.g. stop the AudioStreamPlayer first).
 class SiONOfflineRenderer : public RefCounted {
 	GDCLASS(SiONOfflineRenderer, RefCounted)
 
 	SiONDriver *_driver = nullptr;
-	SiOPMSoundChip *_sound_chip = nullptr;
-	SiEffector *_effector = nullptr;
-	SiMMLSequencer *_sequencer = nullptr;
 
 	bool _active = false;
 	int _buffer_length = 0;  // frames per block (from driver)
 	int64_t _total_frames_rendered = 0;
 
-	bool _cache_driver_internals();
+	// Scratch buffer for one block of stereo float audio. Reused across
+	// render_block() calls to avoid reallocating on every block.
+	Vector<AudioFrame> _scratch;
 
 protected:
 	static void _bind_methods();

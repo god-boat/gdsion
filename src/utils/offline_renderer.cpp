@@ -10,9 +10,6 @@
 #include <godot_cpp/core/error_macros.hpp>
 
 #include "sion_driver.h"
-#include "chip/siopm_sound_chip.h"
-#include "effector/si_effector.h"
-#include "sequencer/simml_sequencer.h"
 
 using namespace godot;
 
@@ -29,32 +26,21 @@ void SiONOfflineRenderer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_sample_rate"), &SiONOfflineRenderer::get_sample_rate);
 }
 
-bool SiONOfflineRenderer::_cache_driver_internals() {
-	ERR_FAIL_NULL_V(_driver, false);
-
-	_sound_chip = _driver->get_sound_chip();
-	_effector = _driver->get_effector();
-	_sequencer = _driver->get_sequencer();
-	_buffer_length = _driver->get_buffer_length();
-
-	ERR_FAIL_NULL_V_MSG(_sound_chip, false, "SiONOfflineRenderer: Driver sound chip is null.");
-	ERR_FAIL_NULL_V_MSG(_effector, false, "SiONOfflineRenderer: Driver effector is null.");
-	ERR_FAIL_NULL_V_MSG(_sequencer, false, "SiONOfflineRenderer: Driver sequencer is null.");
-	ERR_FAIL_COND_V_MSG(_buffer_length <= 0, false, "SiONOfflineRenderer: Driver buffer length is invalid.");
-
-	return true;
-}
-
 bool SiONOfflineRenderer::begin(SiONDriver *p_driver) {
 	ERR_FAIL_NULL_V_MSG(p_driver, false, "SiONOfflineRenderer: Driver is null.");
 	ERR_FAIL_COND_V_MSG(_active, false, "SiONOfflineRenderer: Already active. Call finish() first.");
 
 	_driver = p_driver;
+	_buffer_length = _driver->get_buffer_length();
+	ERR_FAIL_COND_V_MSG(_buffer_length <= 0, false, "SiONOfflineRenderer: Driver buffer length is invalid.");
 
-	if (!_cache_driver_internals()) {
-		_driver = nullptr;
-		return false;
-	}
+	// Discard any residual frames left over from a previous runtime audio callback,
+	// so the export starts from a clean block boundary.
+	_driver->_residual_buffer_frame_count = 0;
+	_driver->_residual_frame_offset = 0;
+
+	// Pre-size scratch buffer for one block of stereo audio.
+	_scratch.resize(_buffer_length);
 
 	_total_frames_rendered = 0;
 	_active = true;
@@ -68,29 +54,21 @@ PackedFloat32Array SiONOfflineRenderer::render_block() {
 	ERR_FAIL_COND_V_MSG(!_active, result, "SiONOfflineRenderer: Not active. Call begin() first.");
 	ERR_FAIL_NULL_V(_driver, result);
 
+	// Use generate_audio() — the exact runtime audio path — so offline output is
+	// bit-identical to what the audio thread would have produced. generate_audio()
+	// drains the track + fx mailboxes internally.
+	_driver->generate_audio(_scratch.ptrw(), _buffer_length);
+
 	int sample_count = _buffer_length * 2; // stereo interleaved
 	result.resize(sample_count);
-
-	// Drain queued track updates (notes, volume, effects, etc.)
-	_driver->_drain_track_mailbox();
-
-	// Process one internal block — same pipeline as generate_audio().
-	_sound_chip->begin_process();
-	_effector->begin_process();
-	_sequencer->process();
-	_driver->_update_track_effect_post_fader();
-	_effector->end_process();
-	_sound_chip->end_process();
-
-	// Read output and convert double -> float32.
-	Vector<double> *out_buf = _sound_chip->get_output_buffer_ptr();
 	float *dst = result.ptrw();
-	for (int i = 0; i < sample_count; ++i) {
-		dst[i] = (float)(*out_buf)[i];
+	const AudioFrame *src = _scratch.ptr();
+	for (int i = 0; i < _buffer_length; ++i) {
+		dst[i * 2 + 0] = src[i].left;
+		dst[i * 2 + 1] = src[i].right;
 	}
 
 	_total_frames_rendered += _buffer_length;
-
 	return result;
 }
 
@@ -109,19 +87,12 @@ PackedFloat32Array SiONOfflineRenderer::render_blocks(int p_block_count) {
 	int offset = 0;
 
 	for (int b = 0; b < p_block_count; ++b) {
-		_driver->_drain_track_mailbox();
+		_driver->generate_audio(_scratch.ptrw(), _buffer_length);
 
-		_sound_chip->begin_process();
-		_effector->begin_process();
-		_sequencer->process();
-		_driver->_update_track_effect_post_fader();
-		_effector->end_process();
-		_sound_chip->end_process();
-
-		Vector<double> *out_buf = _sound_chip->get_output_buffer_ptr();
-
-		for (int i = 0; i < samples_per_block; ++i) {
-			dst[offset + i] = (float)(*out_buf)[i];
+		const AudioFrame *src = _scratch.ptr();
+		for (int i = 0; i < _buffer_length; ++i) {
+			dst[offset + i * 2 + 0] = src[i].left;
+			dst[offset + i * 2 + 1] = src[i].right;
 		}
 
 		offset += samples_per_block;
@@ -138,11 +109,9 @@ void SiONOfflineRenderer::finish() {
 
 	_active = false;
 	_driver = nullptr;
-	_sound_chip = nullptr;
-	_effector = nullptr;
-	_sequencer = nullptr;
 	_buffer_length = 0;
 	_total_frames_rendered = 0;
+	_scratch.clear();
 }
 
 double SiONOfflineRenderer::get_total_time_rendered() const {

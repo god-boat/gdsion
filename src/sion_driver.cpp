@@ -433,12 +433,7 @@ bool SiONDriver::_rendering() {
 	// Processing.
 	_drain_track_mailbox();
 	_drain_fx_arg_mailbox();
-	sound_chip->begin_process();
-	effector->begin_process();
-	sequencer->process();
-	_update_track_effect_post_fader();
-	effector->end_process();
-	sound_chip->end_process();
+	_process_one_block();
 
 	bool finished = false;
 
@@ -1901,14 +1896,9 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 		// Only process audio if we need more samples than we have buffered
 		// This prevents the sequencer from advancing faster than real-time
 		if (_residual_buffer_frame_count == 0) {
-			
+
 			// Process one internal block to ensure sound_chip output is ready.
-			sound_chip->begin_process();
-			effector->begin_process();
-			sequencer->process(); // generates _buffer_length stereo samples
-			_update_track_effect_post_fader();
-			effector->end_process();
-			sound_chip->end_process();
+			_process_one_block();
 
 			Vector<double> *out_buf = sound_chip->get_output_buffer_ptr();
 
@@ -3549,6 +3539,15 @@ void SiONDriver::_bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id) 
 	stream->set_post_fader_gain(channel->get_stream_send(0));
 	stream->set_post_pan(CLAMP(channel->get_pan(), -64, 64) + 64);
 	channel->set_stream_buffer(0, stream->get_stream());
+}
+
+void SiONDriver::_process_one_block() {
+	sound_chip->begin_process();
+	effector->begin_process();
+	sequencer->process();
+	_update_track_effect_post_fader();
+	effector->end_process();
+	sound_chip->end_process();
 }
 
 void SiONDriver::_update_track_effect_post_fader() {

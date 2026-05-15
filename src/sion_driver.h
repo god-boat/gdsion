@@ -593,6 +593,12 @@ private:
 	void _bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id);
 	void _update_track_effect_post_fader();
 	void _clear_track_effect_streams(bool p_delete_streams);
+
+	// Core per-block render pipeline. Single source of truth used by
+	// generate_audio() (runtime audio thread) and _rendering() (legacy
+	// offline render). Callers are responsible for draining the mailboxes
+	// at whatever cadence they prefer before invoking this.
+	void _process_one_block();
 	Vector<double> _args_from_variant(const Variant &p_value) const;
 	Ref<SiEffectBase> _build_effect_from_dict(const Dictionary &p_slot);
 
