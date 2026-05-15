@@ -1501,7 +1501,7 @@ void SiONDriver::_bind_methods() {
 	// Note control (thread-safe) - track_instance_id targets specific track by Godot object ID
 	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "track_instance_id"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_key_on", "track_id", "note", "tick_length", "start_sample", "track_instance_id"), &SiONDriver::mailbox_stream_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(0));
-	ClassDB::bind_method(D_METHOD("mailbox_key_off", "track_id", "immediate", "track_instance_id"), &SiONDriver::mailbox_key_off, DEFVAL(false), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("mailbox_key_off", "track_id", "immediate", "track_instance_id", "delay_16th_beats"), &SiONDriver::mailbox_key_off, DEFVAL(false), DEFVAL(0), DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_key_off", "track_id", "track_instance_id"), &SiONDriver::mailbox_stream_key_off, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_set_expression", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_expression, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_set_velocity", "track_id", "value", "track_instance_id"), &SiONDriver::mailbox_set_velocity, DEFVAL(0));
@@ -2855,12 +2855,13 @@ void SiONDriver::mailbox_stream_key_on(int p_track_id, int p_note, int p_tick_le
     _mb_try_push(u);
 }
 
-void SiONDriver::mailbox_key_off(int p_track_id, bool p_immediate, uint64_t p_track_instance_id) {
+void SiONDriver::mailbox_key_off(int p_track_id, bool p_immediate, uint64_t p_track_instance_id, double p_delay_16th_beats) {
     _TrackUpdate u;
     u.track_id = p_track_id;
     u.track_instance_id = p_track_instance_id;
     u.has_key_off = true;
     u.key_off_immediate = p_immediate;
+    u.key_off_delay_16th_beats = MAX(0.0, p_delay_16th_beats);
     _mb_try_push(u);
 }
 
@@ -3084,6 +3085,10 @@ void SiONDriver::_drain_track_mailbox() {
     while (tail != head) {
         const _TrackUpdate &u = _mb_ring[tail];
         tail = (tail + 1) & (_MB_CAPACITY - 1);
+        int key_off_delay_samples = 0;
+        if (u.has_key_off && u.key_off_delay_16th_beats > 0.0) {
+            key_off_delay_samples = (int)Math::round(sequencer->calculate_sample_length(u.key_off_delay_16th_beats));
+        }
 
 		// Track effects: apply once per update (not per-voice/channel).
 		if (u.fx_op != _TrackUpdate::FX_OP_NONE || u.has_fx_args || u.has_fx_bypass) {
@@ -3477,7 +3482,7 @@ void SiONDriver::_drain_track_mailbox() {
                     trk->stream_key_off();
                 }
                 if (u.has_key_off) {
-                    trk->key_off(0, u.key_off_immediate);
+                    trk->key_off(key_off_delay_samples, u.key_off_immediate);
                 }
                 if (u.has_expression) {
                     trk->set_expression(CLAMP(u.expression_value, 0, 128));

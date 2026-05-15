@@ -488,6 +488,7 @@ private:
 		int64_t key_on_stream_start_sample = 0;
 		bool has_key_off = false;
 		bool key_off_immediate = false;
+		double key_off_delay_16th_beats = 0.0;
 		// Stream-specific key-off: hard-stops only SiOPMChannelStream channels
 		// (with declick kill fade) and finishes the track. Does not affect
 		// synth/sampler channels, preserving their release tails.
@@ -885,7 +886,7 @@ public:
 	// Bundles key_on + start_sample into a single message so the deferred note_on
 	// uses note_on_at() instead of plain note_on(). p_start_sample = -1 uses _in_sample.
 	void mailbox_stream_key_on(int p_track_id, int p_note, int p_tick_length = 0, int64_t p_start_sample = -1, uint64_t p_track_instance_id = 0);
-	void mailbox_key_off(int p_track_id, bool p_immediate = false, uint64_t p_track_instance_id = 0);
+	void mailbox_key_off(int p_track_id, bool p_immediate = false, uint64_t p_track_instance_id = 0, double p_delay_16th_beats = 0.0);
 	// Stream-specific key-off: hard-stops only stream channels (with declick
 	// kill fade) and finishes the track executor. Synth/sampler channels on the
 	// same track_id are left untouched, preserving their release tails.
