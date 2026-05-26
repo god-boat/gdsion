@@ -403,7 +403,13 @@ void SiOPMChannelStream::buffer(int p_length) {
 			if (_looping && !_reached_end) {
 				double overshoot = _source_frames_elapsed - (double)effective_loop_end;
 				_source_frames_elapsed = loop_offset + overshoot;
-				_warp.set_source_pos(_source_frames_elapsed);
+				// NOTE: Do NOT call _warp.set_source_pos() here.
+				// _grain_source_pos is an offset relative to the ring read head,
+				// not a logical clip position. The ring data is continuous across
+				// the loop boundary (the loader wraps independently), so the
+				// granular source position should remain at its natural small
+				// value — matching how _playback_pos is NOT reset in the standard
+				// path.
 				_loops_completed++;
 
 				const int sr = (_table ? _table->sampling_rate : 0);
