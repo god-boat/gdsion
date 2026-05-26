@@ -10,13 +10,14 @@
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/audio_stream.hpp>
 #include <godot_cpp/templates/vector.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 
 using namespace godot;
 
-// Energy-based onset (transient) detection utility for audio sample slicing.
-// Detects sudden increases in audio energy that indicate drum hits, note attacks, etc.
+// Energy-based onset (transient) detection and tempo-hypothesis BPM estimation
+// for audio sample slicing and clip import.
 class OnsetDetector : public RefCounted {
 	GDCLASS(OnsetDetector, RefCounted)
 
@@ -51,8 +52,8 @@ public:
 		int p_sample_rate
 	);
 
-	// Estimate the dominant BPM of audio sample data using onset-based analysis.
-	// Returns 0.0 if there are too few onsets for reliable estimation.
+	// Estimate the dominant BPM. Convenience wrapper around estimate_bpm_detailed
+	// that returns only the BPM value. Returns 0.0 if estimation fails.
 	static double estimate_bpm(
 		const PackedFloat32Array &p_wave_data,
 		int p_channel_count = 2,
@@ -60,8 +61,23 @@ public:
 	);
 
 	// Estimate the dominant BPM directly from an AudioStream (WAV supported).
-	// Returns 0.0 if there are too few onsets for reliable estimation.
 	static double estimate_bpm_from_stream(const Ref<AudioStream> &p_stream);
+
+	// Detailed BPM estimation. Returns a Dictionary with:
+	//   "bpm"           : float — best tempo estimate, folded into the working range
+	//   "confidence"    : float in [0,1] — margin between best and second-best candidate
+	//   "score"         : float in [0,1] — raw grid-fit score of the best candidate
+	//   "onset_count"   : int           — number of onsets used in the analysis
+	//   "alternatives"  : Array of {bpm, score, kind} dictionaries, where kind is
+	//                     "nearby" (other detected candidate), "half" (best * 0.5),
+	//                     or "double" (best * 2.0)
+	static Dictionary estimate_bpm_detailed(
+		const PackedFloat32Array &p_wave_data,
+		int p_channel_count = 2,
+		int p_sample_rate = 0
+	);
+
+	static Dictionary estimate_bpm_detailed_from_stream(const Ref<AudioStream> &p_stream);
 
 	OnsetDetector() {}
 	~OnsetDetector() {}
