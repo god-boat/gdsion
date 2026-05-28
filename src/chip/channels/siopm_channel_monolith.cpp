@@ -10,10 +10,22 @@
 #include "templates/singly_linked_list.h"
 
 static constexpr double TWO_PI = 6.283185307179586;
+static constexpr double PI = 3.141592653589793;
 static constexpr double HALF_PI = 1.5707963267948966;
 static constexpr double PHASE_TO_RAD = TWO_PI / 4294967296.0;
 static constexpr double PHASE_TO_NORM = 1.0 / 4294967296.0;
 static constexpr double PIPE_PEAK = 8192.0;
+
+// Motion filter / resonance tuning (internal main-layer SVF).
+static constexpr double MOTION_FILTER_BASE_HZ = 1200.0; // sweep center
+static constexpr double MOTION_FILTER_OCT = 3.0;        // +/- octaves at full motion
+static constexpr double MOTION_RES_BASE_HZ = 900.0;     // fixed peak for growl/vowel
+static constexpr double MOTION_RES_BASE_Q = 1.5;
+static constexpr double MOTION_RES_Q_DEPTH = 3.0;
+static constexpr double MOTION_RES_Q_MAX = 4.5;         // capped below self-oscillation
+
+// Pitch drop: max envelope depth in pitch units (768 = 1 octave).
+static constexpr double PITCH_DROP_MAX_UNITS = 768.0;
 
 // Fast tanh approximation (Pade 3/3).
 static inline double fast_tanh(double x) {
@@ -68,25 +80,35 @@ void SiOPMChannelMonolith::_update_phase_increments(double p_motion_mod) {
 		_glide_current_pitch = _target_pitch_f;
 	}
 
-	// Sub pitch with octave offset (0=−2oct, 1=−1oct, 2=unison) and optional 808 pitch drop.
+	// Sub pitch with octave offset (0=−2oct, 1=−1oct, 2=unison) and pitch drop.
+	// The pitch-drop envelope bends the sub anchor only (any shape, up to ~1 octave);
+	// the main oscillators stay fixed so the drop reads as a sub transient.
 	double sub_pitch = pitch + (double)(_sub_octave - 2) * 768.0;
-	if (_sub_shape == SUB_808 && _pitch_env_level > 0.001) {
-		sub_pitch += _pitch_env_level * (double)_pitch_drop * 0.5;
+	if (_pitch_env_level > 0.001) {
+		sub_pitch += _pitch_env_level * ((double)_pitch_drop / 127.0) * PITCH_DROP_MAX_UNITS;
 	}
 	_sub_phase_inc = _pitch_to_phase_inc(sub_pitch);
 
-	// Main oscillators with mass-based detune.
+	// Main oscillators with mass-based detune. Mass drift adds a slow detune
+	// wobble to osc2 only (never the sub) for analog-like movement.
+	double osc2_detune = _mass_detune_pitch * 0.5 + _mass_drift_value * 3.84; // +/-6 cents at full drift
 	_osc1_phase_inc = _pitch_to_phase_inc(pitch - _mass_detune_pitch * 0.5);
-	_osc2_phase_inc = _pitch_to_phase_inc(pitch + _mass_detune_pitch * 0.5);
+	_osc2_phase_inc = _pitch_to_phase_inc(pitch + osc2_detune);
 
 	// Precompute normalized frequency for polyBLEP.
 	_osc1_dt = (double)_osc1_phase_inc * PHASE_TO_NORM;
 	_osc2_dt = (double)_osc2_phase_inc * PHASE_TO_NORM;
 
+	// Mass drift: subtle phase smear on osc2 (main layer only, never the sub).
+	if (_mass_drift_value != 0.0) {
+		int32_t smear = (int32_t)(_mass_drift_value * 0.01 * 4294967296.0);
+		_osc2_phase += (uint32_t)smear;
+	}
+
 	// MOTION_PHASE: modulate osc2 phase offset via motion LFO.
 	if (_motion_target_param == MOTION_PHASE) {
-		uint32_t phase_offset = (uint32_t)(p_motion_mod * 536870912.0);
-		_osc2_phase += phase_offset;
+		int32_t phase_offset = (int32_t)(p_motion_mod * 536870912.0);
+		_osc2_phase += (uint32_t)phase_offset;
 	}
 }
 
@@ -540,6 +562,8 @@ void SiOPMChannelMonolith::set_monolith_params(
 	// Slow phase drift on osc2 for analog-like movement.
 	double drift_hz = 0.05 + mass_n * 0.3;
 	_mass_drift_inc = drift_hz / _sample_rate;
+	// Drift depth scales with mass (0 = none, 1 = full bass-safe movement).
+	_mass_drift_depth = mass_n;
 	// Drive compensation: reduce input level as mass adds energy.
 	_mass_drive_compensation = 1.0 / (1.0 + mass_n * 0.3);
 
@@ -693,10 +717,15 @@ void SiOPMChannelMonolith::note_on() {
 	_osc1_phase = 0;
 	_osc2_phase = 0;
 
-	// 808 pitch envelope fires on note-on.
-	if (_sub_shape == SUB_808 && _pitch_drop > 0) {
+	// Pitch-drop envelope fires on note-on (any sub shape).
+	if (_pitch_drop > 0) {
 		_pitch_env_level = 1.0;
 	}
+
+	// Reset motion filter / drive-tone state for clean transients.
+	_motion_filter_ic1 = 0.0;
+	_motion_filter_ic2 = 0.0;
+	_drive_tone_lp_z1 = 0.0;
 
 	// Click transient.
 	if (_sub_shape == SUB_CLICK) {
@@ -777,16 +806,38 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 			motion_mod = std::sin((double)_motion_phase * PHASE_TO_RAD) * motion_n;
 		}
 
-		// Update phase increments (glide + 808 pitch env happen here).
+		// Mass drift: slow bipolar movement source for the main layer (never the
+		// sub). Computed before phase increments so it can wobble osc2 detune/phase.
+		_mass_drift_phase += _mass_drift_inc;
+		if (_mass_drift_phase >= 1.0) {
+			_mass_drift_phase -= 1.0;
+		}
+		_mass_drift_value = std::sin(_mass_drift_phase * TWO_PI) * _mass_drift_depth;
+
+		// Update phase increments (glide + pitch-drop + mass drift happen here).
 		_update_phase_increments(motion_mod);
 
-		// Apply motion to target-specific modulation.
+		// Apply motion to target-specific modulation. Each target answers a
+		// distinct sound-design question (see header enum notes):
+		//   WARP      -> bends oscillator geometry (warp/fold/sync)
+		//   OSC_SHAPE -> morphs the osc1<->osc2 source balance
+		//   SUB_LEVEL -> ducks/pulses the sub
+		// FILTER / RESONANCE / DRIVE_TONE are handled later in the signal chain.
 		double warp_mod = warp_n;
 		double sub_lvl_mod = sub_lvl;
-		if (_motion_target_param == MOTION_WARP) {
-			warp_mod = CLAMP(warp_n + motion_mod * 0.5, 0.0, 1.0);
-		} else if (_motion_target_param == MOTION_SUB_LEVEL) {
-			sub_lvl_mod = CLAMP(sub_lvl + motion_mod * 0.5, 0.0, 1.0);
+		double osc_blend_mod = 0.0; // -1 favors osc1, +1 favors osc2
+		switch (_motion_target_param) {
+			case MOTION_WARP:
+				warp_mod = CLAMP(warp_n + motion_mod * 0.5, 0.0, 1.0);
+				break;
+			case MOTION_OSC_SHAPE:
+				osc_blend_mod = motion_mod;
+				break;
+			case MOTION_SUB_LEVEL:
+				sub_lvl_mod = CLAMP(sub_lvl + motion_mod * 0.5, 0.0, 1.0);
+				break;
+			default:
+				break;
 		}
 
 		// --- Sub oscillator ---
@@ -796,10 +847,8 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 		}
 
 		// --- Main oscillators ---
-		double osc_warp = warp_mod;
-		if (_motion_target_param == MOTION_OSC_SHAPE) {
-			osc_warp = CLAMP(warp_mod + motion_mod * 0.4, 0.0, 1.0);
-		}
+		// Mass drift adds a tiny warp wobble for analog-like geometry movement.
+		double osc_warp = CLAMP(warp_mod + _mass_drift_value * 0.03, 0.0, 1.0);
 
 		double osc1 = _generate_osc_sample(_osc1_phase, _osc1_shape, osc_warp, _osc1_dt);
 		double osc2 = _generate_osc_sample(_osc2_phase, _osc2_shape, osc_warp, _osc2_dt);
@@ -814,14 +863,16 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 			osc2 = osc2 * (1.0 - width_n * 0.5) + osc2_w * width_n * 0.5;
 		}
 
-		// Mix main oscillators with mass-derived osc2 level.
-		double main_mix = (osc1 + osc2 * _mass_osc2_level) / (1.0 + _mass_osc2_level);
-
-		// Mass phase drift on osc2 for analog-like movement.
-		_mass_drift_phase += _mass_drift_inc;
-		if (_mass_drift_phase >= 1.0) {
-			_mass_drift_phase -= 1.0;
+		// Mix main oscillators. Mass drift wobbles the osc2 weight, and the
+		// OSC_SHAPE motion target shifts the osc1<->osc2 source balance.
+		double a1 = 1.0;
+		double a2 = _mass_osc2_level * (1.0 + _mass_drift_value * 0.15);
+		if (osc_blend_mod != 0.0) {
+			double b = osc_blend_mod * 0.5; // +/-0.5 balance swing
+			a1 *= (1.0 - b);
+			a2 *= (1.0 + b);
 		}
+		double main_mix = (osc1 * a1 + osc2 * a2) / (a1 + a2);
 
 		// Apply main level.
 		main_mix *= _main_level;
@@ -830,6 +881,18 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 		if (bite_n > 0.01) {
 			double saturated = fast_tanh(main_mix * (1.0 + bite_n * 4.0));
 			main_mix = main_mix * (1.0 - bite_n) + saturated * bite_n;
+		}
+
+		// MOTION_DRIVE_TONE: animate distortion color via a pre-drive tilt EQ on
+		// the main layer. Negative motion = darker/thicker low-mids into the
+		// drive, positive = brighter/more teeth. The clean sub is untouched.
+		if (_motion_target_param == MOTION_DRIVE_TONE && motion_n > 0.001) {
+			_drive_tone_lp_z1 += _drive_tone_lp_coeff * (main_mix - _drive_tone_lp_z1);
+			double low = _drive_tone_lp_z1;
+			double high = main_mix - low;
+			double g_low = CLAMP(1.0 - motion_mod, 0.0, 2.0);
+			double g_high = CLAMP(1.0 + motion_mod, 0.0, 2.0);
+			main_mix = low * g_low + high * g_high;
 		}
 
 		// --- Distortion chain (sub-protected) ---
@@ -841,6 +904,35 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 			main_mix = _apply_drive(drive_input, _drive_mode, grind_n) * _drive_output_makeup;
 		} else {
 			main_mix = main_mix + sub_dirty;
+		}
+
+		// MOTION_FILTER / MOTION_RESONANCE: bass-safe internal SVF on the main
+		// (dirty) layer only — the clean sub bypasses it so the low end stays
+		// anchored even as cutoff/Q move. FILTER sweeps cutoff in octaves;
+		// RESONANCE holds a fixed peak and animates Q (capped below self-osc).
+		if ((_motion_target_param == MOTION_FILTER || _motion_target_param == MOTION_RESONANCE) && motion_n > 0.001) {
+			double fc, q;
+			if (_motion_target_param == MOTION_FILTER) {
+				fc = MOTION_FILTER_BASE_HZ * std::pow(2.0, motion_mod * MOTION_FILTER_OCT);
+				q = 1.0;
+			} else {
+				fc = MOTION_RES_BASE_HZ;
+				q = CLAMP(MOTION_RES_BASE_Q + motion_mod * MOTION_RES_Q_DEPTH, 0.5, MOTION_RES_Q_MAX);
+			}
+			fc = CLAMP(fc, 30.0, _sample_rate * 0.45);
+
+			// TPT state-variable filter (Zavalishin), lowpass tap.
+			double g = std::tan(PI * fc / _sample_rate);
+			double k = 1.0 / q;
+			double a1f = 1.0 / (1.0 + g * (g + k));
+			double a2f = g * a1f;
+			double a3f = g * a2f;
+			double v3 = main_mix - _motion_filter_ic2;
+			double v1 = a1f * _motion_filter_ic1 + a2f * v3;
+			double v2 = _motion_filter_ic2 + a2f * _motion_filter_ic1 + a3f * v3;
+			_motion_filter_ic1 = 2.0 * v1 - _motion_filter_ic1;
+			_motion_filter_ic2 = 2.0 * v2 - _motion_filter_ic2;
+			main_mix = v2;
 		}
 
 		double output = main_mix + sub_clean;
@@ -879,8 +971,8 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 		_osc1_phase += _osc1_phase_inc;
 		_osc2_phase += _osc2_phase_inc;
 
-		// 808 pitch envelope decay.
-		if (_sub_shape == SUB_808 && _pitch_env_level > 0.001) {
+		// Pitch-drop envelope decay.
+		if (_pitch_env_level > 0.001) {
 			_pitch_env_level *= _pitch_env_decay_coeff;
 		}
 
@@ -963,7 +1055,14 @@ void SiOPMChannelMonolith::initialize(SiOPMChannelBase *p_prev, int p_buffer_ind
 	_mass_osc2_level = 0.5;
 	_mass_drift_inc = 0.0;
 	_mass_drift_phase = 0.0;
+	_mass_drift_depth = 0.0;
+	_mass_drift_value = 0.0;
 	_mass_drive_compensation = 1.0;
+
+	_motion_filter_ic1 = 0.0;
+	_motion_filter_ic2 = 0.0;
+	_drive_tone_lp_z1 = 0.0;
+	_drive_tone_lp_coeff = 1.0 - std::exp(-TWO_PI * 700.0 / _sample_rate);
 
 	_main_level = 0.7;
 	_drive_input_trim = 1.0;
@@ -987,10 +1086,15 @@ void SiOPMChannelMonolith::reset() {
 	_click_level = 0.0;
 	_motion_phase = 0;
 	_mass_drift_phase = 0.0;
+	_mass_drift_value = 0.0;
 
 	_reset_amp_envelope();
 	_declick_level = 0.0;
 	_declick_target = 0.0;
+
+	_motion_filter_ic1 = 0.0;
+	_motion_filter_ic2 = 0.0;
+	_drive_tone_lp_z1 = 0.0;
 
 	_lens_lp_z1 = 0.0;
 	_lens_harm_hp_z1 = 0.0;

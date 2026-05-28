@@ -159,7 +159,18 @@ private:
 	double _mass_osc2_level = 0.5;
 	double _mass_drift_inc = 0.0;
 	double _mass_drift_phase = 0.0;
+	double _mass_drift_depth = 0.0;
+	double _mass_drift_value = 0.0;
 	double _mass_drive_compensation = 1.0;
+
+	// Motion internal filter: a bass-safe SVF applied to the main/dirty layer
+	// only (the clean sub bypasses it). Used by MOTION_FILTER / MOTION_RESONANCE.
+	double _motion_filter_ic1 = 0.0;
+	double _motion_filter_ic2 = 0.0;
+
+	// Motion drive-tone: one-pole tilt EQ on the pre-drive main layer.
+	double _drive_tone_lp_z1 = 0.0;
+	double _drive_tone_lp_coeff = 0.0;
 
 	// Gain staging (precomputed in set_monolith_params).
 	double _main_level = 0.7;
