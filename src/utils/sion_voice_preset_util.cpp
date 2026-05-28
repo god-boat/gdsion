@@ -34,8 +34,8 @@ void SiONVoicePresetUtil::_generate_voices(uint32_t p_flags) {
 	if (p_flags & INCLUDE_SINGLE_DRUM) {
 		_generate_single_drum_voices();
 	}
-	if (p_flags & INCLUDE_EXTRA) {
-		_generate_extra_voices();
+	if (p_flags & INCLUDE_TEMPLATE) {
+		_generate_template_voices();
 	}
 }
 
@@ -837,142 +837,30 @@ void SiONVoicePresetUtil::_generate_single_drum_voices() {
 	_create_single_drum_voice("svmidi.drum84",  "Bell Tree",       18,63,38,16,16, 6,4,0,4.5);
 }
 
-void SiONVoicePresetUtil::_generate_extra_voices() {
-
-	_begin_category("KS");
-	_create_ks_voice("extra.ks", "Bright KS",
-		/*feedback*/0,  /*tension*/8,
-		/*wave*/SiONPulseGeneratorType::PULSE_NOISE_PINK,  /*AR*/63, /*DR*/44,
-		/*SL*/0,  /*RR*/28,  /*TL*/4);
-
-	_create_ks_voice("extra.ks.soft_pluck", "Soft Pluck KS",
-		/*feedback*/2,  /*tension*/4,
-		/*wave*/SiONPulseGeneratorType::PULSE_NOISE_WHITE,
-		/*AR*/55, /*DR*/36, /*SL*/4, /*RR*/22, /*TL*/6);
-
-	_begin_category("strata");
-	_create_strata_voice("extra.strata.csaw", "Strata CSAW", 0, 0, 0);
-	_create_strata_voice("extra.strata.morph", "Strata Morph", 1, 16384, 0);
-	_create_strata_voice("extra.strata.fm", "Strata FM", 27, 8192, 8192);
-	_create_strata_voice("extra.strata.plucked", "Strata Plucked", 31, 16384, 8192);
-	_create_strata_voice("extra.strata.kicked", "Strata Kick", 37, 16384, 0);
-
-	_begin_category("Guitar6");
-	_create_guitar6_voice("extra.guitar6", "Guitar6 Default");
-
-	_create_guitar6_voice("extra.guitar6.nylon", "Nylon Guitar6",
-		/*seed*/42, /*char_var*/0.3,
-		/*str_damp*/0.35, /*str_damp_var*/0.15,
-		/*plg_damp*/0.6, /*plg_damp_var*/0.2,
-		/*tension*/0.0, /*stereo*/0.15, /*body_bypass*/false);
-
-	_create_guitar6_voice("extra.guitar6.steel", "Steel Guitar6",
-		/*seed*/7777, /*char_var*/0.6,
-		/*str_damp*/0.55, /*str_damp_var*/0.3,
-		/*plg_damp*/0.4, /*plg_damp_var*/0.15,
-		/*tension*/0.05, /*stereo*/0.25, /*body_bypass*/false);
-
-	_create_guitar6_voice("extra.guitar6.muted", "Muted Guitar6",
-		/*seed*/2024, /*char_var*/0.4,
-		/*str_damp*/0.85, /*str_damp_var*/0.1,
-		/*plg_damp*/0.8, /*plg_damp_var*/0.1,
-		/*tension*/0.0, /*stereo*/0.1, /*body_bypass*/false);
-
-	_create_guitar6_voice("extra.guitar6.bright", "Bright Guitar6",
-		/*seed*/31337, /*char_var*/0.7,
-		/*str_damp*/0.25, /*str_damp_var*/0.2,
-		/*plg_damp*/0.3, /*plg_damp_var*/0.3,
-		/*tension*/0.1, /*stereo*/0.3, /*body_bypass*/false);
-
-	_create_guitar6_voice("extra.guitar6.raw", "Raw Guitar6 (No Body)",
-		/*seed*/65535, /*char_var*/0.5,
-		/*str_damp*/0.5, /*str_damp_var*/0.25,
-		/*plg_damp*/0.5, /*plg_damp_var*/0.25,
-		/*tension*/0.0, /*stereo*/0.2, /*body_bypass*/true);
-
-	_begin_category("FM (OPL)");
-	// AL, FB,
-	// (WS,AR,DR,RR,ET,SL,TL,KR,KL,ML,AM) × 2
-	_create_opl_voice("extra.opl", "Init OPL", {
-		0,0,
-		0, 60, 28, 28, 0, 0,  0, 0, 0, 1, 0,   // operator-1
-		0, 60, 28, 28, 0, 0,  0, 0, 0, 1, 0     // operator-2
-	});
-
-	_create_opl_voice("extra.opl.brass", "Brass OPL", {
-		// AL  FB
-		 1,   3,
-		//      WS AR DR RR ET SL TL KR KL ML AM
-		 0,   60, 24, 16, 0, 4, 32, 0, 0, 2, 0,    // mod
-		 1,   60, 32, 16, 0, 0,  0, 0, 0, 1, 0     // car
-	});
-
-	_begin_category("FM (OPM)");
-	// AL, FB,
-	// (DT,ML,TL,KS,AR,DR,SR,RR,SL,AM,DT2) × 4
-	_create_opm_voice("extra.opm", "Init OPM", {
-		0,0,
-		0,0,  0,0,15,8,0,2,0,0,0,   // op-1
-		0,0,  0,0,15,8,0,2,0,0,0,   // op-2
-		0,0,  0,0,15,8,0,2,0,0,0,   // op-3
-		0,0,  0,0,15,8,0,2,0,0,0    // op-4
-	});  // 2 + 11×4 = 46 ints
-	
-	// ------------------ FM (OPM) ------------------
-	_create_opm_voice("extra.opm.epiano", "E.Piano OPM", {
-		// AL FB
-		3, 4,
-		//        DT ML TL KS AR DR SR RR SL AM DT2
-		0,  2, 31, 0, 15,  8,  0, 4, 6, 0, 0,   // op-1 – bell modulator
-		0,  3, 31, 0, 15,  8,  0, 4, 6, 0, 0,   // op-2 – bell modulator 2
-		0,  1,  0, 0, 15, 10,  0, 5, 6, 0, 0,   // op-3 – carrier
-		0,  1,  0, 0, 15, 10,  0, 5, 6, 0, 0    // op-4 – carrier
-	});
-
-	_begin_category("FM (OPX)");
-	// AL, FB,
-	// (WS,AR,DR,SR,RR,SL,TL,KR,ML,D1,D2,AM) × 4
-	_create_opx_voice("extra.opx", "Init OPX", {
-		0,0,
-		0, 30, 16, 0, 34, 0, 0, 0, 1, 0, 0, 0,   // op-1
-		0, 30, 16, 0, 34, 0, 0, 0, 1, 0, 0, 0,   // op-2
-		0, 30, 16, 0, 34, 0, 0, 0, 1, 0, 0, 0,   // op-3
-		0, 30, 16, 0, 34, 0, 0, 0, 1, 0, 0, 0    // op-4
-	});                                             // 2 + 12×4 = 50 ints
+void SiONVoicePresetUtil::_generate_template_voices() {
 
 	// --- Custom preset with pitch envelope ---------------------------------
-	{
-		Ref<SiONVoice> voice = memnew(SiONVoice);
-		voice->set_analog_like(0, 0, 0, 0, 0);          // simple dual-saw patch
+	// {
+	// 	Ref<SiONVoice> voice = memnew(SiONVoice);
+	// 	voice->set_analog_like(0, 0, 0, 0, 0);          // simple dual-saw patch
 		
-		// Create pitch envelope: start at +12 semitones, decay to 0 over 12 steps
-		Vector<int> pitch_env;
-		for (int i = 0; i < 12; i++) {
-			int pitch_value = 768 - (768 * i / 11);   // Linear decay from 768 (12 semitones) to 0
-			pitch_env.append(pitch_value);
-		}
-		pitch_env.append(0);  // Sustain at 0
-		voice->set_pitch_envelope(
-			make_typed_array_from_vector<int>(pitch_env),   // <- wrap here
-			12);                                            // loop index
+	// 	// Create pitch envelope: start at +12 semitones, decay to 0 over 12 steps
+	// 	Vector<int> pitch_env;
+	// 	for (int i = 0; i < 12; i++) {
+	// 		int pitch_value = 768 - (768 * i / 11);   // Linear decay from 768 (12 semitones) to 0
+	// 		pitch_env.append(pitch_value);
+	// 	}
+	// 	pitch_env.append(0);  // Sustain at 0
+	// 	voice->set_pitch_envelope(
+	// 		make_typed_array_from_vector<int>(pitch_env),   // <- wrap here
+	// 		12);                                            // loop index
 		
-		voice->set_name("Swoop Lead (Pitch Env)");
-		_register_voice("extra.opx.swooplead", voice);
-	}
+	// 	voice->set_name("Swoop Lead (Pitch Env)");
+	// 	_register_voice("extra.opx.swooplead", voice);
+	// }
 
-	// ------------------ FM (OPX) ------------------
-	_create_opx_voice("extra.opx.pad", "Warm Pad OPX", {
-		// AL FB
-		5, 3,
-		// WS AR DR SR RR SL TL KR ML D1 D2 AM
-		0, 24, 16, 16, 18, 5, 40, 0, 2, 0, 0, 0,   // op-1
-		1, 24, 16, 16, 18, 5, 48, 0, 1, 0, 0, 0,   // op-2
-		0, 28, 18, 16, 18, 5, 44, 0, 2, 0, 0, 0,   // op-3
-		1, 20, 14, 16, 18, 5, 44, 0, 1, 0, 0, 0    // op-4
-	});
-
-	_begin_category("PCM");
-	_create_pcm_voice("extra.pcm.init", "PCM Init");
+	// _begin_category("PCM");
+	// _create_pcm_voice("extra.pcm.init", "PCM Init");
 
 	// Template init presets — one per voice/chip type.
 	// These are minimal "blank canvas" voices used as starting points for each synthesis engine.
@@ -1301,7 +1189,7 @@ void SiONVoicePresetUtil::_bind_methods() {
 	BIND_ENUM_CONSTANT(INCLUDE_MIDIDRUM);
 	BIND_ENUM_CONSTANT(INCLUDE_WAVETABLE);
 	BIND_ENUM_CONSTANT(INCLUDE_SINGLE_DRUM);
-	BIND_ENUM_CONSTANT(INCLUDE_EXTRA);
+	BIND_ENUM_CONSTANT(INCLUDE_TEMPLATE);
 	BIND_ENUM_CONSTANT(INCLUDE_ALL);
 }
 

@@ -33,7 +33,7 @@ public:
 		INCLUDE_MIDIDRUM = 8,     // Include General MIDI drum set voices.
 		INCLUDE_WAVETABLE = 16,   // Include wave table voices.
 		INCLUDE_SINGLE_DRUM = 32, // Include single voice drum voices.
-		INCLUDE_EXTRA = 64,       // Include extra voices for various synth models.
+		INCLUDE_TEMPLATE = 64,       // Include template voices for various synth models.
 
 		INCLUDE_ALL = 0xffff      // Include all voices (forwards compatible).
 	};
@@ -51,7 +51,7 @@ private:
 	void _generate_mididrum_voices();
 	void _generate_wave_table_voices();
 	void _generate_single_drum_voices();
-	void _generate_extra_voices();
+	void _generate_template_voices();
 
 	void _create_basic_voice(const String &p_key, const String &p_name, int p_channel_num);
 	void _create_percussive_voice(const String &p_key, const String &p_name, int p_wave_shape, int p_attack_rate, int p_release_rate, int p_release_sweep, int p_cutoff = 128, int p_resonance = 0);
