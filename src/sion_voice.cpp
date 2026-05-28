@@ -438,6 +438,27 @@ void SiONVoice::set_operator_super_wave(int p_operator_index, int p_count, int p
 	}
 }
 
+void SiONVoice::set_wave_table_index(int p_index) {
+	int clamped = p_index < 0 ? 0 : (p_index > 127 ? 127 : p_index);
+	channel_num = clamped;
+	if (channel_params.is_valid() && channel_params->get_operator_count() > 0) {
+		Ref<SiOPMOperatorParams> op = channel_params->get_operator_params(0);
+		if (op.is_valid()) {
+			op->set_pulse_generator_type(SiONPulseGeneratorType::PULSE_CUSTOM + clamped);
+		}
+	}
+}
+
+int SiONVoice::get_wave_table_index() {
+	if (channel_params.is_valid() && channel_params->get_operator_count() > 0) {
+		Ref<SiOPMOperatorParams> op = channel_params->get_operator_params(0);
+		if (op.is_valid()) {
+			return op->get_pulse_generator_type() - SiONPulseGeneratorType::PULSE_CUSTOM;
+		}
+	}
+	return 0;
+}
+
 Ref<SiONVoice> SiONVoice::clone() {
 	Ref<SiONVoice> new_voice;
 	new_voice.instantiate();
@@ -502,6 +523,9 @@ void SiONVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_pitch_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_pitch_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
 
 	ClassDB::bind_method(D_METHOD("set_operator_super_wave", "operator_index", "count", "spread"), &SiONVoice::set_operator_super_wave);
+
+	ClassDB::bind_method(D_METHOD("set_wave_table_index", "index"), &SiONVoice::set_wave_table_index);
+	ClassDB::bind_method(D_METHOD("get_wave_table_index"), &SiONVoice::get_wave_table_index);
 
 	ClassDB::bind_method(D_METHOD("clone"), &SiONVoice::clone);
 

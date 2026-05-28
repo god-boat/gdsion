@@ -86,6 +86,14 @@ public:
 
 	void set_operator_super_wave(int p_operator_index, int p_count, int p_spread);
 
+	// --- SCC (MODULE_SCC) wavetable index ----------------------------------
+	// Selects which registered custom wavetable this voice plays. Writes both
+	// voice-level channel_num (used during channel rebind) and operator 0's
+	// pulse_generator_type = PULSE_CUSTOM + index (the value actually applied
+	// to the track via set_channel_params).
+	void set_wave_table_index(int p_index);
+	int get_wave_table_index();
+
 	// --- pitch_shift accessor ------------------------------------------------
 	int get_pitch_shift() const { return pitch_shift; }
 	void set_pitch_shift(int p_shift) { pitch_shift = p_shift; }
