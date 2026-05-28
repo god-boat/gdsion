@@ -488,6 +488,7 @@ private:
 		int monolith_low_lock = 100;
 		int monolith_lens = 0;
 		int monolith_glide = 0;
+		int monolith_sub_octave = 2;
 		// Analog-Like (AL) live params
 		bool has_al_ws1 = false;
 		int al_ws1 = 0;
@@ -886,6 +887,7 @@ public:
 			int p_drive_mode, int p_grind,
 			int p_motion_target, int p_motion_amount, int p_motion_rate,
 			int p_width, int p_low_lock, int p_lens, int p_glide,
+			int p_sub_octave,
 			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// Analog-Like (AL) mailboxes
 	void mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);

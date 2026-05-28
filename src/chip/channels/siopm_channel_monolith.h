@@ -71,6 +71,7 @@ private:
 	int _sub_level = 80;
 	int _sub_drive = 0;
 	int _pitch_drop = 0;
+	int _sub_octave = 2;
 	int _osc1_shape = OSC_SAW;
 	int _osc2_shape = OSC_SAW;
 	int _mass = 40;
@@ -96,10 +97,17 @@ private:
 	uint32_t _osc2_phase = 0;
 	uint32_t _noise_state = 0x12345678;
 
+	// Separate octave-down accumulator for SUB_OCTAVE_STACK.
+	uint32_t _sub_oct_phase = 0;
+
 	// Phase increments computed from pitch.
 	uint32_t _sub_phase_inc = 0;
 	uint32_t _osc1_phase_inc = 0;
 	uint32_t _osc2_phase_inc = 0;
+
+	// Normalized frequency for polyBLEP (phase_inc * PHASE_TO_NORM).
+	double _osc1_dt = 0.0;
+	double _osc2_dt = 0.0;
 
 	// 808 pitch envelope.
 	double _pitch_env_level = 0.0;
@@ -120,14 +128,50 @@ private:
 	double _glide_coeff = 1.0;
 	bool _has_previous_note = false;
 
-	// Declick.
+	// Amplitude envelope (adapted from SiOPMChannelSampler).
+	enum AmplitudeStage {
+		AMP_STAGE_IDLE = 0,
+		AMP_STAGE_ATTACK,
+		AMP_STAGE_DECAY,
+		AMP_STAGE_SUSTAIN,
+		AMP_STAGE_RELEASE,
+	};
+
+	int _amp_attack_rate = 0;
+	int _amp_decay_rate = 0;
+	int _amp_release_rate = 0;
+	int _amp_sustain_level = 128;
+	AmplitudeStage _amp_stage = AMP_STAGE_IDLE;
+	double _amp_level = 0.0;
+	double _amp_stage_target_level = 0.0;
+	double _amp_stage_increment = 0.0;
+	int _amp_stage_samples_left = 0;
+	double _envelope_level = 0.0;
+
+	// Declick (secondary safety ramp on top of amp envelope).
 	static constexpr int DECLICK_SAMPLES = 256;
 	static constexpr double DECLICK_INCREMENT = 1.0 / DECLICK_SAMPLES;
 	double _declick_level = 0.0;
 	double _declick_target = 0.0;
 
-	// Lens high-pass state.
-	double _lens_hp_z1 = 0.0;
+	// Mass-derived thickness parameters (precomputed in set_monolith_params).
+	double _mass_detune_pitch = 0.0;
+	double _mass_osc2_level = 0.5;
+	double _mass_drift_inc = 0.0;
+	double _mass_drift_phase = 0.0;
+	double _mass_drive_compensation = 1.0;
+
+	// Gain staging (precomputed in set_monolith_params).
+	double _main_level = 0.7;
+	double _drive_input_trim = 1.0;
+	double _drive_output_makeup = 1.0;
+
+	// Lens filter state (one-pole LP to isolate low content, one-pole HP
+	// on the generated harmonics to remove mud).
+	double _lens_lp_z1 = 0.0;
+	double _lens_harm_hp_z1 = 0.0;
+	double _lens_lp_coeff = 0.0;
+	double _lens_harm_hp_coeff = 0.0;
 
 	// Cached sample rate.
 	double _sample_rate = 44100.0;
@@ -135,13 +179,23 @@ private:
 	// Internal DSP helpers.
 	void _update_phase_increments(double p_motion_mod);
 	double _generate_sub_sample();
-	double _generate_osc_sample(uint32_t p_phase, int p_shape, double p_warp);
+	double _generate_osc_sample(uint32_t p_phase, int p_shape, double p_warp, double p_dt);
 	double _apply_drive(double p_sample, int p_mode, double p_amount);
 	double _wavefold(double p_sample, double p_amount);
 	double _generate_noise();
 
 	uint32_t _pitch_to_phase_inc(double p_pitch_units);
 	uint32_t _freq_to_phase_inc(double p_freq);
+
+	// Amplitude envelope helpers.
+	void _reset_amp_envelope();
+	void _start_amp_envelope();
+	void _begin_amp_release();
+	void _advance_amp_stage();
+	void _set_amp_stage(AmplitudeStage p_stage);
+	void _configure_amp_stage(double p_target_level, int p_rate);
+	int _compute_amp_samples_per_unit(int p_rate) const;
+	void _update_amp_envelope();
 
 	void _process_monolith(int p_length);
 
@@ -156,12 +210,14 @@ public:
 			int p_mass, int p_bite, int p_shape,
 			int p_drive_mode, int p_grind,
 			int p_motion_target, int p_motion_amount, int p_motion_rate,
-			int p_width, int p_low_lock, int p_lens, int p_glide);
+			int p_width, int p_low_lock, int p_lens, int p_glide,
+			int p_sub_octave);
 
 	int get_monolith_sub_shape() const { return _sub_shape; }
 	int get_monolith_sub_level() const { return _sub_level; }
 	int get_monolith_sub_drive() const { return _sub_drive; }
 	int get_monolith_pitch_drop() const { return _pitch_drop; }
+	int get_monolith_sub_octave() const { return _sub_octave; }
 	int get_monolith_osc1_shape() const { return _osc1_shape; }
 	int get_monolith_osc2_shape() const { return _osc2_shape; }
 	int get_monolith_mass() const { return _mass; }
@@ -183,8 +239,8 @@ public:
 	virtual void get_channel_params(const Ref<SiOPMChannelParams> &p_params) const override;
 	virtual void set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation = true) override;
 
-	virtual void set_all_attack_rate(int p_value) override {}
-	virtual void set_all_release_rate(int p_value) override {}
+	virtual void set_all_attack_rate(int p_value) override;
+	virtual void set_all_release_rate(int p_value) override;
 
 	virtual void offset_volume(int p_expression, int p_velocity) override;
 

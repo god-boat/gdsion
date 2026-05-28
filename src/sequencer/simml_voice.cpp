@@ -161,7 +161,8 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 						monolith_mass, monolith_bite, monolith_shape,
 						monolith_drive_mode, monolith_grind,
 						monolith_motion_target, monolith_motion_amount, monolith_motion_rate,
-						monolith_width, monolith_low_lock, monolith_lens, monolith_glide);
+						monolith_width, monolith_low_lock, monolith_lens, monolith_glide,
+						monolith_sub_octave);
 				mono_ch->set_channel_params(channel_params, update_volumes, true);
 				p_track->reset_volume_offset();
 			}
@@ -362,6 +363,7 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	monolith_low_lock = p_source->monolith_low_lock;
 	monolith_lens = p_source->monolith_lens;
 	monolith_glide = p_source->monolith_glide;
+	monolith_sub_octave = p_source->monolith_sub_octave;
 
 	default_gate_time = p_source->default_gate_time;
 	default_gate_ticks = p_source->default_gate_ticks;

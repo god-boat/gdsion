@@ -1486,6 +1486,7 @@ void SiONDriver::_bind_methods() {
 			"drive_mode", "grind",
 			"motion_target", "motion_amount", "motion_rate",
 			"width", "low_lock", "lens", "glide",
+			"sub_octave",
 			"entity_scope_id", "slot_scope_id"),
 			&SiONDriver::mailbox_set_monolith_params, DEFVAL(-1), DEFVAL(-1));
 	// Analog-Like (AL)
@@ -2683,6 +2684,7 @@ void SiONDriver::mailbox_set_monolith_params(int p_track_id,
 		int p_drive_mode, int p_grind,
 		int p_motion_target, int p_motion_amount, int p_motion_rate,
 		int p_width, int p_low_lock, int p_lens, int p_glide,
+		int p_sub_octave,
 		int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
@@ -2707,6 +2709,7 @@ void SiONDriver::mailbox_set_monolith_params(int p_track_id,
 	u.monolith_low_lock = p_low_lock;
 	u.monolith_lens = p_lens;
 	u.monolith_glide = p_glide;
+	u.monolith_sub_octave = p_sub_octave;
 	_mb_try_push(u);
 }
 
@@ -3363,7 +3366,8 @@ void SiONDriver::_drain_track_mailbox() {
                             u.monolith_mass, u.monolith_bite, u.monolith_shape,
                             u.monolith_drive_mode, u.monolith_grind,
                             u.monolith_motion_target, u.monolith_motion_amount, u.monolith_motion_rate,
-                            u.monolith_width, u.monolith_low_lock, u.monolith_lens, u.monolith_glide);
+                            u.monolith_width, u.monolith_low_lock, u.monolith_lens, u.monolith_glide,
+                            u.monolith_sub_octave);
                 }
             }
             // FM operator updates and Analog-Like live params

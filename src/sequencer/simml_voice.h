@@ -110,6 +110,7 @@ protected:
 	int monolith_low_lock = 100;
 	int monolith_lens = 0;
 	int monolith_glide = 0;
+	int monolith_sub_octave = 2;
 
 	void set_note_on_pitch_envelope(const Ref<SiMMLEnvelopeTable> &p_envelope, int p_step = 1) {
 		note_on_pitch_envelope = p_envelope;

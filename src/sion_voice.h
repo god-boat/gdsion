@@ -82,7 +82,8 @@ public:
 			int p_mass = 40, int p_bite = 40, int p_shape = 0,
 			int p_drive_mode = 0, int p_grind = 0,
 			int p_motion_target = 0, int p_motion_amount = 0, int p_motion_rate = 40,
-			int p_width = 0, int p_low_lock = 100, int p_lens = 0, int p_glide = 0);
+			int p_width = 0, int p_low_lock = 100, int p_lens = 0, int p_glide = 0,
+			int p_sub_octave = 0);
 	void set_analog_like(int p_connection_type, int p_wave_shape1 = 1, int p_wave_shape2 = 1, int p_balance = 0, int p_pitch_difference = 0);
 
 	void set_envelope(int p_attack_rate, int p_decay_rate, int p_sustain_rate, int p_release_rate, int p_sustain_level, int p_total_level);

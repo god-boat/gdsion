@@ -10,6 +10,7 @@
 #include "templates/singly_linked_list.h"
 
 static constexpr double TWO_PI = 6.283185307179586;
+static constexpr double HALF_PI = 1.5707963267948966;
 static constexpr double PHASE_TO_RAD = TWO_PI / 4294967296.0;
 static constexpr double PHASE_TO_NORM = 1.0 / 4294967296.0;
 static constexpr double PIPE_PEAK = 8192.0;
@@ -20,6 +21,22 @@ static inline double fast_tanh(double x) {
 	if (x > 3.0) return 1.0;
 	double x2 = x * x;
 	return x * (27.0 + x2) / (27.0 + 9.0 * x2);
+}
+
+// PolyBLEP residual for anti-aliased discontinuities.
+// p_t: normalized phase [0,1), p_dt: normalized frequency (phase_inc / 2^32).
+static inline double poly_blep(double p_t, double p_dt) {
+	if (p_dt <= 0.0) {
+		return 0.0;
+	}
+	if (p_t < p_dt) {
+		double n = p_t / p_dt;
+		return n + n - n * n - 1.0;
+	} else if (p_t > 1.0 - p_dt) {
+		double n = (p_t - 1.0) / p_dt;
+		return n * n + n + n + 1.0;
+	}
+	return 0.0;
 }
 
 // ---------------------------------------------------------------------------
@@ -51,25 +68,26 @@ void SiOPMChannelMonolith::_update_phase_increments(double p_motion_mod) {
 		_glide_current_pitch = _target_pitch_f;
 	}
 
-	// Sub pitch with optional 808 pitch drop.
-	double sub_pitch = pitch;
+	// Sub pitch with octave offset (0=−2oct, 1=−1oct, 2=unison) and optional 808 pitch drop.
+	double sub_pitch = pitch + (double)(_sub_octave - 2) * 768.0;
 	if (_sub_shape == SUB_808 && _pitch_env_level > 0.001) {
 		sub_pitch += _pitch_env_level * (double)_pitch_drop * 0.5;
 	}
 	_sub_phase_inc = _pitch_to_phase_inc(sub_pitch);
 
 	// Main oscillators with mass-based detune.
-	double detune_cents = (double)_mass * 0.25;
-	double detune_pitch = detune_cents * 64.0 / 100.0;
+	_osc1_phase_inc = _pitch_to_phase_inc(pitch - _mass_detune_pitch * 0.5);
+	_osc2_phase_inc = _pitch_to_phase_inc(pitch + _mass_detune_pitch * 0.5);
 
-	double phase_mod = 0.0;
+	// Precompute normalized frequency for polyBLEP.
+	_osc1_dt = (double)_osc1_phase_inc * PHASE_TO_NORM;
+	_osc2_dt = (double)_osc2_phase_inc * PHASE_TO_NORM;
+
+	// MOTION_PHASE: modulate osc2 phase offset via motion LFO.
 	if (_motion_target_param == MOTION_PHASE) {
-		phase_mod = p_motion_mod;
+		uint32_t phase_offset = (uint32_t)(p_motion_mod * 536870912.0);
+		_osc2_phase += phase_offset;
 	}
-	(void)phase_mod;
-
-	_osc1_phase_inc = _pitch_to_phase_inc(pitch - detune_pitch * 0.5);
-	_osc2_phase_inc = _pitch_to_phase_inc(pitch + detune_pitch * 0.5);
 }
 
 // ---------------------------------------------------------------------------
@@ -101,8 +119,9 @@ double SiOPMChannelMonolith::_generate_sub_sample() {
 		} break;
 
 		case SUB_ROUNDED_SQUARE: {
-			double sq = (t < 0.5) ? 1.0 : -1.0;
-			sample = fast_tanh(sq * 3.0);
+			// Sine driven through saturation for rounded square edges.
+			double s = std::sin((double)_sub_phase * PHASE_TO_RAD);
+			sample = fast_tanh(s * 3.0);
 		} break;
 
 		case SUB_SATURATED_SINE: {
@@ -112,7 +131,7 @@ double SiOPMChannelMonolith::_generate_sub_sample() {
 
 		case SUB_OCTAVE_STACK: {
 			double fund = std::sin((double)_sub_phase * PHASE_TO_RAD);
-			double oct_below = std::sin((double)(_sub_phase >> 1) * PHASE_TO_RAD);
+			double oct_below = std::sin((double)_sub_oct_phase * PHASE_TO_RAD);
 			sample = fund * 0.6 + oct_below * 0.4;
 		} break;
 
@@ -134,10 +153,10 @@ double SiOPMChannelMonolith::_generate_sub_sample() {
 }
 
 // ---------------------------------------------------------------------------
-// Main oscillator (per voice)
+// Main oscillator (per voice) with polyBLEP anti-aliasing
 // ---------------------------------------------------------------------------
 
-double SiOPMChannelMonolith::_generate_osc_sample(uint32_t p_phase, int p_shape, double p_warp) {
+double SiOPMChannelMonolith::_generate_osc_sample(uint32_t p_phase, int p_shape, double p_warp, double p_dt) {
 	double t = (double)p_phase * PHASE_TO_NORM;
 	double sample = 0.0;
 
@@ -149,20 +168,21 @@ double SiOPMChannelMonolith::_generate_osc_sample(uint32_t p_phase, int p_shape,
 				warped_t = std::pow(t, 1.0 + p_warp * 2.0);
 			}
 			sample = 2.0 * warped_t - 1.0;
+			// PolyBLEP correction at the wrap discontinuity.
+			sample -= poly_blep(t, p_dt);
 		} break;
 
 		case OSC_PULSE: {
-			// Pulse with warp controlling duty cycle (0.1 to 0.9).
+			// Pulse with warp controlling duty cycle (0.15 to 0.85).
 			double duty = 0.5 + p_warp * 0.35;
 			sample = (t < duty) ? 1.0 : -1.0;
-			// Soften edges slightly to reduce aliasing.
-			double edge_width = 0.01;
-			if (t < edge_width) {
-				sample *= t / edge_width;
-			} else if (t > duty - edge_width && t < duty + edge_width) {
-				double d = (t - duty) / edge_width;
-				sample = 1.0 - 2.0 * CLAMP((d + 1.0) * 0.5, 0.0, 1.0);
+			// PolyBLEP at cycle start and duty crossing.
+			sample += poly_blep(t, p_dt);
+			double t_duty = t - duty;
+			if (t_duty < 0.0) {
+				t_duty += 1.0;
 			}
+			sample -= poly_blep(t_duty, p_dt);
 		} break;
 
 		case OSC_TRIANGLE: {
@@ -178,21 +198,23 @@ double SiOPMChannelMonolith::_generate_osc_sample(uint32_t p_phase, int p_shape,
 			} else {
 				sample = (t < 0.5) ? (4.0 * t - 1.0) : (3.0 - 4.0 * t);
 			}
+			// Triangle is continuous so no BLEP needed.
 		} break;
 
 		case OSC_SINE_FOLD: {
 			// Sine through wavefolder. Warp controls fold intensity.
 			double s = std::sin((double)p_phase * PHASE_TO_RAD);
 			double fold = 1.0 + p_warp * 6.0;
-			sample = std::sin(s * fold * 1.5707963);
+			sample = std::sin(s * fold * HALF_PI);
 		} break;
 
 		case OSC_FORMANT: {
-			// Two-frequency formant. Warp sweeps formant position.
+			// Harmonic coloration via pitch-tracking ratio (not
+			// frequency-stable formant synthesis). Warp sweeps the
+			// harmonic ratio for growl and tonal color.
 			double carrier = std::sin((double)p_phase * PHASE_TO_RAD);
 			double formant_ratio = 2.0 + p_warp * 6.0;
 			double formant = std::sin((double)p_phase * PHASE_TO_RAD * formant_ratio);
-			// Window the formant by the carrier amplitude envelope.
 			double window = 0.5 + 0.5 * std::cos((double)p_phase * PHASE_TO_RAD);
 			sample = carrier * 0.5 + formant * window * 0.5;
 		} break;
@@ -202,6 +224,9 @@ double SiOPMChannelMonolith::_generate_osc_sample(uint32_t p_phase, int p_shape,
 			double sync_ratio = 1.0 + p_warp * 4.0;
 			double sync_phase = std::fmod(t * sync_ratio, 1.0);
 			sample = 2.0 * sync_phase - 1.0;
+			// PolyBLEP at sync reset points.
+			double sync_dt = p_dt * sync_ratio;
+			sample -= poly_blep(sync_phase, sync_dt);
 		} break;
 
 		case OSC_DIGITAL: {
@@ -229,7 +254,7 @@ double SiOPMChannelMonolith::_generate_osc_sample(uint32_t p_phase, int p_shape,
 
 double SiOPMChannelMonolith::_wavefold(double p_sample, double p_amount) {
 	double x = p_sample * (1.0 + p_amount * 4.0);
-	return std::sin(x * 1.5707963);
+	return std::sin(x * HALF_PI);
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +317,168 @@ double SiOPMChannelMonolith::_apply_drive(double p_sample, int p_mode, double p_
 }
 
 // ---------------------------------------------------------------------------
+// Amplitude envelope
+// ---------------------------------------------------------------------------
+
+void SiOPMChannelMonolith::_reset_amp_envelope() {
+	_amp_stage = AMP_STAGE_IDLE;
+	_amp_level = 0.0;
+	_amp_stage_target_level = 0.0;
+	_amp_stage_increment = 0.0;
+	_amp_stage_samples_left = 0;
+	_envelope_level = 0.0;
+}
+
+void SiOPMChannelMonolith::_start_amp_envelope() {
+	_is_idling = false;
+	_set_amp_stage(AMP_STAGE_ATTACK);
+}
+
+void SiOPMChannelMonolith::_begin_amp_release() {
+	if (_amp_stage == AMP_STAGE_IDLE || _amp_stage == AMP_STAGE_RELEASE) {
+		return;
+	}
+	_set_amp_stage(AMP_STAGE_RELEASE);
+}
+
+void SiOPMChannelMonolith::_advance_amp_stage() {
+	switch (_amp_stage) {
+		case AMP_STAGE_ATTACK: {
+			bool needs_decay = (_amp_sustain_level < 128) || (_amp_decay_rate > 0);
+			if (needs_decay) {
+				_set_amp_stage(AMP_STAGE_DECAY);
+			} else {
+				_set_amp_stage(AMP_STAGE_SUSTAIN);
+			}
+		} break;
+		case AMP_STAGE_DECAY: {
+			_set_amp_stage(AMP_STAGE_SUSTAIN);
+		} break;
+		case AMP_STAGE_RELEASE: {
+			_set_amp_stage(AMP_STAGE_IDLE);
+			_is_idling = true;
+		} break;
+		default:
+			break;
+	}
+}
+
+void SiOPMChannelMonolith::_set_amp_stage(AmplitudeStage p_stage) {
+	_amp_stage = p_stage;
+
+	switch (p_stage) {
+		case AMP_STAGE_ATTACK: {
+			_is_idling = false;
+			_amp_level = CLAMP(_amp_level, 0.0, 1.0);
+			_configure_amp_stage(1.0, _amp_attack_rate);
+		} break;
+		case AMP_STAGE_DECAY: {
+			_is_idling = false;
+			double sustain = (double)_amp_sustain_level * 0.0078125;
+			_configure_amp_stage(sustain, _amp_decay_rate);
+		} break;
+		case AMP_STAGE_SUSTAIN: {
+			_is_idling = false;
+			_amp_stage_samples_left = 0;
+			_amp_stage_increment = 0.0;
+			_amp_level = (double)_amp_sustain_level * 0.0078125;
+			_envelope_level = _amp_level;
+		} break;
+		case AMP_STAGE_RELEASE: {
+			_is_idling = false;
+			_configure_amp_stage(0.0, _amp_release_rate);
+		} break;
+		case AMP_STAGE_IDLE:
+		default: {
+			_amp_stage_samples_left = 0;
+			_amp_stage_increment = 0.0;
+			_amp_level = 0.0;
+			_envelope_level = 0.0;
+		} break;
+	}
+}
+
+void SiOPMChannelMonolith::_configure_amp_stage(double p_target_level, int p_rate) {
+	_amp_stage_target_level = CLAMP(p_target_level, 0.0, 1.0);
+	double delta = _amp_stage_target_level - _amp_level;
+	double delta_abs = std::fabs(delta);
+	bool immediate = (p_rate <= 0) || (delta_abs < 0.0001);
+	if (immediate) {
+		_amp_level = _amp_stage_target_level;
+		_amp_stage_samples_left = 0;
+		_amp_stage_increment = 0.0;
+		if (_amp_stage == AMP_STAGE_ATTACK || _amp_stage == AMP_STAGE_DECAY || _amp_stage == AMP_STAGE_RELEASE) {
+			_advance_amp_stage();
+		} else {
+			_envelope_level = _amp_level;
+		}
+		return;
+	}
+
+	int samples_per_unit = _compute_amp_samples_per_unit(p_rate);
+	if (samples_per_unit <= 0) {
+		_amp_level = _amp_stage_target_level;
+		_amp_stage_samples_left = 0;
+		_amp_stage_increment = 0.0;
+		if (_amp_stage == AMP_STAGE_ATTACK || _amp_stage == AMP_STAGE_DECAY || _amp_stage == AMP_STAGE_RELEASE) {
+			_advance_amp_stage();
+		} else {
+			_envelope_level = _amp_level;
+		}
+		return;
+	}
+
+	double units = std::ceil(delta_abs * 128.0);
+	if (units < 1.0) {
+		units = 1.0;
+	}
+	_amp_stage_samples_left = (int)std::ceil(samples_per_unit * units);
+	if (_amp_stage_samples_left <= 0) {
+		_amp_stage_samples_left = 1;
+	}
+	_amp_stage_increment = delta / (double)_amp_stage_samples_left;
+}
+
+int SiOPMChannelMonolith::_compute_amp_samples_per_unit(int p_rate) const {
+	int rate_index = CLAMP(p_rate, 0, 63);
+	if (rate_index == 0) {
+		return 0;
+	}
+	double base = 2.36514 * std::pow(2.0, 14.0 - (double)rate_index / 4.0) * 0.5;
+	int samples = (int)(base + 0.5);
+	return samples > 0 ? samples : 1;
+}
+
+void SiOPMChannelMonolith::_update_amp_envelope() {
+	switch (_amp_stage) {
+		case AMP_STAGE_ATTACK:
+		case AMP_STAGE_DECAY:
+		case AMP_STAGE_RELEASE: {
+			if (_amp_stage_samples_left > 0) {
+				_amp_level += _amp_stage_increment;
+				_amp_stage_samples_left--;
+				if (_amp_stage_samples_left <= 0) {
+					_amp_level = _amp_stage_target_level;
+					_advance_amp_stage();
+				}
+			} else {
+				_amp_level = _amp_stage_target_level;
+				_advance_amp_stage();
+			}
+		} break;
+		case AMP_STAGE_SUSTAIN: {
+			_amp_level = (double)_amp_sustain_level * 0.0078125;
+		} break;
+		case AMP_STAGE_IDLE:
+		default:
+			_amp_level = 0.0;
+			break;
+	}
+
+	_envelope_level = CLAMP(_amp_level, 0.0, 1.0);
+}
+
+// ---------------------------------------------------------------------------
 // Grouped param setter
 // ---------------------------------------------------------------------------
 
@@ -301,11 +488,13 @@ void SiOPMChannelMonolith::set_monolith_params(
 		int p_mass, int p_bite, int p_shape,
 		int p_drive_mode, int p_grind,
 		int p_motion_target, int p_motion_amount, int p_motion_rate,
-		int p_width, int p_low_lock, int p_lens, int p_glide) {
+		int p_width, int p_low_lock, int p_lens, int p_glide,
+		int p_sub_octave) {
 	_sub_shape = CLAMP(p_sub_shape, 0, SUB_SHAPE_MAX - 1);
 	_sub_level = CLAMP(p_sub_level, 0, 127);
 	_sub_drive = CLAMP(p_sub_drive, 0, 127);
 	_pitch_drop = CLAMP(p_pitch_drop, 0, 127);
+	_sub_octave = CLAMP(p_sub_octave, 0, 2);
 	_osc1_shape = CLAMP(p_osc1_shape, 0, OSC_SHAPE_MAX - 1);
 	_osc2_shape = CLAMP(p_osc2_shape, 0, OSC_SHAPE_MAX - 1);
 	_mass = CLAMP(p_mass, 0, 127);
@@ -340,6 +529,37 @@ void SiOPMChannelMonolith::set_monolith_params(
 		double decay_samples = decay_ms * _sample_rate / 1000.0;
 		_pitch_env_decay_coeff = std::exp(-4.0 / decay_samples);
 	}
+
+	// --- Mass: thickness bundle ---
+	double mass_n = (double)_mass / 127.0;
+	// Detune: 0-50 cents range.
+	double detune_cents = mass_n * 50.0;
+	_mass_detune_pitch = detune_cents * 64.0 / 100.0;
+	// Osc2 level boost: from 0.5 (equal mix) toward 1.0 at max mass.
+	_mass_osc2_level = 0.5 + mass_n * 0.5;
+	// Slow phase drift on osc2 for analog-like movement.
+	double drift_hz = 0.05 + mass_n * 0.3;
+	_mass_drift_inc = drift_hz / _sample_rate;
+	// Drive compensation: reduce input level as mass adds energy.
+	_mass_drive_compensation = 1.0 / (1.0 + mass_n * 0.3);
+
+	// --- Gain staging ---
+	double grind_n = (double)_grind / 127.0;
+	double bite_n = (double)_bite / 127.0;
+	// Main harmonic layer level (not exposed, prevents domination over sub).
+	_main_level = 0.7 - bite_n * 0.1;
+	// Drive input trim: prevent loudness explosion as grind rises.
+	_drive_input_trim = 1.0 / (1.0 + grind_n * 2.0);
+	// Output makeup after drive compression.
+	_drive_output_makeup = 1.0 / (1.0 + grind_n * 0.5);
+
+	// --- Lens coefficients ---
+	// LP split: cutoff sweeps 45-180 Hz based on lens amount.
+	double lens_n = (double)_lens / 127.0;
+	double lens_cutoff_hz = 45.0 + lens_n * 135.0;
+	_lens_lp_coeff = 1.0 - std::exp(-TWO_PI * lens_cutoff_hz / _sample_rate);
+	// HP on generated harmonics: ~200 Hz to remove mud.
+	_lens_harm_hp_coeff = 1.0 - std::exp(-TWO_PI * 200.0 / _sample_rate);
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +597,11 @@ void SiOPMChannelMonolith::get_channel_params(const Ref<SiOPMChannelParams> &p_p
 
 	p_params->set_amplitude_modulation_depth(0);
 	p_params->set_pitch_modulation_depth(0);
+
+	p_params->set_amplitude_attack_rate(_amp_attack_rate);
+	p_params->set_amplitude_decay_rate(_amp_decay_rate);
+	p_params->set_amplitude_sustain_level(_amp_sustain_level);
+	p_params->set_amplitude_release_rate(_amp_release_rate);
 
 	for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
 		p_params->set_master_volume(i, _volumes[i]);
@@ -426,6 +651,11 @@ void SiOPMChannelMonolith::set_channel_params(const Ref<SiOPMChannelParams> &p_p
 	}
 	set_instrument_gain_db(p_params->get_instrument_gain_db());
 
+	_amp_attack_rate = CLAMP(p_params->get_amplitude_attack_rate(), 0, 63);
+	_amp_decay_rate = CLAMP(p_params->get_amplitude_decay_rate(), 0, 63);
+	_amp_sustain_level = CLAMP(p_params->get_amplitude_sustain_level(), 0, 128);
+	_amp_release_rate = CLAMP(p_params->get_amplitude_release_rate(), 0, 63);
+
 	_filter_type = p_params->get_filter_type();
 	set_sv_filter(
 			p_params->get_filter_cutoff(),
@@ -441,16 +671,25 @@ void SiOPMChannelMonolith::set_channel_params(const Ref<SiOPMChannelParams> &p_p
 }
 
 // ---------------------------------------------------------------------------
-// Note on / off / expression
+// Note on / off / expression / rate overrides
 // ---------------------------------------------------------------------------
 
 void SiOPMChannelMonolith::offset_volume(int p_expression, int p_velocity) {
 	_expression = (double)p_expression * 0.0078125;
 }
 
+void SiOPMChannelMonolith::set_all_attack_rate(int p_value) {
+	_amp_attack_rate = CLAMP(p_value, 0, 63);
+}
+
+void SiOPMChannelMonolith::set_all_release_rate(int p_value) {
+	_amp_release_rate = CLAMP(p_value, 0, 63);
+}
+
 void SiOPMChannelMonolith::note_on() {
 	// Phase reset on note-on for tight transients.
 	_sub_phase = 0;
+	_sub_oct_phase = 0;
 	_osc1_phase = 0;
 	_osc2_phase = 0;
 
@@ -466,7 +705,6 @@ void SiOPMChannelMonolith::note_on() {
 
 	// Glide: keep previous pitch if legato, otherwise snap.
 	if (_is_note_on && _glide_time > 0) {
-		// Legato: glide from current pitch to new target.
 		_has_previous_note = true;
 	} else {
 		_has_previous_note = false;
@@ -477,6 +715,8 @@ void SiOPMChannelMonolith::note_on() {
 	_is_idling = false;
 	_declick_target = 1.0;
 
+	_start_amp_envelope();
+
 	SiOPMChannelBase::note_on();
 }
 
@@ -484,12 +724,14 @@ void SiOPMChannelMonolith::note_off() {
 	_is_note_on = false;
 	_declick_target = 0.0;
 
+	_begin_amp_release();
+
 	SiOPMChannelBase::note_off();
 }
 
 void SiOPMChannelMonolith::reset_channel_buffer_status() {
 	SiOPMChannelBase::reset_channel_buffer_status();
-	_is_idling = !_is_note_on && _declick_level <= 0.0;
+	_is_idling = !_is_note_on && _amp_stage == AMP_STAGE_IDLE && _declick_level <= 0.0;
 }
 
 // ---------------------------------------------------------------------------
@@ -515,15 +757,18 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 	const double gain = _expression * PIPE_PEAK;
 
 	for (int i = 0; i < p_length; i++) {
-		// Declick ramp.
+		// Declick ramp (secondary safety on top of amp envelope).
 		if (_declick_level < _declick_target) {
 			_declick_level = MIN(_declick_level + DECLICK_INCREMENT, _declick_target);
 		} else if (_declick_level > _declick_target) {
 			_declick_level = MAX(_declick_level - DECLICK_INCREMENT, 0.0);
-			if (_declick_level <= 0.0) {
+			if (_declick_level <= 0.0 && _amp_stage == AMP_STAGE_IDLE) {
 				_is_idling = true;
 			}
 		}
+
+		// Amplitude envelope tick.
+		_update_amp_envelope();
 
 		// Motion LFO.
 		_motion_phase += _motion_phase_inc;
@@ -556,18 +801,30 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 			osc_warp = CLAMP(warp_mod + motion_mod * 0.4, 0.0, 1.0);
 		}
 
-		double osc1 = _generate_osc_sample(_osc1_phase, _osc1_shape, osc_warp);
-		double osc2 = _generate_osc_sample(_osc2_phase, _osc2_shape, osc_warp);
+		double osc1 = _generate_osc_sample(_osc1_phase, _osc1_shape, osc_warp, _osc1_dt);
+		double osc2 = _generate_osc_sample(_osc2_phase, _osc2_shape, osc_warp, _osc2_dt);
 
-		// Width: phase offset on osc2 for stereo-like thickening.
+		// Width: frequency-aware phase offset on osc2 for thickening.
+		// This is a timbre/thickness macro in v1; true stereo spread with
+		// mono-low / wide-high crossover is deferred to v2 (requires
+		// overriding buffer() for dual-pipe output).
 		if (width_n > 0.01) {
-			uint32_t offset = (uint32_t)(width_n * 1073741824.0);
-			double osc2_w = _generate_osc_sample(_osc2_phase + offset, _osc2_shape, osc_warp);
+			uint32_t offset = (uint32_t)(width_n * _osc2_phase_inc * 128.0);
+			double osc2_w = _generate_osc_sample(_osc2_phase + offset, _osc2_shape, osc_warp, _osc2_dt);
 			osc2 = osc2 * (1.0 - width_n * 0.5) + osc2_w * width_n * 0.5;
 		}
 
-		// Mix main oscillators.
-		double main_mix = (osc1 + osc2) * 0.5;
+		// Mix main oscillators with mass-derived osc2 level.
+		double main_mix = (osc1 + osc2 * _mass_osc2_level) / (1.0 + _mass_osc2_level);
+
+		// Mass phase drift on osc2 for analog-like movement.
+		_mass_drift_phase += _mass_drift_inc;
+		if (_mass_drift_phase >= 1.0) {
+			_mass_drift_phase -= 1.0;
+		}
+
+		// Apply main level.
+		main_mix *= _main_level;
 
 		// Bite: harmonic emphasis via cubic waveshaping.
 		if (bite_n > 0.01) {
@@ -580,7 +837,8 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 		double sub_dirty = sub * (1.0 - low_lock_n);
 
 		if (grind_n > 0.001) {
-			main_mix = _apply_drive(main_mix + sub_dirty, _drive_mode, grind_n);
+			double drive_input = (main_mix + sub_dirty) * _drive_input_trim * _mass_drive_compensation;
+			main_mix = _apply_drive(drive_input, _drive_mode, grind_n) * _drive_output_makeup;
 		} else {
 			main_mix = main_mix + sub_dirty;
 		}
@@ -588,33 +846,36 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 		double output = main_mix + sub_clean;
 
 		// --- Lens: harmonic enhancement for small speakers ---
+		// Extracts low content via one-pole LP, generates harmonics via
+		// half-wave rectification + saturation, then high-passes the
+		// harmonics to avoid adding mud before mixing back.
 		if (lens_n > 0.01) {
-			// High-pass to isolate upper content, then generate harmonics
-			// from the low-frequency content and mix them in.
-			double hp = output - _lens_hp_z1;
-			// ~80 Hz cutoff at 44.1 kHz (coefficient ≈ 1 - 80*2π/sr).
-			_lens_hp_z1 += hp * (500.0 / _sample_rate);
-			double lp = _lens_hp_z1;
-			// Generate upper harmonics from the low-frequency content via
-			// half-wave rectification + saturation.
+			_lens_lp_z1 += _lens_lp_coeff * (output - _lens_lp_z1);
+			double lp = _lens_lp_z1;
+
+			// Generate upper harmonics from low content.
 			double harm = lp * lp * (lp > 0.0 ? 1.0 : -1.0);
 			harm = fast_tanh(harm * 3.0);
-			output += harm * lens_n * 0.4;
 
-			// Compensate sub level reduction at high lens values.
-			output *= 1.0 + lens_n * 0.15;
+			// HP the generated harmonics to remove mud (~200 Hz).
+			double harm_hp = harm - _lens_harm_hp_z1;
+			_lens_harm_hp_z1 += _lens_harm_hp_coeff * harm_hp;
+
+			output += harm_hp * lens_n * 0.4;
 		}
 
-		// Safety clip.
-		output = CLAMP(output, -1.2, 1.2);
+		// Safety clip (should only catch extremes with proper gain staging).
+		output = CLAMP(output, -1.5, 1.5);
 		output = fast_tanh(output);
 
-		// Write to pipe.
-		int sample = (int)(output * gain * _declick_level);
+		// Write to pipe with combined envelope + declick.
+		double env = _envelope_level * _declick_level;
+		int sample = (int)(output * gain * env);
 		out_pipe->value = sample + base_pipe->value;
 
 		// Advance phases.
 		_sub_phase += _sub_phase_inc;
+		_sub_oct_phase += _sub_phase_inc >> 1;
 		_osc1_phase += _osc1_phase_inc;
 		_osc2_phase += _osc2_phase_inc;
 
@@ -651,6 +912,7 @@ void SiOPMChannelMonolith::initialize(SiOPMChannelBase *p_prev, int p_buffer_ind
 	_sub_level = 80;
 	_sub_drive = 0;
 	_pitch_drop = 0;
+	_sub_octave = 2;
 	_osc1_shape = OSC_SAW;
 	_osc2_shape = OSC_SAW;
 	_mass = 40;
@@ -669,12 +931,15 @@ void SiOPMChannelMonolith::initialize(SiOPMChannelBase *p_prev, int p_buffer_ind
 	_current_pitch = 0;
 	_expression = 1.0;
 	_sub_phase = 0;
+	_sub_oct_phase = 0;
 	_osc1_phase = 0;
 	_osc2_phase = 0;
 	_noise_state = 0x12345678;
 	_sub_phase_inc = 0;
 	_osc1_phase_inc = 0;
 	_osc2_phase_inc = 0;
+	_osc1_dt = 0.0;
+	_osc2_dt = 0.0;
 	_pitch_env_level = 0.0;
 	_click_level = 0.0;
 	_motion_phase = 0;
@@ -684,24 +949,51 @@ void SiOPMChannelMonolith::initialize(SiOPMChannelBase *p_prev, int p_buffer_ind
 	_target_pitch_f = 0.0;
 	_glide_coeff = 1.0;
 	_has_previous_note = false;
+
+	_amp_attack_rate = 0;
+	_amp_decay_rate = 0;
+	_amp_release_rate = 0;
+	_amp_sustain_level = 128;
+	_reset_amp_envelope();
+
 	_declick_level = 0.0;
 	_declick_target = 0.0;
-	_lens_hp_z1 = 0.0;
+
+	_mass_detune_pitch = 0.0;
+	_mass_osc2_level = 0.5;
+	_mass_drift_inc = 0.0;
+	_mass_drift_phase = 0.0;
+	_mass_drive_compensation = 1.0;
+
+	_main_level = 0.7;
+	_drive_input_trim = 1.0;
+	_drive_output_makeup = 1.0;
+
+	_lens_lp_z1 = 0.0;
+	_lens_harm_hp_z1 = 0.0;
+	_lens_lp_coeff = 1.0 - std::exp(-TWO_PI * 120.0 / _sample_rate);
+	_lens_harm_hp_coeff = 1.0 - std::exp(-TWO_PI * 200.0 / _sample_rate);
 
 	_process_function = Callable(this, "_process_monolith");
 }
 
 void SiOPMChannelMonolith::reset() {
 	_sub_phase = 0;
+	_sub_oct_phase = 0;
 	_osc1_phase = 0;
 	_osc2_phase = 0;
 	_noise_state = 0x12345678;
 	_pitch_env_level = 0.0;
 	_click_level = 0.0;
 	_motion_phase = 0;
+	_mass_drift_phase = 0.0;
+
+	_reset_amp_envelope();
 	_declick_level = 0.0;
 	_declick_target = 0.0;
-	_lens_hp_z1 = 0.0;
+
+	_lens_lp_z1 = 0.0;
+	_lens_harm_hp_z1 = 0.0;
 	_has_previous_note = false;
 
 	SiOPMChannelBase::reset();

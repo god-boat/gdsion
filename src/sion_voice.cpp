@@ -399,7 +399,8 @@ void SiONVoice::set_monolith(
 		int p_mass, int p_bite, int p_shape,
 		int p_drive_mode, int p_grind,
 		int p_motion_target, int p_motion_amount, int p_motion_rate,
-		int p_width, int p_low_lock, int p_lens, int p_glide) {
+		int p_width, int p_low_lock, int p_lens, int p_glide,
+		int p_sub_octave) {
 	module_type = SiONModuleType::MODULE_MONOLITH;
 	channel_num = 0;
 	chip_type = SiONChipType::CHIP_MONOLITH;
@@ -422,6 +423,7 @@ void SiONVoice::set_monolith(
 	monolith_low_lock = p_low_lock;
 	monolith_lens = p_lens;
 	monolith_glide = p_glide;
+	monolith_sub_octave = p_sub_octave;
 }
 
 void SiONVoice::set_analog_like(int p_connection_type, int p_wave_shape1, int p_wave_shape2, int p_balance, int p_pitch_difference) {
@@ -584,14 +586,16 @@ void SiONVoice::_bind_methods() {
 			"mass", "bite", "shape",
 			"drive_mode", "grind",
 			"motion_target", "motion_amount", "motion_rate",
-			"width", "low_lock", "lens", "glide"),
+			"width", "low_lock", "lens", "glide",
+			"sub_octave"),
 			&SiONVoice::set_monolith,
 			DEFVAL(0), DEFVAL(80), DEFVAL(0), DEFVAL(0),
 			DEFVAL(0), DEFVAL(0),
 			DEFVAL(40), DEFVAL(40), DEFVAL(0),
 			DEFVAL(0), DEFVAL(0),
 			DEFVAL(0), DEFVAL(0), DEFVAL(40),
-			DEFVAL(0), DEFVAL(100), DEFVAL(0), DEFVAL(0));
+			DEFVAL(0), DEFVAL(100), DEFVAL(0), DEFVAL(0),
+			DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_analog_like", "connection_type", "wave_shape1", "wave_shape2", "balance", "pitch_difference"), &SiONVoice::set_analog_like, DEFVAL(1), DEFVAL(1), DEFVAL(0), DEFVAL(0));
 
 	ClassDB::bind_method(D_METHOD("set_envelope", "attack_rate", "decay_rate", "sustain_rate", "release_rate", "sustain_level", "total_level"), &SiONVoice::set_envelope);
