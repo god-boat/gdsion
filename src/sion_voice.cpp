@@ -156,6 +156,18 @@ String SiONVoice::get_mml(int p_index, SiONChipType p_chip_type, bool p_append_p
 			data += "}";
 			mml = "#BR@" + itos(p_index) + data;
 		} break;
+		case SiONChipType::CHIP_MONOLITH: {
+			String data = "{";
+			data += itos(monolith_sub_shape) + "," + itos(monolith_sub_level) + ",";
+			data += itos(monolith_sub_drive) + "," + itos(monolith_pitch_drop) + ",";
+			data += itos(monolith_osc1_shape) + "," + itos(monolith_osc2_shape) + ",";
+			data += itos(monolith_mass) + "," + itos(monolith_bite) + "," + itos(monolith_shape) + ",";
+			data += itos(monolith_drive_mode) + "," + itos(monolith_grind) + ",";
+			data += itos(monolith_motion_target) + "," + itos(monolith_motion_amount) + "," + itos(monolith_motion_rate) + ",";
+			data += itos(monolith_width) + "," + itos(monolith_low_lock) + "," + itos(monolith_lens) + "," + itos(monolith_glide);
+			data += "}";
+			mml = "#MO@" + itos(p_index) + data;
+		} break;
 		default:
 			ERR_FAIL_V_MSG("", vformat("SiONVoice: Chip type %d is unsupported for MML strings.", type));
 	}
@@ -228,6 +240,27 @@ int SiONVoice::set_by_mml(String p_mml) {
 		int timbre = parts.size() > 1 ? parts[1].strip_edges().to_int() : 0;
 		int color = parts.size() > 2 ? parts[2].strip_edges().to_int() : 0;
 		set_strata(shape, timbre, color);
+	} else if (command == "#MO@") {
+		PackedStringArray parts = data.split(",");
+		set_monolith(
+				parts.size() > 0 ? parts[0].strip_edges().to_int() : 0,
+				parts.size() > 1 ? parts[1].strip_edges().to_int() : 80,
+				parts.size() > 2 ? parts[2].strip_edges().to_int() : 0,
+				parts.size() > 3 ? parts[3].strip_edges().to_int() : 0,
+				parts.size() > 4 ? parts[4].strip_edges().to_int() : 0,
+				parts.size() > 5 ? parts[5].strip_edges().to_int() : 0,
+				parts.size() > 6 ? parts[6].strip_edges().to_int() : 40,
+				parts.size() > 7 ? parts[7].strip_edges().to_int() : 40,
+				parts.size() > 8 ? parts[8].strip_edges().to_int() : 0,
+				parts.size() > 9 ? parts[9].strip_edges().to_int() : 0,
+				parts.size() > 10 ? parts[10].strip_edges().to_int() : 0,
+				parts.size() > 11 ? parts[11].strip_edges().to_int() : 0,
+				parts.size() > 12 ? parts[12].strip_edges().to_int() : 0,
+				parts.size() > 13 ? parts[13].strip_edges().to_int() : 40,
+				parts.size() > 14 ? parts[14].strip_edges().to_int() : 0,
+				parts.size() > 15 ? parts[15].strip_edges().to_int() : 100,
+				parts.size() > 16 ? parts[16].strip_edges().to_int() : 0,
+				parts.size() > 17 ? parts[17].strip_edges().to_int() : 0);
 	} else {
 		return -1;
 	}
@@ -358,6 +391,37 @@ void SiONVoice::set_strata(int p_shape, int p_timbre, int p_color) {
 	strata_shape = p_shape;
 	strata_timbre = p_timbre;
 	strata_color = p_color;
+}
+
+void SiONVoice::set_monolith(
+		int p_sub_shape, int p_sub_level, int p_sub_drive, int p_pitch_drop,
+		int p_osc1_shape, int p_osc2_shape,
+		int p_mass, int p_bite, int p_shape,
+		int p_drive_mode, int p_grind,
+		int p_motion_target, int p_motion_amount, int p_motion_rate,
+		int p_width, int p_low_lock, int p_lens, int p_glide) {
+	module_type = SiONModuleType::MODULE_MONOLITH;
+	channel_num = 0;
+	chip_type = SiONChipType::CHIP_MONOLITH;
+
+	monolith_sub_shape = p_sub_shape;
+	monolith_sub_level = p_sub_level;
+	monolith_sub_drive = p_sub_drive;
+	monolith_pitch_drop = p_pitch_drop;
+	monolith_osc1_shape = p_osc1_shape;
+	monolith_osc2_shape = p_osc2_shape;
+	monolith_mass = p_mass;
+	monolith_bite = p_bite;
+	monolith_shape = p_shape;
+	monolith_drive_mode = p_drive_mode;
+	monolith_grind = p_grind;
+	monolith_motion_target = p_motion_target;
+	monolith_motion_amount = p_motion_amount;
+	monolith_motion_rate = p_motion_rate;
+	monolith_width = p_width;
+	monolith_low_lock = p_low_lock;
+	monolith_lens = p_lens;
+	monolith_glide = p_glide;
 }
 
 void SiONVoice::set_analog_like(int p_connection_type, int p_wave_shape1, int p_wave_shape2, int p_balance, int p_pitch_difference) {
@@ -514,6 +578,20 @@ void SiONVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_pms_guitar", "attack_rate", "decay_rate", "total_level", "fixed_pitch", "wave_shape", "tension"), &SiONVoice::set_pms_guitar, DEFVAL(48), DEFVAL(48), DEFVAL(0), DEFVAL(69), DEFVAL(20), DEFVAL(8));
 	ClassDB::bind_method(D_METHOD("set_guitar6", "character_seed", "character_variation", "string_damp", "string_damp_variation", "plug_damp", "plug_damp_variation", "string_tension", "stereo_spread", "body_bypass"), &SiONVoice::set_guitar6, DEFVAL(65535.0), DEFVAL(0.5), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.0), DEFVAL(0.2), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("set_strata", "shape", "timbre", "color"), &SiONVoice::set_strata, DEFVAL(0), DEFVAL(0), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("set_monolith",
+			"sub_shape", "sub_level", "sub_drive", "pitch_drop",
+			"osc1_shape", "osc2_shape",
+			"mass", "bite", "shape",
+			"drive_mode", "grind",
+			"motion_target", "motion_amount", "motion_rate",
+			"width", "low_lock", "lens", "glide"),
+			&SiONVoice::set_monolith,
+			DEFVAL(0), DEFVAL(80), DEFVAL(0), DEFVAL(0),
+			DEFVAL(0), DEFVAL(0),
+			DEFVAL(40), DEFVAL(40), DEFVAL(0),
+			DEFVAL(0), DEFVAL(0),
+			DEFVAL(0), DEFVAL(0), DEFVAL(40),
+			DEFVAL(0), DEFVAL(100), DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_analog_like", "connection_type", "wave_shape1", "wave_shape2", "balance", "pitch_difference"), &SiONVoice::set_analog_like, DEFVAL(1), DEFVAL(1), DEFVAL(0), DEFVAL(0));
 
 	ClassDB::bind_method(D_METHOD("set_envelope", "attack_rate", "decay_rate", "sustain_rate", "release_rate", "sustain_level", "total_level"), &SiONVoice::set_envelope);

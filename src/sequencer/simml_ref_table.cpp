@@ -352,6 +352,14 @@ SiMMLRefTable::SiMMLRefTable() {
 			cs->set_suitable_for_fm_voice(false);
 		}
 
+		// Monolith bass engine settings.
+		channel_settings_map[SiONModuleType::MODULE_MONOLITH] = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_MONOLITH, SiONPulseGeneratorType::PULSE_SINE, 1, 1, 1));
+		{
+			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_MONOLITH];
+			cs->set_channel_type(SiOPMChannelManager::CHANNEL_MONOLITH);
+			cs->set_suitable_for_fm_voice(false);
+		}
+
 		// Stream settings.
 		{
 			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_STREAM];

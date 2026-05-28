@@ -12,6 +12,7 @@
 
 #include "sion_enums.h"
 #include "chip/channels/siopm_channel_strata.h"
+#include "chip/channels/siopm_channel_monolith.h"
 #include "chip/channels/siopm_channel_guitar6.h"
 #include "chip/channels/siopm_channel_ks.h"
 #include "chip/channels/siopm_channel_base.h"
@@ -143,6 +144,25 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 			if (strata_ch) {
 				strata_ch->set_strata_params(strata_shape, strata_timbre, strata_color);
 				strata_ch->set_channel_params(channel_params, update_volumes, true);
+				p_track->reset_volume_offset();
+			}
+		} break;
+
+		case SiONModuleType::MODULE_MONOLITH: {
+			SiOPMChannelMonolith *mono_ch = existing_ch ? dynamic_cast<SiOPMChannelMonolith *>(existing_ch) : nullptr;
+			if (!mono_ch) {
+				p_track->set_channel_module_type(SiONModuleType::MODULE_MONOLITH, 0);
+				mono_ch = dynamic_cast<SiOPMChannelMonolith *>(p_track->get_channel());
+			}
+			if (mono_ch) {
+				mono_ch->set_monolith_params(
+						monolith_sub_shape, monolith_sub_level, monolith_sub_drive, monolith_pitch_drop,
+						monolith_osc1_shape, monolith_osc2_shape,
+						monolith_mass, monolith_bite, monolith_shape,
+						monolith_drive_mode, monolith_grind,
+						monolith_motion_target, monolith_motion_amount, monolith_motion_rate,
+						monolith_width, monolith_low_lock, monolith_lens, monolith_glide);
+				mono_ch->set_channel_params(channel_params, update_volumes, true);
 				p_track->reset_volume_offset();
 			}
 		} break;
@@ -323,6 +343,25 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	strata_shape = p_source->strata_shape;
 	strata_timbre = p_source->strata_timbre;
 	strata_color = p_source->strata_color;
+
+	monolith_sub_shape = p_source->monolith_sub_shape;
+	monolith_sub_level = p_source->monolith_sub_level;
+	monolith_sub_drive = p_source->monolith_sub_drive;
+	monolith_pitch_drop = p_source->monolith_pitch_drop;
+	monolith_osc1_shape = p_source->monolith_osc1_shape;
+	monolith_osc2_shape = p_source->monolith_osc2_shape;
+	monolith_mass = p_source->monolith_mass;
+	monolith_bite = p_source->monolith_bite;
+	monolith_shape = p_source->monolith_shape;
+	monolith_drive_mode = p_source->monolith_drive_mode;
+	monolith_grind = p_source->monolith_grind;
+	monolith_motion_target = p_source->monolith_motion_target;
+	monolith_motion_amount = p_source->monolith_motion_amount;
+	monolith_motion_rate = p_source->monolith_motion_rate;
+	monolith_width = p_source->monolith_width;
+	monolith_low_lock = p_source->monolith_low_lock;
+	monolith_lens = p_source->monolith_lens;
+	monolith_glide = p_source->monolith_glide;
 
 	default_gate_time = p_source->default_gate_time;
 	default_gate_ticks = p_source->default_gate_ticks;

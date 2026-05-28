@@ -468,6 +468,26 @@ private:
 		int strata_shape = 0;
 		int strata_timbre = 0;
 		int strata_color = 0;
+		// Monolith bass engine grouped params
+		bool has_monolith = false;
+		int monolith_sub_shape = 0;
+		int monolith_sub_level = 80;
+		int monolith_sub_drive = 0;
+		int monolith_pitch_drop = 0;
+		int monolith_osc1_shape = 0;
+		int monolith_osc2_shape = 0;
+		int monolith_mass = 40;
+		int monolith_bite = 40;
+		int monolith_shape = 0;
+		int monolith_drive_mode = 0;
+		int monolith_grind = 0;
+		int monolith_motion_target = 0;
+		int monolith_motion_amount = 0;
+		int monolith_motion_rate = 40;
+		int monolith_width = 0;
+		int monolith_low_lock = 100;
+		int monolith_lens = 0;
+		int monolith_glide = 0;
 		// Analog-Like (AL) live params
 		bool has_al_ws1 = false;
 		int al_ws1 = 0;
@@ -858,6 +878,15 @@ public:
 	void mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// strata macro-oscillator mailbox
 	void mailbox_set_strata_params(int p_track_id, int p_shape, int p_timbre, int p_color, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	// Monolith bass engine mailbox
+	void mailbox_set_monolith_params(int p_track_id,
+			int p_sub_shape, int p_sub_level, int p_sub_drive, int p_pitch_drop,
+			int p_osc1_shape, int p_osc2_shape,
+			int p_mass, int p_bite, int p_shape,
+			int p_drive_mode, int p_grind,
+			int p_motion_target, int p_motion_amount, int p_motion_rate,
+			int p_width, int p_low_lock, int p_lens, int p_glide,
+			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// Analog-Like (AL) mailboxes
 	void mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_ch_al_ws2(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);

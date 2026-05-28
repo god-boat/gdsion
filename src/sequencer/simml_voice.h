@@ -91,6 +91,26 @@ protected:
 	int strata_timbre = 0;  // 0..32767
 	int strata_color = 0;   // 0..32767
 
+	// Monolith bass engine params.
+	int monolith_sub_shape = 0;
+	int monolith_sub_level = 80;
+	int monolith_sub_drive = 0;
+	int monolith_pitch_drop = 0;
+	int monolith_osc1_shape = 0;
+	int monolith_osc2_shape = 0;
+	int monolith_mass = 40;
+	int monolith_bite = 40;
+	int monolith_shape = 0;
+	int monolith_drive_mode = 0;
+	int monolith_grind = 0;
+	int monolith_motion_target = 0;
+	int monolith_motion_amount = 0;
+	int monolith_motion_rate = 40;
+	int monolith_width = 0;
+	int monolith_low_lock = 100;
+	int monolith_lens = 0;
+	int monolith_glide = 0;
+
 	void set_note_on_pitch_envelope(const Ref<SiMMLEnvelopeTable> &p_envelope, int p_step = 1) {
 		note_on_pitch_envelope = p_envelope;
 		note_on_pitch_envelope_step = p_step;

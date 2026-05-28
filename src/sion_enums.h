@@ -21,6 +21,7 @@ enum SiONChipType : signed int {
 	CHIP_ANALOG_LIKE = 7,
 	CHIP_GUITAR6     = 8,
 	CHIP_STRATA      = 9,
+	CHIP_MONOLITH    = 10,
 	CHIP_MAX
 };
 
@@ -49,6 +50,7 @@ enum SiONModuleType : unsigned int {
 	MODULE_STREAM     = 21, // Streaming audio clip
 	MODULE_GUITAR6    = 22, // Six-string physical-model guitar
 	MODULE_STRATA     = 23, // Mutable Instruments strata macro-oscillator port
+	MODULE_MONOLITH   = 24, // Monolith bass engine
 	MODULE_MAX
 };
 

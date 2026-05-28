@@ -580,7 +580,16 @@
 		<constant name="CHIP_ANALOG_LIKE" value="7" enum="SiONChipType">
 			Analog-like sound chip type.
 		</constant>
-		<constant name="CHIP_MAX" value="8" enum="SiONChipType">
+		<constant name="CHIP_GUITAR6" value="8" enum="SiONChipType">
+			Six-string physical-model guitar sound chip type.
+		</constant>
+		<constant name="CHIP_STRATA" value="9" enum="SiONChipType">
+			Strata macro-oscillator sound chip type.
+		</constant>
+		<constant name="CHIP_MONOLITH" value="10" enum="SiONChipType">
+			Monolith bass engine sound chip type.
+		</constant>
+		<constant name="CHIP_MAX" value="11" enum="SiONChipType">
 			Total number of available chip types.
 		</constant>
 		<constant name="MODULE_PSG" value="0" enum="SiONModuleType">
@@ -646,7 +655,19 @@
 		<constant name="MODULE_FM_MA3" value="20" enum="SiONModuleType">
 			YMU762 module type (unused).
 		</constant>
-		<constant name="MODULE_MAX" value="21" enum="SiONModuleType">
+		<constant name="MODULE_STREAM" value="21" enum="SiONModuleType">
+			Streaming audio clip module type.
+		</constant>
+		<constant name="MODULE_GUITAR6" value="22" enum="SiONModuleType">
+			Six-string physical-model guitar module type.
+		</constant>
+		<constant name="MODULE_STRATA" value="23" enum="SiONModuleType">
+			Strata macro-oscillator module type.
+		</constant>
+		<constant name="MODULE_MONOLITH" value="24" enum="SiONModuleType">
+			Monolith bass engine module type.
+		</constant>
+		<constant name="MODULE_MAX" value="25" enum="SiONModuleType">
 			Total number of available module types.
 		</constant>
 		<constant name="PITCH_TABLE_OPM" value="0" enum="SiONPitchTableType">

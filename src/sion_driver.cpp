@@ -50,6 +50,7 @@
 #include "chip/channels/siopm_channel_sampler.h"
 #include "chip/channels/siopm_channel_stream.h"
 #include "chip/channels/siopm_channel_strata.h"
+#include "chip/channels/siopm_channel_monolith.h"
 #include "utils/fader_util.h"
 #include "utils/transformer_util.h"
 #include <atomic>
@@ -1477,6 +1478,16 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_envelope_freq_ratio", "track_id", "ratio", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_envelope_freq_ratio, DEFVAL(-1), DEFVAL(-1));
 	// Strata macro-oscillator
 	ClassDB::bind_method(D_METHOD("mailbox_set_strata_params", "track_id", "shape", "timbre", "color", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_strata_params, DEFVAL(-1), DEFVAL(-1));
+	// Monolith bass engine
+	ClassDB::bind_method(D_METHOD("mailbox_set_monolith_params", "track_id",
+			"sub_shape", "sub_level", "sub_drive", "pitch_drop",
+			"osc1_shape", "osc2_shape",
+			"mass", "bite", "shape",
+			"drive_mode", "grind",
+			"motion_target", "motion_amount", "motion_rate",
+			"width", "low_lock", "lens", "glide",
+			"entity_scope_id", "slot_scope_id"),
+			&SiONDriver::mailbox_set_monolith_params, DEFVAL(-1), DEFVAL(-1));
 	// Analog-Like (AL)
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws1", "track_id", "wave_shape", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_ch_al_ws1, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws2", "track_id", "wave_shape", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_ch_al_ws2, DEFVAL(-1), DEFVAL(-1));
@@ -1647,6 +1658,7 @@ void SiONDriver::_bind_methods() {
 	BIND_ENUM_CONSTANT(CHIP_ANALOG_LIKE);
 	BIND_ENUM_CONSTANT(CHIP_GUITAR6);
 	BIND_ENUM_CONSTANT(CHIP_STRATA);
+	BIND_ENUM_CONSTANT(CHIP_MONOLITH);
 	BIND_ENUM_CONSTANT(CHIP_MAX);
 
 	BIND_ENUM_CONSTANT(MODULE_PSG);
@@ -1673,6 +1685,7 @@ void SiONDriver::_bind_methods() {
 	BIND_ENUM_CONSTANT(MODULE_STREAM);
 	BIND_ENUM_CONSTANT(MODULE_GUITAR6);
 	BIND_ENUM_CONSTANT(MODULE_STRATA);
+	BIND_ENUM_CONSTANT(MODULE_MONOLITH);
 	BIND_ENUM_CONSTANT(MODULE_MAX);
 
 	BIND_ENUM_CONSTANT(PITCH_TABLE_OPM);
@@ -2663,6 +2676,40 @@ void SiONDriver::mailbox_set_strata_params(int p_track_id, int p_shape, int p_ti
 	_mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_monolith_params(int p_track_id,
+		int p_sub_shape, int p_sub_level, int p_sub_drive, int p_pitch_drop,
+		int p_osc1_shape, int p_osc2_shape,
+		int p_mass, int p_bite, int p_shape,
+		int p_drive_mode, int p_grind,
+		int p_motion_target, int p_motion_amount, int p_motion_rate,
+		int p_width, int p_low_lock, int p_lens, int p_glide,
+		int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.entity_scope_id = p_entity_scope_id;
+	u.slot_scope_id = p_slot_scope_id;
+	u.has_monolith = true;
+	u.monolith_sub_shape = p_sub_shape;
+	u.monolith_sub_level = p_sub_level;
+	u.monolith_sub_drive = p_sub_drive;
+	u.monolith_pitch_drop = p_pitch_drop;
+	u.monolith_osc1_shape = p_osc1_shape;
+	u.monolith_osc2_shape = p_osc2_shape;
+	u.monolith_mass = p_mass;
+	u.monolith_bite = p_bite;
+	u.monolith_shape = p_shape;
+	u.monolith_drive_mode = p_drive_mode;
+	u.monolith_grind = p_grind;
+	u.monolith_motion_target = p_motion_target;
+	u.monolith_motion_amount = p_motion_amount;
+	u.monolith_motion_rate = p_motion_rate;
+	u.monolith_width = p_width;
+	u.monolith_low_lock = p_low_lock;
+	u.monolith_lens = p_lens;
+	u.monolith_glide = p_glide;
+	_mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -3304,6 +3351,19 @@ void SiONDriver::_drain_track_mailbox() {
                 SiOPMChannelStrata *strata_ch = Object::cast_to<SiOPMChannelStrata>(ch);
                 if (strata_ch) {
                     strata_ch->set_strata_params(u.strata_shape, u.strata_timbre, u.strata_color);
+                }
+            }
+            // Monolith bass engine updates
+            if (u.has_monolith) {
+                SiOPMChannelMonolith *mono_ch = Object::cast_to<SiOPMChannelMonolith>(ch);
+                if (mono_ch) {
+                    mono_ch->set_monolith_params(
+                            u.monolith_sub_shape, u.monolith_sub_level, u.monolith_sub_drive, u.monolith_pitch_drop,
+                            u.monolith_osc1_shape, u.monolith_osc2_shape,
+                            u.monolith_mass, u.monolith_bite, u.monolith_shape,
+                            u.monolith_drive_mode, u.monolith_grind,
+                            u.monolith_motion_target, u.monolith_motion_amount, u.monolith_motion_rate,
+                            u.monolith_width, u.monolith_low_lock, u.monolith_lens, u.monolith_glide);
                 }
             }
             // FM operator updates and Analog-Like live params

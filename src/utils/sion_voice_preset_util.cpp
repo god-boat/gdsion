@@ -936,6 +936,9 @@ void SiONVoicePresetUtil::_generate_template_voices() {
 	// Strata: Mutable Instruments macro-oscillator with CSAW default
 	_create_strata_voice("template.strata", "Init Strata", 0, 0, 0);
 
+	// Monolith: bass engine with default sub sine + saw oscillators
+	_create_monolith_voice("template.monolith", "Init Monolith");
+
 	// SCC (wave table): wave shape 0, sustained tone.
 	// Requires INCLUDE_WAVETABLE to have run first (populates _wave_tables).
 	if (!_wave_tables.is_empty()) {
@@ -1000,6 +1003,25 @@ void SiONVoicePresetUtil::_create_strata_voice(const String &p_key, const String
 
 	Ref<SiONVoice> voice = memnew(SiONVoice);
 	voice->set_strata(p_shape, p_timbre, p_color);
+	voice->set_name(p_name);
+	_register_voice(p_key, voice);
+}
+
+void SiONVoicePresetUtil::_create_monolith_voice(const String &p_key, const String &p_name,
+		int p_sub_shape, int p_sub_level, int p_sub_drive, int p_pitch_drop,
+		int p_osc1_shape, int p_osc2_shape,
+		int p_mass, int p_bite, int p_shape,
+		int p_drive_mode, int p_grind,
+		int p_motion_target, int p_motion_amount, int p_motion_rate,
+		int p_width, int p_low_lock, int p_lens, int p_glide) {
+
+	Ref<SiONVoice> voice = memnew(SiONVoice);
+	voice->set_monolith(p_sub_shape, p_sub_level, p_sub_drive, p_pitch_drop,
+			p_osc1_shape, p_osc2_shape,
+			p_mass, p_bite, p_shape,
+			p_drive_mode, p_grind,
+			p_motion_target, p_motion_amount, p_motion_rate,
+			p_width, p_low_lock, p_lens, p_glide);
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
 }
