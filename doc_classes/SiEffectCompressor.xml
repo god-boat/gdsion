@@ -1,23 +1,40 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <class name="SiEffectCompressor" inherits="SiEffectBase" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/godotengine/godot/master/doc/class.xsd">
 	<brief_description>
-		Compressor effect.
+		Feed-forward stereo compressor with soft knee, peak/RMS blend detector, and gain-reduction metering.
 	</brief_description>
 	<description>
+		A proper feed-forward compressor suitable for track inserts, bus processing, and creative parallel compression. Uses atomic parameters (lock-free on the audio thread), one-pole gain smoothing, and a stereo-linked detector.
 	</description>
 	<tutorials>
 	</tutorials>
 	<methods>
 		<method name="set_params">
 			<return type="void" />
-			<param index="0" name="threshold" type="float" default="0.7" />
-			<param index="1" name="window_time" type="float" default="50" />
-			<param index="2" name="attack_time" type="float" default="20" />
-			<param index="3" name="release_time" type="float" default="20" />
-			<param index="4" name="max_gain" type="float" default="-6" />
-			<param index="5" name="mixing_level" type="float" default="0.5" />
+			<param index="0" name="threshold_db" type="float" default="-18.0" />
+			<param index="1" name="ratio" type="float" default="4.0" />
+			<param index="2" name="attack_ms" type="float" default="10.0" />
+			<param index="3" name="release_ms" type="float" default="120.0" />
+			<param index="4" name="knee_db" type="float" default="6.0" />
+			<param index="5" name="makeup_db" type="float" default="0.0" />
+			<param index="6" name="mix" type="float" default="1.0" />
+			<param index="7" name="detector_blend" type="float" default="0.65" />
 			<description>
-				Sets effect parameters.
+				Sets all compressor parameters.
+				[param threshold_db] Compression threshold in dB (-60 to 0).
+				[param ratio] Compression ratio (1:1 to 20:1).
+				[param attack_ms] Attack time in milliseconds (0.1 to 100).
+				[param release_ms] Release time in milliseconds (10 to 1000).
+				[param knee_db] Soft knee width in dB (0 for hard knee, up to 24).
+				[param makeup_db] Output makeup gain in dB (-24 to +24).
+				[param mix] Dry/wet mix (0.0 fully dry, 1.0 fully wet).
+				[param detector_blend] Detector blend (0.0 pure peak, 1.0 pure RMS).
+			</description>
+		</method>
+		<method name="get_gain_reduction_db" qualifiers="const">
+			<return type="float" />
+			<description>
+				Returns the current gain reduction in dB (positive value). Useful for metering.
 			</description>
 		</method>
 	</methods>
