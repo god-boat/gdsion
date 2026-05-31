@@ -24,36 +24,48 @@ void SiOPMStream::resize(int p_length) {
 }
 
 void SiOPMStream::clear() {
+	double *dst = buffer.ptrw();
 	for (int i = 0; i < buffer.size(); i++) {
-		buffer.write[i] = 0;
+		dst[i] = 0;
 	}
 }
 
 //unused :(
 void SiOPMStream::limit() {
+	double *dst = buffer.ptrw();
 	for (int i = 0; i < buffer.size(); i++) {
-		buffer.write[i] = CLAMP(buffer[i], -1, 1);
+		dst[i] = CLAMP(dst[i], -1, 1);
 	}
 }
 
 void SiOPMStream::quantize(int p_bitrate) {
 	double r = 1 << p_bitrate;
 	double ir = 2.0 / r;
+	double *dst = buffer.ptrw();
 	for (int i = 0; i < buffer.size(); i++) {
-		int n = buffer[i] * r; // Truncate the double-precision value before shifting.
-		buffer.write[i] = (n >> 1) * ir;
+		int n = dst[i] * r; // Truncate the double-precision value before shifting.
+		dst[i] = (n >> 1) * ir;
 	}
 }
 
 void SiOPMStream::write(SinglyLinkedList<int>::Element *p_data_start, int p_offset, int p_length, double p_volume, int p_pan) {
+	if (p_data_start == nullptr || p_length <= 0) {
+		return;
+	}
 	if (p_offset < 0) {
-		p_offset = 0; // safety – avoid negative writes
+		p_offset = 0; // safety - avoid negative writes
 	}
 	double volume = p_volume * SiOPMRefTable::get_instance()->i2n;
+	const int start_index = p_offset << 1;
 	int buffer_size = (p_offset + p_length) << 1;
 	if (buffer_size > buffer.size()) {
 		buffer_size = buffer.size(); // clamp to avoid overflow
 	}
+	if (buffer_size <= start_index) {
+		return;
+	}
+
+	double *dst = buffer.ptrw();
 
 	if (channels == 2) { // stereo
 		double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
@@ -66,21 +78,19 @@ void SiOPMStream::write(SinglyLinkedList<int>::Element *p_data_start, int p_offs
 		}
 
 		SinglyLinkedList<int>::Element *current = p_data_start;
-		for (int i = p_offset << 1; i < buffer_size;) {
-			buffer.write[i] += current->value * volume_left;
-			i++;
-			buffer.write[i] += current->value * volume_right;
-			i++;
+		for (int i = start_index; i < buffer_size;) {
+			const double sample = current->value;
+			dst[i++] += sample * volume_left;
+			dst[i++] += sample * volume_right;
 
 			current = current->next();
 		}
 	} else if (channels == 1) { // mono
 		SinglyLinkedList<int>::Element *current = p_data_start;
-		for (int i = p_offset << 1; i < buffer_size;) {
-			buffer.write[i] += current->value * volume;
-			i++;
-			buffer.write[i] += current->value * volume;
-			i++;
+		for (int i = start_index; i < buffer_size;) {
+			const double sample = current->value * volume;
+			dst[i++] += sample;
+			dst[i++] += sample;
 
 			current = current->next();
 		}
@@ -88,14 +98,23 @@ void SiOPMStream::write(SinglyLinkedList<int>::Element *p_data_start, int p_offs
 }
 
 void SiOPMStream::write_stereo(SinglyLinkedList<int>::Element *p_left_start, SinglyLinkedList<int>::Element *p_right_start, int p_offset, int p_length, double p_volume, int p_pan) {
+	if (p_left_start == nullptr || p_right_start == nullptr || p_length <= 0) {
+		return;
+	}
 	if (p_offset < 0) {
 		p_offset = 0;
 	}
 	double volume = p_volume * SiOPMRefTable::get_instance()->i2n;
+	const int start_index = p_offset << 1;
 	int buffer_size = (p_offset + p_length) << 1;
 	if (buffer_size > buffer.size()) {
 		buffer_size = buffer.size();
 	}
+	if (buffer_size <= start_index) {
+		return;
+	}
+
+	double *dst = buffer.ptrw();
 
 	if (channels == 2) { // stereo
 		double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
@@ -110,11 +129,9 @@ void SiOPMStream::write_stereo(SinglyLinkedList<int>::Element *p_left_start, Sin
 		SinglyLinkedList<int>::Element *current_left = p_left_start;
 		SinglyLinkedList<int>::Element *current_right = p_right_start;
 
-		for (int i = p_offset << 1; i < buffer_size;) {
-			buffer.write[i] += current_left->value * volume_left;
-			i++;
-			buffer.write[i] += current_right->value * volume_right;
-			i++;
+		for (int i = start_index; i < buffer_size;) {
+			dst[i++] += current_left->value * volume_left;
+			dst[i++] += current_right->value * volume_right;
 
 			current_left = current_left->next();
 			current_right = current_right->next();
@@ -125,11 +142,10 @@ void SiOPMStream::write_stereo(SinglyLinkedList<int>::Element *p_left_start, Sin
 		SinglyLinkedList<int>::Element *current_left = p_left_start;
 		SinglyLinkedList<int>::Element *current_right = p_right_start;
 
-		for (int i = p_offset << 1; i < buffer_size;) {
-			buffer.write[i] += (current_left->value + current_right->value) * volume;
-			i++;
-			buffer.write[i] += (current_left->value + current_right->value) * volume;
-			i++;
+		for (int i = start_index; i < buffer_size;) {
+			const double sample = (current_left->value + current_right->value) * volume;
+			dst[i++] += sample;
+			dst[i++] += sample;
 
 			current_left = current_left->next();
 			current_right = current_right->next();
@@ -139,8 +155,24 @@ void SiOPMStream::write_stereo(SinglyLinkedList<int>::Element *p_left_start, Sin
 
 void SiOPMStream::write_from_vector(Vector<double> *p_data, int p_start_data, int p_start_buffer, int p_length, double p_volume, int p_pan, int p_sample_channel_count) {
 	// Guard against invalid ranges to avoid CRASH_BAD_INDEX from Godot's Vector.
+	if (p_data == nullptr) {
+		return;
+	}
+	if (p_start_data < 0) {
+		p_start_data = 0;
+	}
 	if (p_start_buffer < 0) {
 		p_start_buffer = 0;
+	}
+
+	// Clamp the source range so we never read past the input vector.
+	const int src_channels = (p_sample_channel_count == 2) ? 2 : 1;
+	const int max_frames_in_source = p_data->size() / src_channels;
+	if (p_start_data >= max_frames_in_source || p_length <= 0) {
+		return;
+	}
+	if (p_start_data + p_length > max_frames_in_source) {
+		p_length = max_frames_in_source - p_start_data;
 	}
 
 	// Cap the amount we can write so we never exceed the backing buffer size.
@@ -153,50 +185,45 @@ void SiOPMStream::write_from_vector(Vector<double> *p_data, int p_start_data, in
 	}
 
 	double volume = p_volume;
+	const int pan = (p_pan == PAN_NONE) ? 64 : CLAMP(p_pan, 0, 128);
+	const double *src = p_data->ptr();
+	double *dst = buffer.ptrw();
 
 	int channels = this->channels;
 	if (channels == 2) {
 		double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
 
 		if (p_sample_channel_count == 2) { // stereo data to stereo buffer
-			double volume_left = pan_table[128 - p_pan] * volume;
-			double volume_right = pan_table[p_pan] * volume;
-			int buffer_size = (p_start_buffer + p_length) << 1;
+			double volume_left = pan_table[128 - pan] * volume;
+			double volume_right = pan_table[pan] * volume;
 
 			for (int j = p_start_data << 1, i = p_start_buffer << 1; j < (p_start_data + p_length) << 1;) {
-				buffer.write[i] += (*p_data)[j] * volume_left;
-				j++;
-				i++;
-				buffer.write[i] += (*p_data)[j] * volume_right;
-				j++;
-				i++;
+				dst[i++] += src[j++] * volume_left;
+				dst[i++] += src[j++] * volume_right;
 			}
 		} else { // mono data to stereo buffer
-			double volume_left = pan_table[128 - p_pan] * volume * 0.707;
-			double volume_right = pan_table[p_pan] * volume * 0.707;
+			double volume_left = pan_table[128 - pan] * volume * 0.707;
+			double volume_right = pan_table[pan] * volume * 0.707;
 			for (int j = p_start_data, i = p_start_buffer << 1; j < p_start_data + p_length; j++) {
-				buffer.write[i] += (*p_data)[j] * volume_left;
-				i++;
-				buffer.write[i] += (*p_data)[j] * volume_right;
-				i++;
+				const double sample = src[j];
+				dst[i++] += sample * volume_left;
+				dst[i++] += sample * volume_right;
 			}
 		}
 	} else if (channels == 1) {
 		if (p_sample_channel_count == 2) { // stereo data to mono buffer
 			volume *= 0.5;
 			for (int j = p_start_data << 1, i = p_start_buffer << 1; j < (p_start_data + p_length) << 1;) {
-				buffer.write[i] += ((*p_data)[j] + (*p_data)[j + 1]) * volume;
-				i++;
-				buffer.write[i] += ((*p_data)[j] + (*p_data)[j + 1]) * volume;
-				i++;
+				const double sample = (src[j] + src[j + 1]) * volume;
+				dst[i++] += sample;
+				dst[i++] += sample;
 				j += 2;
 			}
 		} else { // mono data to mono buffer
 			for (int j = p_start_data, i = p_start_buffer << 1; j < p_start_data + p_length; j++) {
-				buffer.write[i] += (*p_data)[j] * volume;
-				i++;
-				buffer.write[i] += (*p_data)[j] * volume;
-				i++;
+				const double sample = src[j] * volume;
+				dst[i++] += sample;
+				dst[i++] += sample;
 			}
 		}
 	}
