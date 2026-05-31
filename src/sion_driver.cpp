@@ -334,6 +334,9 @@ void SiONDriver::set_max_track_count(int p_value) {
 }
 
 void SiONDriver::_update_volume() {
+	if (!_audio_player) {
+		return;
+	}
 	double db_volume = Math::linear2db(_master_volume * _fader_volume);
 	_audio_player->set_volume_db(db_volume);
 }
@@ -593,15 +596,16 @@ void SiONDriver::_prepare_stream(const Variant &p_data, bool p_reset_effector) {
 	_is_paused = false;
 	_is_finish_sequence_dispatched = (p_data.get_type() == Variant::NIL);
 
-	// Clear residual buffer when starting new playback
 	_residual_buffer_frame_count = 0;
 	_residual_frame_offset = 0;
 
-	// Start streaming.
 	_is_streaming = true;
-	_audio_player->play();
-	_audio_playback = Ref<SiONStreamPlayback>();
-	_audio_playback = _audio_player->get_stream_playback();
+
+	if (_godot_output_enabled && _audio_player) {
+		_audio_player->play();
+		_audio_playback = Ref<SiONStreamPlayback>();
+		_audio_playback = _audio_player->get_stream_playback();
+	}
 
 	_set_processing_immediate();
 }
@@ -638,12 +642,15 @@ void SiONDriver::stop() {
 
 	_fader->stop();
 	_fader_volume = 1;
-	_audio_playback = Ref<SiONStreamPlayback>();
-	_audio_player->stop();
+
+	if (_godot_output_enabled && _audio_player) {
+		_audio_playback = Ref<SiONStreamPlayback>();
+		_audio_player->stop();
+	}
+
 	_update_volume();
 	sequencer->stop_sequence();
 
-	// Clear residual buffer to ensure clean state
 	_residual_buffer_frame_count = 0;
 	_residual_frame_offset = 0;
 
@@ -1384,6 +1391,63 @@ SiONDriver *SiONDriver::create(int p_buffer_length, int p_channel_num, int p_sam
 	return driver;
 }
 
+SiONDriver *SiONDriver::create_with_config(const RuntimeConfig &p_config) {
+	SiONDriver *driver = memnew(SiONDriver(p_config.engine_block_frames, p_config.output_channels, p_config.preferred_sample_rate, 0));
+	if (driver && !driver->_is_initialized) {
+		memdelete(driver);
+		return nullptr;
+	}
+
+	if (driver && !p_config.create_godot_output) {
+		driver->_godot_output_enabled = false;
+		if (driver->_audio_player) {
+			driver->_audio_player->stop();
+			driver->remove_child(driver->_audio_player);
+			memdelete(driver->_audio_player);
+			driver->_audio_player = nullptr;
+		}
+		driver->_audio_stream.unref();
+		driver->_audio_playback.unref();
+	}
+
+	if (driver && p_config.actual_sample_rate != (int)driver->_sample_rate) {
+		driver->_sample_rate = p_config.actual_sample_rate;
+	}
+
+	return driver;
+}
+
+SiONDriver *SiONDriver::create_native(int p_engine_block_frames, int p_output_channels, int p_preferred_sample_rate, int p_actual_sample_rate, bool p_create_godot_output) {
+	RuntimeConfig config;
+	config.engine_block_frames = p_engine_block_frames;
+	config.output_channels = p_output_channels;
+	config.preferred_sample_rate = p_preferred_sample_rate;
+	config.actual_sample_rate = p_actual_sample_rate;
+	config.create_godot_output = p_create_godot_output;
+	return create_with_config(config);
+}
+
+int64_t SiONDriver::get_render_client_handle() {
+	return reinterpret_cast<int64_t>(static_cast<PoolyRenderClient *>(this));
+}
+
+void SiONDriver::stream_without_output(bool p_reset_effector) {
+	stop();
+	_prepare_process(nullptr, p_reset_effector);
+
+	_performance_stats.total_processing_time = 0;
+	_performance_stats.processing_time_data->reset();
+
+	_is_paused = false;
+	_is_finish_sequence_dispatched = true;
+
+	_residual_buffer_frame_count = 0;
+	_residual_frame_offset = 0;
+
+	_is_streaming = true;
+	_set_processing_immediate();
+}
+
 void SiONDriver::_bind_methods() {
 	// Used as callables.
 
@@ -1406,6 +1470,7 @@ void SiONDriver::_bind_methods() {
 	// Factory.
 
 	ClassDB::bind_static_method("SiONDriver", D_METHOD("create", "buffer_size", "channel_num", "sample_rate", "bitrate"), &SiONDriver::create, DEFVAL(512), DEFVAL(2), DEFVAL(48000), DEFVAL(0));
+	ClassDB::bind_static_method("SiONDriver", D_METHOD("create_native", "engine_block_frames", "output_channels", "preferred_sample_rate", "actual_sample_rate", "create_godot_output"), &SiONDriver::create_native, DEFVAL(2), DEFVAL(48000), DEFVAL(48000), DEFVAL(false));
 
 	// Internal components.
 
@@ -1587,6 +1652,10 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("queue_render", "data", "buffer_size", "buffer_channel_num", "reset_effector"), &SiONDriver::queue_render, DEFVAL(2), DEFVAL(false));
 
 	ClassDB::bind_method(D_METHOD("stream", "reset_effector"), &SiONDriver::stream, DEFVAL(true));
+	// Native-backend streaming: enter streaming mode without the Godot AudioStreamPlayer.
+	ClassDB::bind_method(D_METHOD("stream_without_output", "reset_effector"), &SiONDriver::stream_without_output, DEFVAL(true));
+	ClassDB::bind_method(D_METHOD("is_godot_output_enabled"), &SiONDriver::is_godot_output_enabled);
+	ClassDB::bind_method(D_METHOD("get_render_client_handle"), &SiONDriver::get_render_client_handle);
 	ClassDB::bind_method(D_METHOD("play", "data", "reset_effector"), &SiONDriver::play, DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("stop"), &SiONDriver::stop);
 	ClassDB::bind_method(D_METHOD("reset"), &SiONDriver::reset);
@@ -1883,100 +1952,77 @@ SiONDriver::~SiONDriver() {
 	}
 }
 
-int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
-	if (p_frames <= 0) {
+int SiONDriver::render_interleaved(float *p_output, int p_frames, int p_channels) {
+	if (p_frames <= 0 || p_channels < 1) {
 		return 0;
 	}
 
-	// Protect audio processing from concurrent state modifications (play/stop/reset).
-	// std::lock_guard<std::mutex> lock(_audio_state_mutex);
-
-	// Check if audio objects are still valid (may be null during destruction)
 	if (!effector || !sequencer || !sound_chip) {
-		memset(p_buffer, 0, sizeof(AudioFrame) * p_frames);
+		memset(p_output, 0, sizeof(float) * p_frames * p_channels);
 		return p_frames;
 	}
 
-	// Snapshot queued track updates once per audio callback so note/control
-	// changes land on the next callback boundary instead of mid-buffer.
 	_drain_track_mailbox();
 	_drain_fx_arg_mailbox();
 
 	int frames_generated = 0;
-	const int block = _buffer_length; // internal SiON processing block (in frames)
+	const int block = _buffer_length;
 
 	while (frames_generated < p_frames) {
-
-		// Only process audio if we need more samples than we have buffered
-		// This prevents the sequencer from advancing faster than real-time
 		if (_residual_buffer_frame_count == 0) {
-
-			// Process one internal block to ensure sound_chip output is ready.
 			_process_one_block();
 
 			Vector<double> *out_buf = sound_chip->get_output_buffer_ptr();
 
-			// Process post-effects audio (metering) - expensive, skip if disabled
 			if (_metering_enabled.load(std::memory_order_relaxed)) {
 				if (++_meter_downsample_counter >= _meter_downsample_factor.load(std::memory_order_relaxed)) {
 					_meter_downsample_counter = 0;
-
-					// Meter per-track outputs (post track-effects, pre-master)
-					// NOTE: This iterates all track effect streams - can be expensive with many tracks
 					_meter_all_track_outputs(block);
-
-				// Meter master output (post-master effects)
-				_update_batch_meters(out_buf, block);
+					_update_batch_meters(out_buf, block);
+				}
 			}
-		}
 
-			// Copy generated audio to residual buffer (buffer contains stereo samples)
 			_residual_buffer_frame_count = block;
 			_residual_frame_offset = 0;
-			int sample_count = block * 2; // stereo: 2 samples per frame
-			// Buffer is pre-allocated in constructor, no resize needed
+			int sample_count = block * 2;
 			for (int i = 0; i < sample_count; ++i) {
 				_residual_buffer.write[i] = (*out_buf)[i];
 			}
 		}
 
-		// Calculate how many frames we can copy from the residual buffer
 		int frames_available = _residual_buffer_frame_count - _residual_frame_offset;
 		int frames_to_copy = std::min(frames_available, p_frames - frames_generated);
 
-		// Copy left/right pairs from residual buffer into output.
+		int out_offset = frames_generated * p_channels;
 		for (int i = 0; i < frames_to_copy; ++i) {
-			int sample_index = (_residual_frame_offset + i) * 2; // convert frame offset to sample index
-			p_buffer[frames_generated + i].left  = (float)_residual_buffer[sample_index];
-			p_buffer[frames_generated + i].right = (float)_residual_buffer[sample_index + 1];
-		}
+			int sample_index = (_residual_frame_offset + i) * 2;
+			float left = (float)_residual_buffer[sample_index];
+			float right = (float)_residual_buffer[sample_index + 1];
 
-		// Capture output at unity gain if active (for export/resampling)
-		if (_capture_active) {
-			// Buffer is pre-allocated, check if we have space
-			size_t needed_size = _capture_write_pos + (frames_to_copy * 2);
-			if (needed_size > (size_t)_capture_buffer.size()) {
-				// Buffer overflow - this shouldn't happen with proper pre-allocation
-				// Silently skip capture to avoid audio thread allocation
-				ERR_PRINT_ONCE("SiONDriver: Capture buffer overflow! Increase pre-allocation size.");
+			if (p_channels == 2) {
+				p_output[out_offset + i * 2] = left;
+				p_output[out_offset + i * 2 + 1] = right;
 			} else {
-			for (int i = 0; i < frames_to_copy; ++i) {
-				int sample_index = (_residual_frame_offset + i) * 2;
-
-				float left = (float)_residual_buffer[sample_index];
-				float right = (float)_residual_buffer[sample_index + 1];
-
-				_capture_buffer.write[_capture_write_pos++] = left;
-				_capture_buffer.write[_capture_write_pos++] = right;
+				p_output[out_offset + i] = (left + right) * 0.5f;
 			}
 		}
-	}
 
-		// Update buffer state (all in frame units)
+		if (_capture_active) {
+			size_t needed_size = _capture_write_pos + (frames_to_copy * 2);
+			if (needed_size > (size_t)_capture_buffer.size()) {
+				ERR_PRINT_ONCE("SiONDriver: Capture buffer overflow! Increase pre-allocation size.");
+			} else {
+				for (int i = 0; i < frames_to_copy; ++i) {
+					int sample_index = (_residual_frame_offset + i) * 2;
+					_capture_buffer.write[_capture_write_pos++] = (float)_residual_buffer[sample_index];
+					_capture_buffer.write[_capture_write_pos++] = (float)_residual_buffer[sample_index + 1];
+				}
+			}
+		}
+
 		_residual_frame_offset += frames_to_copy;
 		frames_generated += frames_to_copy;
 
-		// If we've consumed all residual frames, mark buffer as empty
 		if (_residual_frame_offset >= _residual_buffer_frame_count) {
 			_residual_buffer_frame_count = 0;
 			_residual_frame_offset = 0;
@@ -1984,6 +2030,41 @@ int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
 	}
 
 	return frames_generated;
+}
+
+int32_t SiONDriver::generate_audio(AudioFrame *p_buffer, int32_t p_frames) {
+	if (p_frames <= 0) {
+		return 0;
+	}
+
+	if (!effector || !sequencer || !sound_chip) {
+		memset(p_buffer, 0, sizeof(AudioFrame) * p_frames);
+		return p_frames;
+	}
+
+	// Use a stack-allocated interleaved buffer for small frame counts,
+	// fall back to heap for large requests (unlikely in practice).
+	constexpr int STACK_LIMIT = 2048;
+	float stack_buf[STACK_LIMIT * 2];
+	float *interleaved = (p_frames <= STACK_LIMIT) ? stack_buf : new float[p_frames * 2];
+
+	int written = render_interleaved(interleaved, p_frames, 2);
+
+	for (int i = 0; i < written; ++i) {
+		p_buffer[i].left = interleaved[i * 2];
+		p_buffer[i].right = interleaved[i * 2 + 1];
+	}
+
+	for (int i = written; i < p_frames; ++i) {
+		p_buffer[i].left = 0.0f;
+		p_buffer[i].right = 0.0f;
+	}
+
+	if (interleaved != stack_buf) {
+		delete[] interleaved;
+	}
+
+	return written;
 }
 
 // Pull model: _streaming() is obsolete, kept as no-op for notification hook compatibility.

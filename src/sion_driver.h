@@ -26,6 +26,7 @@
 #include <cstdint>
 #include <godot_cpp/classes/audio_frame.hpp>
 
+#include "audio_render_client.h"
 #include "sion_voice.h"
 #include "chip/wave/siopm_wave_sampler_data.h"
 #include "events/sion_event.h"
@@ -63,7 +64,7 @@ class SiONOfflineRenderer;
 // SiONDriver class provides the driver of SiON's digital signal processor emulator. All SiON's basic operations are
 // provided as driver's properties, methods, and signals. Only one instance must exist at a time.
 // TODO: Mostly implemented, aside from MIDI support, audio stream sampling, and background sound. Refer to FIXMEs and TODOs.
-class SiONDriver : public Node {
+class SiONDriver : public Node, public PoolyRenderClient {
 	GDCLASS(SiONDriver, Node)
 
 	friend class SiONOfflineRenderer;
@@ -114,6 +115,7 @@ private:
 
 	// Main playback.
 
+	bool _godot_output_enabled = true;
 	AudioStreamPlayer *_audio_player = nullptr;
 	Ref<SiONStream> _audio_stream;
 	Ref<SiONStreamPlayback> _audio_playback;
@@ -813,11 +815,47 @@ public:
 
 	//
 
+	// Runtime configuration for explicit backend-driven initialization.
+	// When a native backend (WASAPI/Oboe) negotiates device config, it passes
+	// this struct to the driver instead of relying on AudioServer discovery.
+	struct RuntimeConfig {
+		int engine_block_frames = 2048;
+		int output_channels = 2;
+		int preferred_sample_rate = 48000;
+		int actual_sample_rate = 48000;
+		bool create_godot_output = true;
+	};
+
+	// Explicit initialization from native backend config. Call instead of relying
+	// on AudioServer discovery when a native backend has already negotiated device params.
+	static SiONDriver *create_with_config(const RuntimeConfig &p_config);
+
+	// GDScript-friendly wrapper around create_with_config(). Used by MusicPlayer to
+	// build a driver that renders through a native backend (no Godot AudioStreamPlayer).
+	static SiONDriver *create_native(int p_engine_block_frames, int p_output_channels, int p_preferred_sample_rate, int p_actual_sample_rate, bool p_create_godot_output);
+
+	bool is_godot_output_enabled() const { return _godot_output_enabled; }
+
+	// Start streaming without the Godot AudioStreamPlayer (for native backend use).
+	// The engine enters streaming mode but audio is pulled via render_interleaved().
+	void stream_without_output(bool p_reset_effector = true);
+
 	SiONDriver(int p_buffer_length = 2048, int p_channel_num = 2, int p_sample_rate = 48000, int p_bitrate = 0);
 	~SiONDriver();
 
+	// Backend-neutral render entrypoint (PoolyRenderClient implementation).
+	// Any audio backend calls this to pull rendered audio from the engine.
+	int render_interleaved(float *p_output, int p_frames, int p_channels) override;
+
+	// Returns this driver as a raw PoolyRenderClient* encoded as an int64 so the
+	// sibling pooly_audio_io extension can attach it as its render client across
+	// the GDExtension boundary. Both extensions compile the same audio_render_client.h,
+	// so the interface ABI (and the multiple-inheritance pointer offset) match.
+	int64_t get_render_client_handle();
+
 	/* Pull-model helper – fills a buffer of AudioFrame with freshly generated audio.
-	   Returns the number of frames written (always p_frames on success). */
+	   Returns the number of frames written (always p_frames on success).
+	   This is the Godot-specific adapter that calls render_interleaved() internally. */
 	int32_t generate_audio(godot::AudioFrame *p_buffer, int32_t p_frames);
 
 	// --- Mailbox API (call from main thread) -------------------------------------
