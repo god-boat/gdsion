@@ -179,7 +179,7 @@ bool SiOPMWaveStreamData::_parse_wav_header() {
 				ERR_PRINT("SiOPMWaveStreamData: Unsupported channel count: " + itos(_channel_count));
 				return false;
 			}
-			if (_bits_per_sample != 16 && _bits_per_sample != 24 && _bits_per_sample != 32) {
+			if (_bits_per_sample != 8 && _bits_per_sample != 16 && _bits_per_sample != 24 && _bits_per_sample != 32) {
 				ERR_PRINT("SiOPMWaveStreamData: Unsupported bits per sample: " + itos(_bits_per_sample));
 				return false;
 			}
@@ -340,7 +340,13 @@ void SiOPMWaveStreamData::_decode_raw_to_doubles(const PackedByteArray &p_raw, i
 
 	const uint8_t *raw = p_raw.ptr();
 
-	if (_audio_format == WAV_FORMAT_PCM && _bits_per_sample == 16) {
+	if (_audio_format == WAV_FORMAT_PCM && _bits_per_sample == 8) {
+		// 8-bit PCM WAV is unsigned: 0..255 with 128 representing zero.
+		for (int i = 0; i < total_samples; i++) {
+			int sample = (int)raw[i] - 128;
+			_decode_buffer.write[i] = (double)sample / 128.0;
+		}
+	} else if (_audio_format == WAV_FORMAT_PCM && _bits_per_sample == 16) {
 		for (int i = 0; i < total_samples; i++) {
 			int16_t sample = (int16_t)((uint16_t)raw[i * 2] | ((uint16_t)raw[i * 2 + 1] << 8));
 			_decode_buffer.write[i] = (double)sample / 32768.0;
