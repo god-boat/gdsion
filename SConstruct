@@ -4,6 +4,16 @@ from SCons.Script import ARGUMENTS
 
 env = SConscript("godot-cpp/SConstruct")
 
+# godot-cpp folds the build suffix (".<platform>.<target>.<arch>") into OBJSUFFIX
+# so debug and release object files don't collide. On Windows SHOBJSUFFIX is
+# "$OBJSUFFIX", so our SharedObject() compiles inherit that suffix for free; but
+# on posix toolchains (Android) SHOBJSUFFIX is a literal ".os" that ignores
+# OBJSUFFIX. Without this, our .os files share names across targets and clobber
+# each other whenever we switch debug<->release, forcing a full rebuild. Mirror
+# the suffix into SHOBJSUFFIX when it isn't already there.
+if env["suffix"] not in env.subst("$SHOBJSUFFIX"):
+    env["SHOBJSUFFIX"] = env["suffix"] + env["SHOBJSUFFIX"]
+
 # For reference:
 # - CCFLAGS are compilation flags shared between C and C++
 # - CFLAGS are for C-specific compilation flags
