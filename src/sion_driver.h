@@ -470,6 +470,35 @@ private:
 		int strata_shape = 0;
 		int strata_timbre = 0;
 		int strata_color = 0;
+		// KS extended resonator params
+		bool has_ks_extended = false;
+		int ks_exciter_type = 0;
+		int ks_exciter_color = 50;
+		int ks_exciter_length = 50;
+		int ks_exciter_shape = 50;
+		int ks_exciter_drive = 0;
+		int ks_exciter_pitch_follow = 100;
+		int ks_exciter_randomness = 0;
+		int ks_loop_filter_mode = 0;
+		int ks_loop_damping = 50;
+		int ks_loop_brightness = 50;
+		int ks_loop_loss = 2;
+		int ks_loop_tone_tilt = 50;
+		int ks_stiffness = 0;
+		int ks_dispersion = 0;
+		int ks_bend = 50;
+		int ks_odd_even = 50;
+		int ks_body_type = 0;
+		int ks_body_amount = 0;
+		int ks_body_tune = 50;
+		int ks_body_width = 50;
+		int ks_pitch_drift = 0;
+		int ks_pitch_drop = 0;
+		int ks_pick_bend = 50;
+		int ks_tension_mod = 50;
+		int ks_keytrack = 100;
+		int ks_glide = 0;
+		int ks_release_mode = 0;
 		// Monolith bass engine grouped params
 		bool has_monolith = false;
 		int monolith_sub_shape = 0;
@@ -917,6 +946,18 @@ public:
 	void mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// strata macro-oscillator mailbox
 	void mailbox_set_strata_params(int p_track_id, int p_shape, int p_timbre, int p_color, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	// KS extended resonator mailbox
+	void mailbox_set_ks_extended(int p_track_id,
+			int p_exciter_type, int p_exciter_color, int p_exciter_length,
+			int p_exciter_shape, int p_exciter_drive, int p_exciter_pitch_follow, int p_exciter_randomness,
+			int p_loop_filter_mode, int p_loop_damping, int p_loop_brightness,
+			int p_loop_loss, int p_loop_tone_tilt,
+			int p_stiffness, int p_dispersion, int p_bend, int p_odd_even,
+			int p_body_type, int p_body_amount, int p_body_tune, int p_body_width,
+			int p_pitch_drift, int p_pitch_drop, int p_pick_bend,
+			int p_tension_mod, int p_keytrack, int p_glide,
+			int p_release_mode,
+			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// Monolith bass engine mailbox
 	void mailbox_set_monolith_params(int p_track_id,
 			int p_sub_shape, int p_sub_level, int p_sub_drive, int p_pitch_drop,

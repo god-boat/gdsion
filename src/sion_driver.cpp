@@ -51,6 +51,7 @@
 #include "chip/channels/siopm_channel_stream.h"
 #include "chip/channels/siopm_channel_strata.h"
 #include "chip/channels/siopm_channel_monolith.h"
+#include "chip/channels/siopm_channel_ks.h"
 #include "utils/fader_util.h"
 #include "utils/transformer_util.h"
 #include <atomic>
@@ -1543,6 +1544,16 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_envelope_freq_ratio", "track_id", "ratio", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_envelope_freq_ratio, DEFVAL(-1), DEFVAL(-1));
 	// Strata macro-oscillator
 	ClassDB::bind_method(D_METHOD("mailbox_set_strata_params", "track_id", "shape", "timbre", "color", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_strata_params, DEFVAL(-1), DEFVAL(-1));
+	// KS extended resonator
+	ClassDB::bind_method(D_METHOD("mailbox_set_ks_extended", "track_id",
+			"exciter_type", "exciter_color", "exciter_length", "exciter_shape", "exciter_drive", "exciter_pitch_follow", "exciter_randomness",
+			"loop_filter_mode", "loop_damping", "loop_brightness", "loop_loss", "loop_tone_tilt",
+			"stiffness", "dispersion", "bend", "odd_even",
+			"body_type", "body_amount", "body_tune", "body_width",
+			"pitch_drift", "pitch_drop", "pick_bend", "tension_mod", "keytrack", "glide",
+			"release_mode",
+			"entity_scope_id", "slot_scope_id"),
+			&SiONDriver::mailbox_set_ks_extended, DEFVAL(-1), DEFVAL(-1));
 	// Monolith bass engine
 	ClassDB::bind_method(D_METHOD("mailbox_set_monolith_params", "track_id",
 			"sub_shape", "sub_level", "sub_drive", "pitch_drop",
@@ -2758,6 +2769,52 @@ void SiONDriver::mailbox_set_strata_params(int p_track_id, int p_shape, int p_ti
 	_mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_ks_extended(int p_track_id,
+		int p_exciter_type, int p_exciter_color, int p_exciter_length,
+		int p_exciter_shape, int p_exciter_drive, int p_exciter_pitch_follow, int p_exciter_randomness,
+		int p_loop_filter_mode, int p_loop_damping, int p_loop_brightness,
+		int p_loop_loss, int p_loop_tone_tilt,
+		int p_stiffness, int p_dispersion, int p_bend, int p_odd_even,
+		int p_body_type, int p_body_amount, int p_body_tune, int p_body_width,
+		int p_pitch_drift, int p_pitch_drop, int p_pick_bend,
+		int p_tension_mod, int p_keytrack, int p_glide,
+		int p_release_mode,
+		int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.entity_scope_id = p_entity_scope_id;
+	u.slot_scope_id = p_slot_scope_id;
+	u.has_ks_extended = true;
+	u.ks_exciter_type = p_exciter_type;
+	u.ks_exciter_color = p_exciter_color;
+	u.ks_exciter_length = p_exciter_length;
+	u.ks_exciter_shape = p_exciter_shape;
+	u.ks_exciter_drive = p_exciter_drive;
+	u.ks_exciter_pitch_follow = p_exciter_pitch_follow;
+	u.ks_exciter_randomness = p_exciter_randomness;
+	u.ks_loop_filter_mode = p_loop_filter_mode;
+	u.ks_loop_damping = p_loop_damping;
+	u.ks_loop_brightness = p_loop_brightness;
+	u.ks_loop_loss = p_loop_loss;
+	u.ks_loop_tone_tilt = p_loop_tone_tilt;
+	u.ks_stiffness = p_stiffness;
+	u.ks_dispersion = p_dispersion;
+	u.ks_bend = p_bend;
+	u.ks_odd_even = p_odd_even;
+	u.ks_body_type = p_body_type;
+	u.ks_body_amount = p_body_amount;
+	u.ks_body_tune = p_body_tune;
+	u.ks_body_width = p_body_width;
+	u.ks_pitch_drift = p_pitch_drift;
+	u.ks_pitch_drop = p_pitch_drop;
+	u.ks_pick_bend = p_pick_bend;
+	u.ks_tension_mod = p_tension_mod;
+	u.ks_keytrack = p_keytrack;
+	u.ks_glide = p_glide;
+	u.ks_release_mode = p_release_mode;
+	_mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_monolith_params(int p_track_id,
 		int p_sub_shape, int p_sub_level, int p_sub_drive, int p_pitch_drop,
 		int p_osc1_shape, int p_osc2_shape,
@@ -3435,6 +3492,22 @@ void SiONDriver::_drain_track_mailbox() {
                 SiOPMChannelStrata *strata_ch = Object::cast_to<SiOPMChannelStrata>(ch);
                 if (strata_ch) {
                     strata_ch->set_strata_params(u.strata_shape, u.strata_timbre, u.strata_color);
+                }
+            }
+            // KS extended resonator updates
+            if (u.has_ks_extended) {
+                SiOPMChannelKS *ks_ch = Object::cast_to<SiOPMChannelKS>(ch);
+                if (ks_ch) {
+                    ks_ch->set_ks_extended_params(
+                        u.ks_exciter_type, u.ks_exciter_color, u.ks_exciter_length,
+                        u.ks_exciter_shape, u.ks_exciter_drive, u.ks_exciter_pitch_follow, u.ks_exciter_randomness,
+                        u.ks_loop_filter_mode, u.ks_loop_damping, u.ks_loop_brightness,
+                        u.ks_loop_loss, u.ks_loop_tone_tilt,
+                        u.ks_stiffness, u.ks_dispersion, u.ks_bend, u.ks_odd_even,
+                        u.ks_body_type, u.ks_body_amount, u.ks_body_tune, u.ks_body_width,
+                        u.ks_pitch_drift, u.ks_pitch_drop, u.ks_pick_bend,
+                        u.ks_tension_mod, u.ks_keytrack, u.ks_glide,
+                        u.ks_release_mode);
                 }
             }
             // Monolith bass engine updates

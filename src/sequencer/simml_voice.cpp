@@ -117,6 +117,16 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 				if (is_pcm_voice() && wave_data.is_valid()) {
 					ks_ch->set_wave_data(wave_data);
 				}
+				ks_ch->set_ks_extended_params(
+					ks_exciter_type, ks_exciter_color, ks_exciter_length,
+					ks_exciter_shape, ks_exciter_drive, ks_exciter_pitch_follow, ks_exciter_randomness,
+					ks_loop_filter_mode, ks_loop_damping, ks_loop_brightness,
+					ks_loop_loss, ks_loop_tone_tilt,
+					ks_stiffness, ks_dispersion, ks_bend, ks_odd_even,
+					ks_body_type, ks_body_amount, ks_body_tune, ks_body_width,
+					ks_pitch_drift, ks_pitch_drop, ks_pick_bend,
+					ks_tension_mod, ks_keytrack, ks_glide,
+					ks_release_mode);
 			}
 		} break;
 
@@ -255,6 +265,34 @@ void SiMMLVoice::reset() {
 	wave_data = Ref<SiOPMWaveBase>();
 	pms_tension = 8;
 
+	ks_exciter_type = 0;
+	ks_exciter_color = 50;
+	ks_exciter_length = 50;
+	ks_exciter_shape = 50;
+	ks_exciter_drive = 0;
+	ks_exciter_pitch_follow = 100;
+	ks_exciter_randomness = 0;
+	ks_loop_filter_mode = 0;
+	ks_loop_damping = 50;
+	ks_loop_brightness = 50;
+	ks_loop_loss = 2;
+	ks_loop_tone_tilt = 50;
+	ks_stiffness = 0;
+	ks_dispersion = 0;
+	ks_bend = 50;
+	ks_odd_even = 50;
+	ks_body_type = 0;
+	ks_body_amount = 0;
+	ks_body_tune = 50;
+	ks_body_width = 50;
+	ks_pitch_drift = 0;
+	ks_pitch_drop = 0;
+	ks_pick_bend = 50;
+	ks_tension_mod = 50;
+	ks_keytrack = 100;
+	ks_glide = 0;
+	ks_release_mode = 0;
+
 	guitar6_character_seed = 65535.0;
 	guitar6_character_variation = 0.5;
 	guitar6_string_damp = 0.5;
@@ -330,6 +368,34 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	channel_params->copy_from(p_source->channel_params);
 	wave_data = p_source->wave_data;
 	pms_tension = p_source->pms_tension;
+
+	ks_exciter_type = p_source->ks_exciter_type;
+	ks_exciter_color = p_source->ks_exciter_color;
+	ks_exciter_length = p_source->ks_exciter_length;
+	ks_exciter_shape = p_source->ks_exciter_shape;
+	ks_exciter_drive = p_source->ks_exciter_drive;
+	ks_exciter_pitch_follow = p_source->ks_exciter_pitch_follow;
+	ks_exciter_randomness = p_source->ks_exciter_randomness;
+	ks_loop_filter_mode = p_source->ks_loop_filter_mode;
+	ks_loop_damping = p_source->ks_loop_damping;
+	ks_loop_brightness = p_source->ks_loop_brightness;
+	ks_loop_loss = p_source->ks_loop_loss;
+	ks_loop_tone_tilt = p_source->ks_loop_tone_tilt;
+	ks_stiffness = p_source->ks_stiffness;
+	ks_dispersion = p_source->ks_dispersion;
+	ks_bend = p_source->ks_bend;
+	ks_odd_even = p_source->ks_odd_even;
+	ks_body_type = p_source->ks_body_type;
+	ks_body_amount = p_source->ks_body_amount;
+	ks_body_tune = p_source->ks_body_tune;
+	ks_body_width = p_source->ks_body_width;
+	ks_pitch_drift = p_source->ks_pitch_drift;
+	ks_pitch_drop = p_source->ks_pitch_drop;
+	ks_pick_bend = p_source->ks_pick_bend;
+	ks_tension_mod = p_source->ks_tension_mod;
+	ks_keytrack = p_source->ks_keytrack;
+	ks_glide = p_source->ks_glide;
+	ks_release_mode = p_source->ks_release_mode;
 
 	guitar6_character_seed = p_source->guitar6_character_seed;
 	guitar6_character_variation = p_source->guitar6_character_variation;

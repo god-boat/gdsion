@@ -364,6 +364,45 @@ void SiONVoice::set_pms_guitar(int p_attack_rate, int p_decay_rate, int p_total_
 	chip_type = SiONChipType::CHIP_PMS_GUITAR;
 }
 
+void SiONVoice::set_ks_extended(
+		int p_exciter_type, int p_exciter_color, int p_exciter_length,
+		int p_exciter_shape, int p_exciter_drive, int p_exciter_pitch_follow, int p_exciter_randomness,
+		int p_loop_filter_mode, int p_loop_damping, int p_loop_brightness,
+		int p_loop_loss, int p_loop_tone_tilt,
+		int p_stiffness, int p_dispersion, int p_bend, int p_odd_even,
+		int p_body_type, int p_body_amount, int p_body_tune, int p_body_width,
+		int p_pitch_drift, int p_pitch_drop, int p_pick_bend,
+		int p_tension_mod, int p_keytrack, int p_glide,
+		int p_release_mode) {
+	ks_exciter_type = p_exciter_type;
+	ks_exciter_color = p_exciter_color;
+	ks_exciter_length = p_exciter_length;
+	ks_exciter_shape = p_exciter_shape;
+	ks_exciter_drive = p_exciter_drive;
+	ks_exciter_pitch_follow = p_exciter_pitch_follow;
+	ks_exciter_randomness = p_exciter_randomness;
+	ks_loop_filter_mode = p_loop_filter_mode;
+	ks_loop_damping = p_loop_damping;
+	ks_loop_brightness = p_loop_brightness;
+	ks_loop_loss = p_loop_loss;
+	ks_loop_tone_tilt = p_loop_tone_tilt;
+	ks_stiffness = p_stiffness;
+	ks_dispersion = p_dispersion;
+	ks_bend = p_bend;
+	ks_odd_even = p_odd_even;
+	ks_body_type = p_body_type;
+	ks_body_amount = p_body_amount;
+	ks_body_tune = p_body_tune;
+	ks_body_width = p_body_width;
+	ks_pitch_drift = p_pitch_drift;
+	ks_pitch_drop = p_pitch_drop;
+	ks_pick_bend = p_pick_bend;
+	ks_tension_mod = p_tension_mod;
+	ks_keytrack = p_keytrack;
+	ks_glide = p_glide;
+	ks_release_mode = p_release_mode;
+}
+
 void SiONVoice::set_guitar6(double p_character_seed, double p_character_variation,
 		double p_string_damp, double p_string_damp_variation,
 		double p_plug_damp, double p_plug_damp_variation,
@@ -578,6 +617,20 @@ void SiONVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_by_mml", "mml"), &SiONVoice::set_by_mml);
 
 	ClassDB::bind_method(D_METHOD("set_pms_guitar", "attack_rate", "decay_rate", "total_level", "fixed_pitch", "wave_shape", "tension"), &SiONVoice::set_pms_guitar, DEFVAL(48), DEFVAL(48), DEFVAL(0), DEFVAL(69), DEFVAL(20), DEFVAL(8));
+	ClassDB::bind_method(D_METHOD("set_ks_extended",
+			"exciter_type", "exciter_color", "exciter_length", "exciter_shape", "exciter_drive", "exciter_pitch_follow", "exciter_randomness",
+			"loop_filter_mode", "loop_damping", "loop_brightness", "loop_loss", "loop_tone_tilt",
+			"stiffness", "dispersion", "bend", "odd_even",
+			"body_type", "body_amount", "body_tune", "body_width",
+			"pitch_drift", "pitch_drop", "pick_bend", "tension_mod", "keytrack", "glide",
+			"release_mode"),
+			&SiONVoice::set_ks_extended,
+			DEFVAL(0), DEFVAL(50), DEFVAL(50), DEFVAL(50), DEFVAL(0), DEFVAL(100), DEFVAL(0),
+			DEFVAL(0), DEFVAL(50), DEFVAL(50), DEFVAL(2), DEFVAL(50),
+			DEFVAL(0), DEFVAL(0), DEFVAL(50), DEFVAL(50),
+			DEFVAL(0), DEFVAL(0), DEFVAL(50), DEFVAL(50),
+			DEFVAL(0), DEFVAL(0), DEFVAL(50), DEFVAL(50), DEFVAL(100), DEFVAL(0),
+			DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_guitar6", "character_seed", "character_variation", "string_damp", "string_damp_variation", "plug_damp", "plug_damp_variation", "string_tension", "stereo_spread", "body_bypass"), &SiONVoice::set_guitar6, DEFVAL(65535.0), DEFVAL(0.5), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.0), DEFVAL(0.2), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("set_strata", "shape", "timbre", "color"), &SiONVoice::set_strata, DEFVAL(0), DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_monolith",

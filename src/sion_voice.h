@@ -71,6 +71,16 @@ public:
 	void set_sampler_table(const Ref<SiOPMWaveSamplerTable> &p_table);
 
 	void set_pms_guitar(int p_attack_rate = 48, int p_decay_rate = 48, int p_total_level = 0, int p_fixed_pitch = 69, int p_wave_shape = 20, int p_tension = 8);
+	void set_ks_extended(
+			int p_exciter_type = 0, int p_exciter_color = 50, int p_exciter_length = 50,
+			int p_exciter_shape = 50, int p_exciter_drive = 0, int p_exciter_pitch_follow = 100, int p_exciter_randomness = 0,
+			int p_loop_filter_mode = 0, int p_loop_damping = 50, int p_loop_brightness = 50,
+			int p_loop_loss = 2, int p_loop_tone_tilt = 50,
+			int p_stiffness = 0, int p_dispersion = 0, int p_bend = 50, int p_odd_even = 50,
+			int p_body_type = 0, int p_body_amount = 0, int p_body_tune = 50, int p_body_width = 50,
+			int p_pitch_drift = 0, int p_pitch_drop = 0, int p_pick_bend = 50,
+			int p_tension_mod = 50, int p_keytrack = 100, int p_glide = 0,
+			int p_release_mode = 0);
 	void set_guitar6(double p_character_seed = 65535, double p_character_variation = 0.5,
 			double p_string_damp = 0.5, double p_string_damp_variation = 0.25,
 			double p_plug_damp = 0.5, double p_plug_damp_variation = 0.25,

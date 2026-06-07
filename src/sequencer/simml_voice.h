@@ -75,6 +75,35 @@ protected:
 	// PMS guitar tension.
 	int pms_tension = 8;
 
+	// KS extended resonator params.
+	int ks_exciter_type = 0;
+	int ks_exciter_color = 50;
+	int ks_exciter_length = 50;
+	int ks_exciter_shape = 50;
+	int ks_exciter_drive = 0;
+	int ks_exciter_pitch_follow = 100;
+	int ks_exciter_randomness = 0;
+	int ks_loop_filter_mode = 0;
+	int ks_loop_damping = 50;
+	int ks_loop_brightness = 50;
+	int ks_loop_loss = 2;
+	int ks_loop_tone_tilt = 50;
+	int ks_stiffness = 0;
+	int ks_dispersion = 0;
+	int ks_bend = 50;
+	int ks_odd_even = 50;
+	int ks_body_type = 0;
+	int ks_body_amount = 0;
+	int ks_body_tune = 50;
+	int ks_body_width = 50;
+	int ks_pitch_drift = 0;
+	int ks_pitch_drop = 0;
+	int ks_pick_bend = 50;
+	int ks_tension_mod = 50;
+	int ks_keytrack = 100;
+	int ks_glide = 0;
+	int ks_release_mode = 0;
+
 	// Guitar6 physical model params.
 	double guitar6_character_seed = 65535.0;
 	double guitar6_character_variation = 0.5;
