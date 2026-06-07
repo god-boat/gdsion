@@ -81,6 +81,47 @@ static int _calculate_lfo_timer_step(int p_time_mode, int p_value, double p_bpm,
 	}
 }
 
+namespace {
+using SVFilterProcessFn = void (*)(
+		SinglyLinkedList<int>::Element *&,
+		int,
+		double,
+		double,
+		double &,
+		double &,
+		double &);
+
+inline int _sanitize_sv_filter_step(int p_step) {
+	return (p_step > 0) ? p_step : 1;
+}
+
+template <SiOPMChannelBase::FilterType P_FILTER_TYPE>
+inline void _process_sv_filter_samples(
+		SinglyLinkedList<int>::Element *&r_target,
+		int p_count,
+		double p_cutoff_value,
+		double p_feedback_value,
+		double &r_low,
+		double &r_band,
+		double &r_high) {
+	for (int i = 0; i < p_count; i++) {
+		r_high = static_cast<double>(r_target->value) - r_low - r_band * p_feedback_value;
+		r_band += r_high * p_cutoff_value;
+		r_low += r_band * p_cutoff_value;
+
+		if constexpr (P_FILTER_TYPE == SiOPMChannelBase::FILTER_BP) {
+			r_target->value = static_cast<int>(r_band);
+		} else if constexpr (P_FILTER_TYPE == SiOPMChannelBase::FILTER_HP) {
+			r_target->value = static_cast<int>(r_high);
+		} else {
+			r_target->value = static_cast<int>(r_low);
+		}
+
+		r_target = r_target->next();
+	}
+}
+} // namespace
+
 int SiOPMChannelBase::get_master_volume() const {
 	return _volumes[0] * 128;
 }
@@ -456,53 +497,61 @@ void SiOPMChannelBase::_apply_ring_modulation(SinglyLinkedList<int>::Element *p_
 }
 
 void SiOPMChannelBase::_apply_sv_filter(SinglyLinkedList<int>::Element *p_buffer_start, int p_length, double (&r_variables)[3]) {
+	if (!p_buffer_start || p_length <= 0) {
+		return;
+	}
+
 	int cutoff = CLAMP(_cutoff_frequency + _cutoff_offset, 0, 128);
 	double cutoff_value = _table->filter_cutoff_table[cutoff];
-	double feedback_value = _resonance; // * _table->filter_feedback_table[out]; // This is commented out in original code.
+	const double feedback_value = _resonance; // * _table->filter_feedback_table[out]; // This is commented out in original code.
+	SVFilterProcessFn process_samples = &_process_sv_filter_samples<FILTER_LP>;
+
+	switch (_filter_type) {
+		case FILTER_BP:
+			process_samples = &_process_sv_filter_samples<FILTER_BP>;
+			break;
+		case FILTER_HP:
+			process_samples = &_process_sv_filter_samples<FILTER_HP>;
+			break;
+		case FILTER_LP:
+		default:
+			break;
+	}
 
 	// Previous setting.
-	int step = _filter_eg_residue;
+	int step = _sanitize_sv_filter_step(_filter_eg_residue);
 
 	SinglyLinkedList<int>::Element *target = p_buffer_start;
 	int length = p_length;
-	while (length >= step) {
-		// Process.
-		for (int i = 0; i < step; i++) {
-			r_variables[2] = (double)target->value - r_variables[0] - r_variables[1] * feedback_value;
-			r_variables[1] += r_variables[2] * cutoff_value;
-			r_variables[0] += r_variables[1] * cutoff_value;
-
-			target->value = (int)r_variables[_filter_type];
-			target = target->next();
-		}
-		length -= step;
-
-		// Change cutoff and shift state.
-
+	double low = r_variables[0];
+	double band = r_variables[1];
+	double high = r_variables[2];
+	const auto advance_filter_state = [&]() {
 		_cutoff_frequency += _filter_eg_cutoff_inc;
 		cutoff = CLAMP(_cutoff_frequency + _cutoff_offset, 0, 128);
 		cutoff_value = _table->filter_cutoff_table[cutoff];
-		feedback_value = _resonance; // * _table->filter_feedback_table[out]; // This is commented out in original code.
 
 		if (_cutoff_frequency == _filter_eg_next) {
 			_shift_sv_filter_state(_filter_eg_state + 1);
 		}
 
-		step = _filter_eg_step;
+		step = _sanitize_sv_filter_step(_filter_eg_step);
+	};
+
+	while (length >= step) {
+		process_samples(target, step, cutoff_value, feedback_value, low, band, high);
+		length -= step;
+		advance_filter_state();
 	}
 
-	// Process the remainder.
-	for (int i = 0; i < length; i++) {
-		r_variables[2] = (double)target->value - r_variables[0] - r_variables[1] * feedback_value;
-		r_variables[1] += r_variables[2] * cutoff_value;
-		r_variables[0] += r_variables[1] * cutoff_value;
+	process_samples(target, length, cutoff_value, feedback_value, low, band, high);
 
-		target->value = (int)r_variables[_filter_type];
-		target = target->next();
-	}
+	r_variables[0] = low;
+	r_variables[1] = band;
+	r_variables[2] = high;
 
 	// Next setting.
-	_filter_eg_residue = _filter_eg_step - length;
+	_filter_eg_residue = step - length;
 }
 
 void SiOPMChannelBase::start_kill_fade(int p_samples) {
