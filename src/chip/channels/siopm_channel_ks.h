@@ -80,6 +80,7 @@ private:
 	Vector<int> _ks_delay_buffer;
 	double _ks_delay_buffer_index = 0;
 	int _ks_pitch_index = 0;
+	int _ks_active_delay_length = 0;
 
 	double _ks_decay_lpf = 0.875;
 	double _ks_decay = 0.98;
@@ -91,6 +92,10 @@ private:
 	double _decay_lpf = 0.5;
 	double _decay = 0.75;
 	double _expression = 1;
+	static constexpr int DECLICK_SAMPLES = 256;
+	static constexpr double DECLICK_INCREMENT = 1.0 / DECLICK_SAMPLES;
+	double _declick_level = 0.0;
+	double _declick_target = 0.0;
 
 	// --- Exciter section ---
 	ExciterType _exciter_type = EXCITER_NOISE;
@@ -148,6 +153,7 @@ private:
 		// update_coeffs + clear z-state. Only for a fresh note / full reset.
 		void init(double p_freq, double p_q, double p_gain, double p_sample_rate);
 		double process(double p_in);
+		bool is_ringing(double p_threshold) const;
 		void reset();
 	};
 	static const int BODY_RESONATOR_COUNT = 3;
@@ -176,8 +182,12 @@ private:
 	bool _is_note_held = false;
 	double _bloom_timer = 0.0;
 	double _freeze_factor = 0.0;
+	bool _has_deferred_note_on = false;
 
 	// Internal helpers.
+	void _execute_note_on_immediate();
+	bool _should_defer_note_on() const;
+	bool _is_quiet_enough_for_deferred_note_on() const;
 	void _fill_excitation(int *p_buffer, int p_length, double p_frequency);
 	double _apply_loop_filter_sample(double p_input);
 	double _apply_inharmonicity(double p_input);
@@ -309,6 +319,7 @@ public:
 
 	virtual void reset_channel_buffer_status() override;
 	virtual void buffer(int p_length) override;
+	virtual void buffer_no_process(int p_length) override;
 
 	//
 	virtual void initialize(SiOPMChannelBase *p_prev, int p_buffer_index) override;

@@ -25,6 +25,7 @@ static constexpr double KS_PITCH_MOD_UNITS_PER_OCTAVE = 7680.0;
 static constexpr double KS_BEND_RANGE = 320.0;
 static constexpr int KS_REFERENCE_PITCH_INDEX = 60 << 6;
 static constexpr double KS_PITCH_INDEX_TO_MOD_UNITS = 10.0;
+static constexpr double KS_VOICE_STEAL_RESTART_THRESHOLD = 32.0;
 }
 
 // =============================================================================
@@ -55,6 +56,11 @@ double SiOPMChannelKS::BodyResonator::process(double p_in) {
 	z2 = z1;
 	z1 = out;
 	return out * gain;
+}
+
+bool SiOPMChannelKS::BodyResonator::is_ringing(double p_threshold) const {
+	double threshold = Math::abs(p_threshold);
+	return Math::abs(z1 * gain) >= threshold || Math::abs(z2 * gain) >= threshold;
 }
 
 void SiOPMChannelKS::BodyResonator::reset() {
@@ -750,8 +756,44 @@ void SiOPMChannelKS::_set_lfo_state(bool p_enabled) {
 // Processing: note_on / note_off
 // =============================================================================
 
-void SiOPMChannelKS::note_on() {
-	bool was_note_on = _is_note_on;
+bool SiOPMChannelKS::_is_quiet_enough_for_deferred_note_on() const {
+	if (Math::abs(_output) >= KS_VOICE_STEAL_RESTART_THRESHOLD) {
+		return false;
+	}
+
+	const int delay_buffer_size = _ks_delay_buffer.size();
+	const int *delay_buffer = _ks_delay_buffer.ptr();
+	const int live_delay_length = CLAMP(_ks_active_delay_length, 0, delay_buffer_size);
+	for (int i = 0; i < live_delay_length; i++) {
+		if (Math::abs((double)delay_buffer[i]) >= KS_VOICE_STEAL_RESTART_THRESHOLD) {
+			return false;
+		}
+	}
+
+	if (_body_type != BODY_NONE && _body_amount >= 0.001) {
+		for (int i = 0; i < BODY_RESONATOR_COUNT; i++) {
+			if (_body_resonators[i].is_ringing(KS_VOICE_STEAL_RESTART_THRESHOLD)) {
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+bool SiOPMChannelKS::_should_defer_note_on() const {
+	if (_is_idling) {
+		return false;
+	}
+
+	return !_is_quiet_enough_for_deferred_note_on();
+}
+
+void SiOPMChannelKS::_execute_note_on_immediate() {
+	const bool was_voice_active = _is_note_on || _has_deferred_note_on || !_is_idling || _kill_fade_remaining_samples > 0;
+	_has_deferred_note_on = false;
+	cancel_kill_fade();
+
 	_output = 0;
 	_is_note_held = true;
 	_bloom_timer = 0.0;
@@ -763,7 +805,7 @@ void SiOPMChannelKS::note_on() {
 	_drift_lfo = 0.0;
 
 	double target_pitch = _get_effective_pitch_index((double)_ks_pitch_index);
-	if (_pitch_glide > 0.0 && was_note_on && _previous_pitch_index != (double)_ks_pitch_index) {
+	if (_pitch_glide > 0.0 && was_voice_active && _previous_pitch_index != (double)_ks_pitch_index) {
 		_glide_current = _get_effective_pitch_index(_previous_pitch_index) * KS_PITCH_INDEX_TO_MOD_UNITS;
 		_glide_target = target_pitch * KS_PITCH_INDEX_TO_MOD_UNITS;
 		_is_gliding = true;
@@ -792,6 +834,7 @@ void SiOPMChannelKS::note_on() {
 
 	const int delay_buffer_size = _ks_delay_buffer.size();
 	if (delay_buffer_size > 0) {
+		_ks_delay_buffer.fill(0);
 		int *delay_buffer = _ks_delay_buffer.ptrw();
 
 		double wave_length = _get_pitch_wave_length(target_pitch);
@@ -805,6 +848,7 @@ void SiOPMChannelKS::note_on() {
 		if (fill_length < 2) {
 			fill_length = 2;
 		}
+		_ks_active_delay_length = CLAMP((int)Math::ceil(wave_length), 2, delay_buffer_size);
 
 		double frequency = 44100.0 / wave_length;
 		if (_table) {
@@ -818,12 +862,36 @@ void SiOPMChannelKS::note_on() {
 	_configure_stiffness();
 	_decay_lpf = _ks_decay_lpf;
 	_decay = _ks_decay;
+	_declick_target = 1.0;
 
 	SiOPMChannelFM::note_on();
 }
 
+void SiOPMChannelKS::note_on() {
+	// Voice stealing can arrive here after an immediate key_off already started a
+	// channel kill-fade. Defer the destructive KS state reset until the string
+	// loop and body resonators are quiet enough, otherwise re-seeding the delay
+	// line produces the same discontinuity FM had before operator-side declick.
+	if (_should_defer_note_on()) {
+		_has_deferred_note_on = true;
+		cancel_kill_fade();
+		_is_note_held = false;
+		_bloom_timer = 0.0;
+		_freeze_factor = 0.0;
+		_decay_lpf = _ks_mute_decay_lpf;
+		_decay = _ks_mute_decay;
+		_declick_target = 0.0;
+		_is_idling = false;
+		return;
+	}
+
+	_execute_note_on_immediate();
+}
+
 void SiOPMChannelKS::note_off() {
+	_has_deferred_note_on = false;
 	_is_note_held = false;
+	_declick_target = 0.0;
 
 	switch (_release_mode) {
 		case RELEASE_NATURAL: {
@@ -875,8 +943,22 @@ void SiOPMChannelKS::reset_channel_buffer_status() {
 
 	const int delay_buffer_size = _ks_delay_buffer.size();
 	const int *delay_buffer = _ks_delay_buffer.ptr();
-	for (int i = 0; i < delay_buffer_size; i++) {
+	const int live_delay_length = CLAMP(_ks_active_delay_length, 0, delay_buffer_size);
+	for (int i = 0; i < live_delay_length; i++) {
 		if (delay_buffer[i] != 0) {
+			_is_idling = false;
+			return;
+		}
+	}
+
+	if (_body_type == BODY_NONE || _body_amount < 0.001) {
+		return;
+	}
+
+	// Keep processing until the post-loop body resonators have decayed, otherwise
+	// the channel can idle early and truncate their remaining ring into a click.
+	for (int i = 0; i < BODY_RESONATOR_COUNT; i++) {
+		if (_body_resonators[i].is_ringing(KS_SUB_SAMPLE_SILENCE)) {
 			_is_idling = false;
 			return;
 		}
@@ -905,6 +987,12 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 	double pitch_mod_accum = 0.0;
 
 	for (int i = 0; i < p_length; i++) {
+		if (_declick_level < _declick_target) {
+			_declick_level = MIN(_declick_level + DECLICK_INCREMENT, _declick_target);
+		} else if (_declick_level > _declick_target) {
+			_declick_level = MAX(_declick_level - DECLICK_INCREMENT, 0.0);
+		}
+
 		// Update LFO.
 		_lfo_timer -= _lfo_timer_step;
 		if (_lfo_timer < 0) {
@@ -932,6 +1020,15 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 				effective_wave_length = 2.0;
 			}
 		}
+		const int active_delay_length = CLAMP((int)Math::ceil(effective_wave_length), 2, delay_buffer_size);
+		if (active_delay_length < _ks_active_delay_length) {
+			// Samples past the live wave length are no longer reachable; clear them so
+			// idle/deferred-note checks only observe energy that can still feed output.
+			for (int j = active_delay_length; j < _ks_active_delay_length; j++) {
+				delay_buffer[j] = 0;
+			}
+		}
+		_ks_active_delay_length = active_delay_length;
 
 		// Bloom fade-out after note-off.
 		if (_bloom_timer > 0.0) {
@@ -967,7 +1064,8 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 		if (_freeze_factor > 0.0) {
 			decay_factor = 0.9999;
 		}
-		_output = filtered * decay_factor + target->value;
+		double exciter_input = (double)target->value * _declick_level;
+		_output = filtered * decay_factor + exciter_input;
 
 		if (Math::abs(_output) < KS_SUB_SAMPLE_SILENCE) {
 			_output = 0;
@@ -985,6 +1083,10 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 
 // Buffer (same structure as before).
 void SiOPMChannelKS::buffer(int p_length) {
+	if (_has_deferred_note_on && _is_quiet_enough_for_deferred_note_on()) {
+		_execute_note_on_immediate();
+	}
+
 	if (_is_idling) {
 		buffer_no_process(p_length);
 		return;
@@ -1032,6 +1134,18 @@ void SiOPMChannelKS::buffer(int p_length) {
 	_buffer_index += p_length;
 }
 
+void SiOPMChannelKS::buffer_no_process(int p_length) {
+	if (_has_deferred_note_on) {
+		_execute_note_on_immediate();
+		if (!_is_idling) {
+			buffer(p_length);
+			return;
+		}
+	}
+
+	SiOPMChannelBase::buffer_no_process(p_length);
+}
+
 // =============================================================================
 // Initialize / Reset
 // =============================================================================
@@ -1039,6 +1153,7 @@ void SiOPMChannelKS::buffer(int p_length) {
 void SiOPMChannelKS::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	_ks_delay_buffer_index = 0;
 	_ks_pitch_index = 0;
+	_ks_active_delay_length = 0;
 
 	_ks_decay_lpf = 0.875;
 	_ks_decay = 0.98;
@@ -1049,6 +1164,8 @@ void SiOPMChannelKS::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	_decay_lpf = _ks_mute_decay_lpf;
 	_decay = _ks_mute_decay;
 	_expression = 1;
+	_declick_level = 0.0;
+	_declick_target = 0.0;
 
 	// Exciter defaults.
 	_exciter_type = EXCITER_NOISE;
@@ -1123,6 +1240,7 @@ void SiOPMChannelKS::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	_is_note_held = false;
 	_bloom_timer = 0.0;
 	_freeze_factor = 0.0;
+	_has_deferred_note_on = false;
 
 	SiOPMChannelFM::initialize(p_prev, p_buffer_index);
 
@@ -1148,6 +1266,7 @@ void SiOPMChannelKS::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 
 void SiOPMChannelKS::reset() {
 	_ks_delay_buffer.fill(0);
+	_ks_active_delay_length = 0;
 
 	_loop_ap_z1 = 0.0;
 	_loop_lpf_z1 = 0.0;
@@ -1174,6 +1293,9 @@ void SiOPMChannelKS::reset() {
 
 	_bloom_timer = 0.0;
 	_freeze_factor = 0.0;
+	_declick_level = 0.0;
+	_declick_target = 0.0;
+	_has_deferred_note_on = false;
 
 	SiOPMChannelFM::reset();
 }
