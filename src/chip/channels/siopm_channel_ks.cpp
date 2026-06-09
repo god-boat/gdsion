@@ -21,13 +21,17 @@ namespace {
 static constexpr double KS_SUB_SAMPLE_SILENCE = 1.0;
 static constexpr double KS_EXCITER_SCALE = 2048.0;
 static constexpr int KS_COMB_BUFFER_SIZE = 256;
+static constexpr double KS_PITCH_MOD_UNITS_PER_OCTAVE = 7680.0;
+static constexpr double KS_BEND_RANGE = 320.0;
+static constexpr int KS_REFERENCE_PITCH_INDEX = 60 << 6;
+static constexpr double KS_PITCH_INDEX_TO_MOD_UNITS = 10.0;
 }
 
 // =============================================================================
 // Body Resonator (biquad bandpass for synthetic body coloration)
 // =============================================================================
 
-void SiOPMChannelKS::BodyResonator::init(double p_freq, double p_q, double p_gain, double p_sample_rate) {
+void SiOPMChannelKS::BodyResonator::update_coeffs(double p_freq, double p_q, double p_gain, double p_sample_rate) {
 	double w0 = 2.0 * Math_PI * p_freq / p_sample_rate;
 	double cos_w0 = cos(w0);
 	double sin_w0 = sin(w0);
@@ -38,6 +42,10 @@ void SiOPMChannelKS::BodyResonator::init(double p_freq, double p_q, double p_gai
 	a1 = (-2.0 * cos_w0) / a0;
 	a2 = (1.0 - alpha) / a0;
 	gain = p_gain;
+}
+
+void SiOPMChannelKS::BodyResonator::init(double p_freq, double p_q, double p_gain, double p_sample_rate) {
+	update_coeffs(p_freq, p_q, p_gain, p_sample_rate);
 	z1 = 0;
 	z2 = 0;
 }
@@ -90,6 +98,11 @@ void SiOPMChannelKS::_fill_excitation(int *p_buffer, int p_length, double p_freq
 	double color_lpf = 0.1 + _exciter_color * 0.89;
 	double drive_gain = 1.0 + _exciter_drive * 4.0;
 	double shape_env_power = 0.5 + _exciter_shape * 3.5;
+	double reference_frequency = _get_reference_exciter_frequency(sample_rate);
+	double exciter_frequency = reference_frequency + (p_frequency - reference_frequency) * _exciter_pitch_follow;
+	if (exciter_frequency < 1.0) {
+		exciter_frequency = 1.0;
+	}
 
 	double lpf_state = 0.0;
 
@@ -110,7 +123,7 @@ void SiOPMChannelKS::_fill_excitation(int *p_buffer, int p_length, double p_freq
 			} break;
 
 			case EXCITER_PULSE: {
-				double phase = fmod((double)i * p_frequency / sample_rate, 1.0);
+				double phase = fmod((double)i * exciter_frequency / sample_rate, 1.0);
 				double duty = 0.1 + _exciter_shape * 0.4;
 				raw = (phase < duty) ? 1.0 : -1.0;
 			} break;
@@ -122,14 +135,14 @@ void SiOPMChannelKS::_fill_excitation(int *p_buffer, int p_length, double p_freq
 			} break;
 
 			case EXCITER_FM: {
-				double phase = (double)i * p_frequency / sample_rate;
+				double phase = (double)i * exciter_frequency / sample_rate;
 				double mod_ratio = 1.0 + _exciter_color * 7.0;
 				double mod_index = 2.0 + _exciter_drive * 8.0;
 				raw = sin(2.0 * Math_PI * phase + mod_index * sin(2.0 * Math_PI * phase * mod_ratio));
 			} break;
 
 			case EXCITER_PCM: {
-				double phase = (double)i * p_frequency / sample_rate;
+				double phase = (double)i * exciter_frequency / sample_rate;
 				double saw = fmod(phase, 1.0) * 2.0 - 1.0;
 				double sq = (fmod(phase, 1.0) < 0.5) ? 1.0 : -1.0;
 				raw = saw * (1.0 - _exciter_color) + sq * _exciter_color;
@@ -182,36 +195,37 @@ void SiOPMChannelKS::_fill_excitation(int *p_buffer, int p_length, double p_freq
 void SiOPMChannelKS::_configure_loop_filter() {
 	double brightness_norm = _loop_brightness;
 	double tilt = _loop_tone_tilt;
+	double mode_decay_lpf = _ks_decay_lpf;
 
 	switch (_loop_filter_mode) {
 		case LOOP_DARK: {
-			_ks_decay_lpf = 0.4 + (1.0 - _loop_damping) * 0.55;
+			mode_decay_lpf = 0.4 + (1.0 - _loop_damping) * 0.55;
 			_loop_shelf_coef = 0.0;
 			_loop_ap_coef = 0.0;
 		} break;
 
 		case LOOP_BRIGHT: {
-			_ks_decay_lpf = 0.7 + brightness_norm * 0.29;
+			mode_decay_lpf = 0.7 + brightness_norm * 0.29;
 			_loop_shelf_coef = 0.2 + brightness_norm * 0.6;
 			_loop_ap_coef = 0.0;
 		} break;
 
 		case LOOP_BAND: {
-			_ks_decay_lpf = 0.5 + brightness_norm * 0.4;
+			mode_decay_lpf = 0.5 + brightness_norm * 0.4;
 			_loop_notch_freq = 0.2 + _loop_damping * 0.6;
 			_loop_shelf_coef = 0.0;
 			_loop_ap_coef = 0.0;
 		} break;
 
 		case LOOP_NOTCH: {
-			_ks_decay_lpf = 0.6 + brightness_norm * 0.35;
+			mode_decay_lpf = 0.6 + brightness_norm * 0.35;
 			_loop_notch_freq = 0.3 + tilt * 0.3;
 			_loop_shelf_coef = 0.0;
 			_loop_ap_coef = 0.0;
 		} break;
 
 		case LOOP_COMB: {
-			_ks_decay_lpf = 0.6 + brightness_norm * 0.35;
+			mode_decay_lpf = 0.6 + brightness_norm * 0.35;
 			_loop_comb_delay = 2 + (int)(_loop_damping * 12.0);
 			if (_loop_comb_delay >= KS_COMB_BUFFER_SIZE) {
 				_loop_comb_delay = KS_COMB_BUFFER_SIZE - 1;
@@ -221,13 +235,13 @@ void SiOPMChannelKS::_configure_loop_filter() {
 		} break;
 
 		case LOOP_METALLIC: {
-			_ks_decay_lpf = 0.55 + brightness_norm * 0.4;
+			mode_decay_lpf = 0.55 + brightness_norm * 0.4;
 			_loop_ap_coef = 0.3 + _loop_damping * 0.5;
 			_loop_shelf_coef = tilt * 0.4;
 		} break;
 
 		case LOOP_DIFFUSED: {
-			_ks_decay_lpf = 0.5 + brightness_norm * 0.45;
+			mode_decay_lpf = 0.5 + brightness_norm * 0.45;
 			_loop_ap_coef = 0.5 + _loop_damping * 0.4;
 			_loop_shelf_coef = 0.1;
 		} break;
@@ -236,6 +250,10 @@ void SiOPMChannelKS::_configure_loop_filter() {
 			break;
 	}
 
+	double tension_scale = 1.0 - CLAMP((double)_ks_tension, 0.0, 63.0) * 0.015625;
+	double tension_mix = 0.35 + tension_scale * 0.65;
+	_ks_decay_lpf = CLAMP(mode_decay_lpf * tension_mix, 0.01, 0.9999);
+
 	_ks_decay = 1.0 - _loop_loss * 0.15;
 	if (_ks_decay < 0.8) {
 		_ks_decay = 0.8;
@@ -243,25 +261,28 @@ void SiOPMChannelKS::_configure_loop_filter() {
 	if (_ks_decay > 0.9999) {
 		_ks_decay = 0.9999;
 	}
+
+	if (_is_note_held) {
+		_decay_lpf = _ks_decay_lpf;
+		_decay = _ks_decay;
+	}
 }
 
 double SiOPMChannelKS::_apply_loop_filter_sample(double p_input) {
-	double out = p_input;
+	_loop_lpf_z1 += (p_input - _loop_lpf_z1) * _decay_lpf;
+	double out = _loop_lpf_z1;
 
 	switch (_loop_filter_mode) {
-		case LOOP_DARK: {
-			out += (p_input - out) * _decay_lpf;
-		} break;
+		case LOOP_DARK:
+			break;
 
 		case LOOP_BRIGHT: {
-			out += (p_input - out) * _decay_lpf;
 			double high = p_input - _loop_shelf_z1;
 			_loop_shelf_z1 = p_input;
 			out += high * _loop_shelf_coef;
 		} break;
 
 		case LOOP_BAND: {
-			out += (p_input - out) * _decay_lpf;
 			double bp = p_input - _loop_notch_z2;
 			_loop_notch_z2 = _loop_notch_z1;
 			_loop_notch_z1 = p_input;
@@ -269,7 +290,6 @@ double SiOPMChannelKS::_apply_loop_filter_sample(double p_input) {
 		} break;
 
 		case LOOP_NOTCH: {
-			out += (p_input - out) * _decay_lpf;
 			double notch = p_input - 2.0 * _loop_notch_z1 + _loop_notch_z2;
 			_loop_notch_z2 = _loop_notch_z1;
 			_loop_notch_z1 = p_input;
@@ -277,7 +297,6 @@ double SiOPMChannelKS::_apply_loop_filter_sample(double p_input) {
 		} break;
 
 		case LOOP_COMB: {
-			out += (p_input - out) * _decay_lpf;
 			int read_pos = _loop_comb_write_pos - _loop_comb_delay;
 			if (read_pos < 0) {
 				read_pos += KS_COMB_BUFFER_SIZE;
@@ -295,7 +314,6 @@ double SiOPMChannelKS::_apply_loop_filter_sample(double p_input) {
 		} break;
 
 		case LOOP_METALLIC: {
-			out += (p_input - out) * _decay_lpf;
 			double ap_in = out;
 			double ap_out = -_loop_ap_coef * ap_in + _loop_ap_z1;
 			_loop_ap_z1 = ap_in + _loop_ap_coef * ap_out;
@@ -308,16 +326,14 @@ double SiOPMChannelKS::_apply_loop_filter_sample(double p_input) {
 		} break;
 
 		case LOOP_DIFFUSED: {
-			out += (p_input - out) * _decay_lpf;
 			double ap_in = out;
 			double ap_out = -_loop_ap_coef * ap_in + _loop_ap_z1;
 			_loop_ap_z1 = ap_in + _loop_ap_coef * ap_out;
 			out = ap_out;
 		} break;
 
-		default: {
-			out += (p_input - out) * _decay_lpf;
-		} break;
+		default:
+			break;
 	}
 
 	return out;
@@ -392,9 +408,12 @@ void SiOPMChannelKS::_configure_body_resonators(double p_sample_rate) {
 	double tune_mult = 0.5 + _body_tune * 1.5;
 	double width_q_scale = 0.5 + (1.0 - _body_width) * 2.0;
 
-	_body_resonators[0].init(preset.freq1 * tune_mult, preset.q1 * width_q_scale, preset.gain1 * _body_amount, p_sample_rate);
-	_body_resonators[1].init(preset.freq2 * tune_mult, preset.q2 * width_q_scale, preset.gain2 * _body_amount, p_sample_rate);
-	_body_resonators[2].init(preset.freq3 * tune_mult, preset.q3 * width_q_scale, preset.gain3 * _body_amount, p_sample_rate);
+	// Coefficients only -- never clear the biquad z-state here. This is called
+	// from the live body setters, so wiping state on each edit would zipper the
+	// ringing resonators. Fresh state is established by reset() at note_on.
+	_body_resonators[0].update_coeffs(preset.freq1 * tune_mult, preset.q1 * width_q_scale, preset.gain1 * _body_amount, p_sample_rate);
+	_body_resonators[1].update_coeffs(preset.freq2 * tune_mult, preset.q2 * width_q_scale, preset.gain2 * _body_amount, p_sample_rate);
+	_body_resonators[2].update_coeffs(preset.freq3 * tune_mult, preset.q3 * width_q_scale, preset.gain3 * _body_amount, p_sample_rate);
 }
 
 double SiOPMChannelKS::_apply_body_resonance(double p_input) {
@@ -413,6 +432,41 @@ double SiOPMChannelKS::_apply_body_resonance(double p_input) {
 // =============================================================================
 // Pitch behavior
 // =============================================================================
+
+double SiOPMChannelKS::_get_effective_pitch_index(double p_pitch_index) const {
+	double tracked_pitch = p_pitch_index;
+	if (_pitch_keytrack != 1.0) {
+		tracked_pitch = KS_REFERENCE_PITCH_INDEX + (tracked_pitch - KS_REFERENCE_PITCH_INDEX) * _pitch_keytrack;
+	}
+	if (_bend != 0.0) {
+		tracked_pitch += _bend * KS_BEND_RANGE;
+	}
+	return tracked_pitch;
+}
+
+double SiOPMChannelKS::_get_pitch_wave_length(double p_pitch_index) const {
+	if (_table == nullptr) {
+		return 0.0;
+	}
+
+	const int pitch_idx_max = SiOPMRefTable::PITCH_TABLE_SIZE - 1;
+	double clamped_pitch = CLAMP(p_pitch_index, 0.0, (double)pitch_idx_max);
+	int pitch_index_a = (int)clamped_pitch;
+	int pitch_index_b = MIN(pitch_index_a + 1, pitch_idx_max);
+	double interp = clamped_pitch - (double)pitch_index_a;
+
+	double wave_length_a = _table->pitch_wave_length[pitch_index_a];
+	double wave_length_b = _table->pitch_wave_length[pitch_index_b];
+	return wave_length_a + (wave_length_b - wave_length_a) * interp;
+}
+
+double SiOPMChannelKS::_get_reference_exciter_frequency(double p_sample_rate) const {
+	double reference_wave_length = _get_pitch_wave_length((double)KS_REFERENCE_PITCH_INDEX);
+	if (reference_wave_length <= 0.0) {
+		return 261.6255653005986;
+	}
+	return p_sample_rate / reference_wave_length;
+}
 
 void SiOPMChannelKS::_update_pitch_modifiers(double &r_wave_length_mod) {
 	double mod = 0.0;
@@ -463,16 +517,14 @@ void SiOPMChannelKS::_update_pitch_modifiers(double &r_wave_length_mod) {
 // =============================================================================
 
 void SiOPMChannelKS::set_loop_filter_mode(LoopFilterMode p_mode) {
+	// Live param: switching topology must not tear down the running loop state.
+	// Every mode's z-state is zero-initialized at note_on and only ever holds
+	// finite filter output, so any mode reads continuous, valid state. The shared
+	// one-pole _loop_lpf_z1 stays continuous across all modes; the mode-specific
+	// histories (notch/allpass/comb) are refreshed from the live signal within a
+	// few samples. State is torn down only at the real boundaries -- note_on /
+	// reset / initialize -- never on a parameter edit.
 	_loop_filter_mode = p_mode;
-	_loop_ap_z1 = 0;
-	_loop_shelf_z1 = 0;
-	_loop_notch_z1 = 0;
-	_loop_notch_z2 = 0;
-	_loop_comb_z1 = 0;
-	_loop_comb_write_pos = 0;
-	if (_loop_comb_buffer.size() > 0) {
-		_loop_comb_buffer.fill(0.0);
-	}
 	_configure_loop_filter();
 }
 
@@ -654,6 +706,11 @@ void SiOPMChannelKS::set_types(int p_pg_type, SiONPitchTableType p_pt_type) {
 	_ks_seed_index = 0;
 }
 
+void SiOPMChannelKS::set_pitch(int p_value) {
+	_previous_pitch_index = (double)_ks_pitch_index;
+	_ks_pitch_index = p_value;
+}
+
 void SiOPMChannelKS::set_all_attack_rate(int p_value) {
 	_operators[0]->set_attack_rate(p_value);
 	_operators[0]->set_decay_rate(p_value > 48 ? 48 : p_value);
@@ -661,14 +718,12 @@ void SiOPMChannelKS::set_all_attack_rate(int p_value) {
 }
 
 void SiOPMChannelKS::set_all_release_rate(int p_value) {
-	_ks_tension = p_value;
-	_ks_decay_lpf = 1 - p_value * 0.015625;
+	_ks_tension = CLAMP(p_value, 0, 63);
 	_configure_loop_filter();
 }
 
 void SiOPMChannelKS::set_release_rate(int p_value) {
-	_ks_tension = p_value;
-	_ks_decay_lpf = 1 - p_value * 0.015625;
+	_ks_tension = CLAMP(p_value, 0, 63);
 	_configure_loop_filter();
 }
 
@@ -696,6 +751,7 @@ void SiOPMChannelKS::_set_lfo_state(bool p_enabled) {
 // =============================================================================
 
 void SiOPMChannelKS::note_on() {
+	bool was_note_on = _is_note_on;
 	_output = 0;
 	_is_note_held = true;
 	_bloom_timer = 0.0;
@@ -706,18 +762,22 @@ void SiOPMChannelKS::note_on() {
 	_drift_phase = 0.0;
 	_drift_lfo = 0.0;
 
-	if (_pitch_glide > 0.0 && _glide_target != 0.0) {
+	double target_pitch = _get_effective_pitch_index((double)_ks_pitch_index);
+	if (_pitch_glide > 0.0 && was_note_on && _previous_pitch_index != (double)_ks_pitch_index) {
+		_glide_current = _get_effective_pitch_index(_previous_pitch_index) * KS_PITCH_INDEX_TO_MOD_UNITS;
+		_glide_target = target_pitch * KS_PITCH_INDEX_TO_MOD_UNITS;
 		_is_gliding = true;
 		_glide_rate = 0.001 + (1.0 - _pitch_glide) * 0.05;
 	} else {
 		_is_gliding = false;
-		_glide_current = 0.0;
+		_glide_current = target_pitch * KS_PITCH_INDEX_TO_MOD_UNITS;
+		_glide_target = target_pitch * KS_PITCH_INDEX_TO_MOD_UNITS;
 	}
-	_glide_target = 0.0;
 
 	_allpass_z1 = 0.0;
 	_allpass2_z1 = 0.0;
 	_loop_ap_z1 = 0.0;
+	_loop_lpf_z1 = 0.0;
 	_loop_shelf_z1 = 0.0;
 	_loop_notch_z1 = 0.0;
 	_loop_notch_z2 = 0.0;
@@ -734,9 +794,10 @@ void SiOPMChannelKS::note_on() {
 	if (delay_buffer_size > 0) {
 		int *delay_buffer = _ks_delay_buffer.ptrw();
 
-		const int pitch_idx_max = SiOPMRefTable::PITCH_TABLE_SIZE - 1;
-		int pitch_idx = CLAMP(_ks_pitch_index, 0, pitch_idx_max);
-		double wave_length = _table->pitch_wave_length[pitch_idx];
+		double wave_length = _get_pitch_wave_length(target_pitch);
+		if (wave_length < 2.0) {
+			wave_length = 2.0;
+		}
 		int fill_length = (int)wave_length;
 		if (fill_length > delay_buffer_size) {
 			fill_length = delay_buffer_size;
@@ -753,11 +814,10 @@ void SiOPMChannelKS::note_on() {
 		_fill_excitation(delay_buffer, fill_length, frequency);
 	}
 
-	_decay_lpf = _ks_decay_lpf;
-	_decay = _ks_decay;
-
 	_configure_loop_filter();
 	_configure_stiffness();
+	_decay_lpf = _ks_decay_lpf;
+	_decay = _ks_decay;
 
 	SiOPMChannelFM::note_on();
 }
@@ -829,7 +889,6 @@ void SiOPMChannelKS::reset_channel_buffer_status() {
 
 void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buffer_start, int p_length) {
 	SinglyLinkedList<int>::Element *target = p_buffer_start;
-	const int pitch_idx_max = SiOPMRefTable::PITCH_TABLE_SIZE - 1;
 	const int detune = _operators[0]->get_ptss_detune();
 	const int delay_buffer_size = _ks_delay_buffer.size();
 	if (delay_buffer_size <= 0) {
@@ -837,9 +896,11 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 	}
 	int *delay_buffer = _ks_delay_buffer.ptrw();
 
-	int pitch_idx = _ks_pitch_index + detune + _pitch_modulation_output_level;
-	pitch_idx = CLAMP(pitch_idx, 0, pitch_idx_max);
-	double wave_length_max = _table->pitch_wave_length[pitch_idx];
+	double pitch_idx = _get_effective_pitch_index((double)(_ks_pitch_index + detune + _pitch_modulation_output_level));
+	double wave_length_max = _get_pitch_wave_length(pitch_idx);
+	if (wave_length_max < 2.0) {
+		wave_length_max = 2.0;
+	}
 
 	double pitch_mod_accum = 0.0;
 
@@ -852,9 +913,11 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 			int value_base = _lfo_wave_table[_lfo_phase];
 			_pitch_modulation_output_level = (((value_base << 1) - 255) * _pitch_modulation_depth) >> 8;
 
-			pitch_idx = _ks_pitch_index + detune + _pitch_modulation_output_level;
-			pitch_idx = CLAMP(pitch_idx, 0, pitch_idx_max);
-			wave_length_max = _table->pitch_wave_length[pitch_idx];
+			pitch_idx = _get_effective_pitch_index((double)(_ks_pitch_index + detune + _pitch_modulation_output_level));
+			wave_length_max = _get_pitch_wave_length(pitch_idx);
+			if (wave_length_max < 2.0) {
+				wave_length_max = 2.0;
+			}
 
 			_lfo_timer += _lfo_timer_initial;
 		}
@@ -863,7 +926,7 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 		_update_pitch_modifiers(pitch_mod_accum);
 		double effective_wave_length = wave_length_max;
 		if (pitch_mod_accum != 0.0) {
-			double pitch_shift_ratio = pow(2.0, pitch_mod_accum / 7680.0);
+			double pitch_shift_ratio = pow(2.0, pitch_mod_accum / KS_PITCH_MOD_UNITS_PER_OCTAVE);
 			effective_wave_length = wave_length_max / pitch_shift_ratio;
 			if (effective_wave_length < 2.0) {
 				effective_wave_length = 2.0;
@@ -1005,6 +1068,7 @@ void SiOPMChannelKS::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	_loop_tone_tilt = 0.0;
 	_loop_ap_coef = 0.0;
 	_loop_ap_z1 = 0.0;
+	_loop_lpf_z1 = 0.0;
 	_loop_shelf_coef = 0.0;
 	_loop_shelf_z1 = 0.0;
 	_loop_notch_freq = 0.5;
@@ -1051,6 +1115,7 @@ void SiOPMChannelKS::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	_glide_current = 0.0;
 	_glide_target = 0.0;
 	_glide_rate = 0.0;
+	_previous_pitch_index = 0.0;
 	_is_gliding = false;
 
 	// Release mode defaults.
@@ -1085,6 +1150,7 @@ void SiOPMChannelKS::reset() {
 	_ks_delay_buffer.fill(0);
 
 	_loop_ap_z1 = 0.0;
+	_loop_lpf_z1 = 0.0;
 	_loop_shelf_z1 = 0.0;
 	_loop_notch_z1 = 0.0;
 	_loop_notch_z2 = 0.0;
@@ -1096,6 +1162,11 @@ void SiOPMChannelKS::reset() {
 
 	_allpass_z1 = 0.0;
 	_allpass2_z1 = 0.0;
+	_glide_current = 0.0;
+	_glide_target = 0.0;
+	_glide_rate = 0.0;
+	_previous_pitch_index = 0.0;
+	_is_gliding = false;
 
 	for (int i = 0; i < BODY_RESONATOR_COUNT; i++) {
 		_body_resonators[i].reset();

@@ -111,6 +111,7 @@ private:
 
 	double _loop_ap_coef = 0.0;
 	double _loop_ap_z1 = 0.0;
+	double _loop_lpf_z1 = 0.0;
 	double _loop_shelf_coef = 0.0;
 	double _loop_shelf_z1 = 0.0;
 	double _loop_notch_freq = 0.5;
@@ -141,6 +142,10 @@ private:
 	struct BodyResonator {
 		double b0 = 0, a1 = 0, a2 = 0, gain = 0;
 		double z1 = 0, z2 = 0;
+		// Recompute coefficients without touching z-state. Use this for live
+		// parameter edits so the ringing biquad stays continuous (no zipper).
+		void update_coeffs(double p_freq, double p_q, double p_gain, double p_sample_rate);
+		// update_coeffs + clear z-state. Only for a fresh note / full reset.
 		void init(double p_freq, double p_q, double p_gain, double p_sample_rate);
 		double process(double p_in);
 		void reset();
@@ -163,6 +168,7 @@ private:
 	double _glide_current = 0.0;
 	double _glide_target = 0.0;
 	double _glide_rate = 0.0;
+	double _previous_pitch_index = 0.0;
 	bool _is_gliding = false;
 
 	// --- Release mode ---
@@ -176,6 +182,9 @@ private:
 	double _apply_loop_filter_sample(double p_input);
 	double _apply_inharmonicity(double p_input);
 	double _apply_body_resonance(double p_input);
+	double _get_effective_pitch_index(double p_pitch_index) const;
+	double _get_pitch_wave_length(double p_pitch_index) const;
+	double _get_reference_exciter_frequency(double p_sample_rate) const;
 	void _update_pitch_modifiers(double &r_wave_length_mod);
 	void _configure_loop_filter();
 	void _configure_body_resonators(double p_sample_rate);
@@ -206,7 +215,7 @@ public:
 	virtual void set_all_release_rate(int p_value) override;
 
 	virtual int get_pitch() const override { return _ks_pitch_index; }
-	virtual void set_pitch(int p_value) override { _ks_pitch_index = p_value; }
+	virtual void set_pitch(int p_value) override;
 
 	virtual void set_release_rate(int p_value) override;
 	virtual void set_fixed_pitch(int p_value) override;
@@ -248,7 +257,7 @@ public:
 	double get_loop_damping() const { return _loop_damping; }
 	void set_loop_brightness(double p_value) { _loop_brightness = CLAMP(p_value, 0.0, 1.0); _configure_loop_filter(); }
 	double get_loop_brightness() const { return _loop_brightness; }
-	void set_loop_loss(double p_value) { _loop_loss = CLAMP(p_value, 0.0, 1.0); }
+	void set_loop_loss(double p_value) { _loop_loss = CLAMP(p_value, 0.0, 1.0); _configure_loop_filter(); }
 	double get_loop_loss() const { return _loop_loss; }
 	void set_loop_tone_tilt(double p_value) { _loop_tone_tilt = CLAMP(p_value, -1.0, 1.0); _configure_loop_filter(); }
 	double get_loop_tone_tilt() const { return _loop_tone_tilt; }
@@ -266,7 +275,7 @@ public:
 	// Body.
 	void set_body_type(BodyType p_type);
 	BodyType get_body_type() const { return _body_type; }
-	void set_body_amount(double p_value) { _body_amount = CLAMP(p_value, 0.0, 1.0); }
+	void set_body_amount(double p_value) { _body_amount = CLAMP(p_value, 0.0, 1.0); double sample_rate = _table ? (double)_table->sampling_rate : 44100.0; _configure_body_resonators(sample_rate); }
 	double get_body_amount() const { return _body_amount; }
 	void set_body_tune(double p_value);
 	double get_body_tune() const { return _body_tune; }
