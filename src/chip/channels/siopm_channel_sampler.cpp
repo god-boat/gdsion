@@ -287,6 +287,9 @@ void SiOPMChannelSampler::_execute_note_on_immediate() {
 		_has_note_on_pitch = true;
 		_recalc_pitch_step();
 	}
+	_reported_source_sample_abs.store(
+			_sample_data.is_valid() ? MAX((int64_t)std::floor(_sample_index_fp), (int64_t)0) : (int64_t)0,
+			std::memory_order_relaxed);
 
 	_is_idling = (_sample_data == nullptr);
 	_is_note_on = !_is_idling;
@@ -437,6 +440,9 @@ void SiOPMChannelSampler::buffer(int p_length) {
 			_write_stream_stereo(left_start, right_start, p_length);
 		}
 	}
+	_reported_source_sample_abs.store(
+			_sample_data.is_valid() ? MAX((int64_t)std::floor(_sample_index_fp), (int64_t)0) : (int64_t)0,
+			std::memory_order_relaxed);
 
 	// Metering: copy post-filter mono lane (or left) into meter ring.
 	// Advance pipe cursors for next buffer.
@@ -535,6 +541,7 @@ void SiOPMChannelSampler::reset() {
 	_deferred_wave_number = -1;
 	_deferred_sample_start_phase = 0;
 	_deferred_pitch_step = 1.0;
+	_reported_source_sample_abs.store(0, std::memory_order_relaxed);
 }
 
 void SiOPMChannelSampler::set_amp_attack_rate(int p_value) {

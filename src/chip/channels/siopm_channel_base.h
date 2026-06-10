@@ -10,6 +10,7 @@
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/callable.hpp>
+#include <cstdint>
 #include "sion_enums.h"
 #include "chip/channels/siopm_channel_manager.h"
 #include "chip/siopm_ref_table.h"
@@ -213,6 +214,8 @@ public:
 	virtual int get_buffer_index() const { return _buffer_index; }
 	virtual bool is_note_on() const { return _is_note_on; }
 	virtual bool is_idling() const { return _is_idling; }
+	virtual int64_t get_reported_source_sample() const { return -1; }
+	virtual double get_reported_clip_time_steps() const { return -1.0; }
 
 	virtual bool is_filter_active() const { return _filter_on; }
 	virtual int get_filter_type() const { return _filter_type; }

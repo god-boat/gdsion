@@ -9,6 +9,7 @@
 
 #include "chip/channels/siopm_channel_base.h"
 #include "templates/singly_linked_list.h"
+#include <atomic>
 
 enum SiONPitchTableType : unsigned int;
 class SiOPMChannelParams;
@@ -28,6 +29,7 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 	Ref<SiOPMWaveSamplerData> _sample_data;
 	int _sample_start_phase = 0;
 	int _sample_index = 0;
+	std::atomic<int64_t> _reported_source_sample_abs{0}; // Main-thread readable cursor in absolute source frames.
 	// Pan of the current note.
 	int _sample_pan = 0;
 
@@ -174,6 +176,7 @@ public:
 	int get_sampler_root_offset() const;
 	int get_sampler_coarse_offset() const;
 	int get_sampler_fine_offset() const;
+	virtual int64_t get_reported_source_sample() const override { return _reported_source_sample_abs.load(std::memory_order_relaxed); }
 
 	SiOPMChannelSampler(SiOPMSoundChip *p_chip = nullptr);
 };

@@ -161,19 +161,17 @@ int SiMMLTrack::get_master_volume() const {
 }
 
 int64_t SiMMLTrack::get_reported_source_sample() const {
-	SiOPMChannelStream *stream_channel = dynamic_cast<SiOPMChannelStream *>(_channel);
-	if (stream_channel == nullptr) {
+	if (_channel == nullptr) {
 		return -1;
 	}
-	return stream_channel->get_reported_source_sample();
+	return _channel->get_reported_source_sample();
 }
 
 double SiMMLTrack::get_reported_clip_time_steps() const {
-	SiOPMChannelStream *stream_channel = dynamic_cast<SiOPMChannelStream *>(_channel);
-	if (stream_channel == nullptr) {
+	if (_channel == nullptr) {
 		return -1.0;
 	}
-	return stream_channel->get_reported_clip_time_steps();
+	return _channel->get_reported_clip_time_steps();
 }
 
 void SiMMLTrack::set_master_volume(int p_value) {

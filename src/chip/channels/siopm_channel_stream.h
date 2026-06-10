@@ -197,8 +197,8 @@ public:
 	int64_t get_stream_loop_end() const { return _loop_end_sample; }
 
 	int64_t get_loops_completed() const { return _loops_completed; }
-	int64_t get_reported_source_sample() const { return _reported_source_sample_abs.load(std::memory_order_relaxed); }
-	double get_reported_clip_time_steps() const { return _reported_clip_time_steps.load(std::memory_order_relaxed); }
+	virtual int64_t get_reported_source_sample() const override { return _reported_source_sample_abs.load(std::memory_order_relaxed); }
+	virtual double get_reported_clip_time_steps() const override { return _reported_clip_time_steps.load(std::memory_order_relaxed); }
 
 	// Seek to an absolute source-frame position. Resets playback cursor and
 	// triggers a ring buffer refill from the new position.
