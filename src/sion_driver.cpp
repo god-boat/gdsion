@@ -52,6 +52,7 @@
 #include "chip/channels/siopm_channel_strata.h"
 #include "chip/channels/siopm_channel_monolith.h"
 #include "chip/channels/siopm_channel_ks.h"
+#include "chip/channels/siopm_channel_guitar6.h"
 #include "utils/fader_util.h"
 #include "utils/transformer_util.h"
 #include <atomic>
@@ -1537,6 +1538,8 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_envelope_reset", "track_id", "op_index", "reset", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_op_envelope_reset, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_am_depth", "track_id", "depth", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_ch_am_depth, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_pm_depth", "track_id", "depth", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_ch_pm_depth, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_amplitude_modulation", "track_id", "depth", "end_depth", "delay", "term", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_amplitude_modulation, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_pitch_modulation", "track_id", "depth", "end_depth", "delay", "term", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_pitch_modulation, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_pitch_bend", "track_id", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_pitch_bend, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_frequency_step", "track_id", "step", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_lfo_frequency_step, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_wave_shape", "track_id", "wave_shape", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_lfo_wave_shape, DEFVAL(-1), DEFVAL(-1));
@@ -1544,6 +1547,8 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_envelope_freq_ratio", "track_id", "ratio", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_envelope_freq_ratio, DEFVAL(-1), DEFVAL(-1));
 	// Strata macro-oscillator
 	ClassDB::bind_method(D_METHOD("mailbox_set_strata_params", "track_id", "shape", "timbre", "color", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_strata_params, DEFVAL(-1), DEFVAL(-1));
+	// KS base voice
+	ClassDB::bind_method(D_METHOD("mailbox_set_pms_guitar", "track_id", "attack_rate", "decay_rate", "total_level", "fixed_pitch", "wave_shape", "tension", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_pms_guitar, DEFVAL(-1), DEFVAL(-1));
 	// KS extended resonator
 	ClassDB::bind_method(D_METHOD("mailbox_set_ks_extended", "track_id",
 			"exciter_type", "exciter_color", "exciter_length", "exciter_shape", "exciter_drive", "exciter_pitch_follow", "exciter_randomness",
@@ -1565,6 +1570,14 @@ void SiONDriver::_bind_methods() {
 			"sub_octave",
 			"entity_scope_id", "slot_scope_id"),
 			&SiONDriver::mailbox_set_monolith_params, DEFVAL(-1), DEFVAL(-1));
+	// Guitar6 physical model
+	ClassDB::bind_method(D_METHOD("mailbox_set_guitar6", "track_id",
+			"character_seed", "character_variation",
+			"string_damp", "string_damp_variation",
+			"plug_damp", "plug_damp_variation",
+			"string_tension", "stereo_spread", "body_bypass",
+			"entity_scope_id", "slot_scope_id"),
+			&SiONDriver::mailbox_set_guitar6, DEFVAL(-1), DEFVAL(-1));
 	// Analog-Like (AL)
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws1", "track_id", "wave_shape", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_ch_al_ws1, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws2", "track_id", "wave_shape", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_ch_al_ws2, DEFVAL(-1), DEFVAL(-1));
@@ -2707,6 +2720,32 @@ void SiONDriver::mailbox_set_ch_pm_depth(int p_track_id, int p_depth, int64_t p_
     _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_amplitude_modulation(int p_track_id, int p_depth, int p_end_depth, int p_delay, int p_term, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.entity_scope_id = p_entity_scope_id;
+	u.slot_scope_id = p_slot_scope_id;
+	u.has_amplitude_modulation = true;
+	u.amplitude_modulation_depth = p_depth;
+	u.amplitude_modulation_depth_end = p_end_depth;
+	u.amplitude_modulation_delay = p_delay;
+	u.amplitude_modulation_term = p_term;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_pitch_modulation(int p_track_id, int p_depth, int p_end_depth, int p_delay, int p_term, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.entity_scope_id = p_entity_scope_id;
+	u.slot_scope_id = p_slot_scope_id;
+	u.has_pitch_modulation = true;
+	u.pitch_modulation_depth = p_depth;
+	u.pitch_modulation_depth_end = p_end_depth;
+	u.pitch_modulation_delay = p_delay;
+	u.pitch_modulation_term = p_term;
+	_mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_pitch_bend(int p_track_id, int p_value, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -2766,6 +2805,21 @@ void SiONDriver::mailbox_set_strata_params(int p_track_id, int p_shape, int p_ti
 	u.strata_shape = p_shape;
 	u.strata_timbre = p_timbre;
 	u.strata_color = p_color;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_pms_guitar(int p_track_id, int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.entity_scope_id = p_entity_scope_id;
+	u.slot_scope_id = p_slot_scope_id;
+	u.has_pms_guitar = true;
+	u.pms_attack_rate = p_attack_rate;
+	u.pms_decay_rate = p_decay_rate;
+	u.pms_total_level = p_total_level;
+	u.pms_fixed_pitch = p_fixed_pitch;
+	u.pms_wave_shape = p_wave_shape;
+	u.pms_tension = p_tension;
 	_mb_try_push(u);
 }
 
@@ -2848,6 +2902,29 @@ void SiONDriver::mailbox_set_monolith_params(int p_track_id,
 	u.monolith_lens = p_lens;
 	u.monolith_glide = p_glide;
 	u.monolith_sub_octave = p_sub_octave;
+	_mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_guitar6(int p_track_id,
+		double p_character_seed, double p_character_variation,
+		double p_string_damp, double p_string_damp_variation,
+		double p_plug_damp, double p_plug_damp_variation,
+		double p_string_tension, double p_stereo_spread, bool p_body_bypass,
+		int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.entity_scope_id = p_entity_scope_id;
+	u.slot_scope_id = p_slot_scope_id;
+	u.has_guitar6 = true;
+	u.guitar6_character_seed = p_character_seed;
+	u.guitar6_character_variation = p_character_variation;
+	u.guitar6_string_damp = p_string_damp;
+	u.guitar6_string_damp_variation = p_string_damp_variation;
+	u.guitar6_plug_damp = p_plug_damp;
+	u.guitar6_plug_damp_variation = p_plug_damp_variation;
+	u.guitar6_string_tension = p_string_tension;
+	u.guitar6_stereo_spread = p_stereo_spread;
+	u.guitar6_body_bypass = p_body_bypass;
 	_mb_try_push(u);
 }
 
@@ -3435,6 +3512,20 @@ void SiONDriver::_drain_track_mailbox() {
             if (u.has_ch_pm) {
                 ch->set_pitch_modulation(u.ch_pm_depth);
             }
+            if (u.has_amplitude_modulation) {
+                trk->set_modulation_envelope(false,
+                        u.amplitude_modulation_depth,
+                        u.amplitude_modulation_depth_end,
+                        u.amplitude_modulation_delay,
+                        u.amplitude_modulation_term);
+            }
+            if (u.has_pitch_modulation) {
+                trk->set_modulation_envelope(true,
+                        u.pitch_modulation_depth,
+                        u.pitch_modulation_depth_end,
+                        u.pitch_modulation_delay,
+                        u.pitch_modulation_term);
+            }
             if (u.has_pitch_bend) {
                 trk->set_pitch_bend(CLAMP(u.pitch_bend, -8192, 8191));
             }
@@ -3494,6 +3585,20 @@ void SiONDriver::_drain_track_mailbox() {
                     strata_ch->set_strata_params(u.strata_shape, u.strata_timbre, u.strata_color);
                 }
             }
+            // KS base voice updates
+            if (u.has_pms_guitar) {
+                SiOPMChannelKS *ks_ch = Object::cast_to<SiOPMChannelKS>(ch);
+                if (ks_ch) {
+                    ks_ch->set_algorithm(1, false, 1);
+                    ks_ch->set_feedback(0, 0);
+                    ks_ch->set_active_operator_index(0);
+                    ks_ch->set_types(u.pms_wave_shape, PITCH_TABLE_OPM);
+                    ks_ch->set_params_by_value(
+                            u.pms_attack_rate, u.pms_decay_rate, 0, 63, 15, u.pms_total_level,
+                            0, 0, 1, 0, 0, 1, 0, u.pms_fixed_pitch);
+                    ks_ch->set_all_release_rate(u.pms_tension);
+                }
+            }
             // KS extended resonator updates
             if (u.has_ks_extended) {
                 SiOPMChannelKS *ks_ch = Object::cast_to<SiOPMChannelKS>(ch);
@@ -3508,6 +3613,18 @@ void SiONDriver::_drain_track_mailbox() {
                         u.ks_pitch_drift, u.ks_pitch_drop, u.ks_pick_bend,
                         u.ks_tension_mod, u.ks_keytrack, u.ks_glide,
                         u.ks_release_mode);
+                }
+            }
+            // Guitar6 physical model updates
+            if (u.has_guitar6) {
+                SiOPMChannelGuitar6 *guitar6_ch = Object::cast_to<SiOPMChannelGuitar6>(ch);
+                if (guitar6_ch) {
+                    guitar6_ch->set_guitar6_params(
+                            u.guitar6_character_seed, u.guitar6_character_variation,
+                            u.guitar6_string_damp, u.guitar6_string_damp_variation,
+                            u.guitar6_plug_damp, u.guitar6_plug_damp_variation,
+                            u.guitar6_string_tension, u.guitar6_stereo_spread,
+                            u.guitar6_body_bypass);
                 }
             }
             // Monolith bass engine updates

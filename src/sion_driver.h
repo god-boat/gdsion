@@ -451,6 +451,17 @@ private:
 		int ch_am_depth = 0;
 		bool has_ch_pm = false;
 		int ch_pm_depth = 0;
+		// Full modulation envelope tuples.
+		bool has_amplitude_modulation = false;
+		int amplitude_modulation_depth = 0;
+		int amplitude_modulation_depth_end = 0;
+		int amplitude_modulation_delay = 0;
+		int amplitude_modulation_term = 0;
+		bool has_pitch_modulation = false;
+		int pitch_modulation_depth = 0;
+		int pitch_modulation_depth_end = 0;
+		int pitch_modulation_delay = 0;
+		int pitch_modulation_term = 0;
 		bool has_pitch_bend = false;
 		int pitch_bend = 0;
 		// LFO frequency step
@@ -471,6 +482,13 @@ private:
 		int strata_timbre = 0;
 		int strata_color = 0;
 		// KS extended resonator params
+		bool has_pms_guitar = false;
+		int pms_attack_rate = 48;
+		int pms_decay_rate = 48;
+		int pms_total_level = 0;
+		int pms_fixed_pitch = 69;
+		int pms_wave_shape = 20;
+		int pms_tension = 8;
 		bool has_ks_extended = false;
 		int ks_exciter_type = 0;
 		int ks_exciter_color = 50;
@@ -499,6 +517,17 @@ private:
 		int ks_keytrack = 100;
 		int ks_glide = 0;
 		int ks_release_mode = 0;
+		// Guitar6 grouped params
+		bool has_guitar6 = false;
+		double guitar6_character_seed = 65535.0;
+		double guitar6_character_variation = 0.5;
+		double guitar6_string_damp = 0.5;
+		double guitar6_string_damp_variation = 0.25;
+		double guitar6_plug_damp = 0.5;
+		double guitar6_plug_damp_variation = 0.25;
+		double guitar6_string_tension = 0.0;
+		double guitar6_stereo_spread = 0.2;
+		bool guitar6_body_bypass = false;
 		// Monolith bass engine grouped params
 		bool has_monolith = false;
 		int monolith_sub_shape = 0;
@@ -939,6 +968,8 @@ public:
 	void mailbox_set_fm_op_envelope_reset(int p_track_id, int p_op_index, bool p_reset, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_ch_am_depth(int p_track_id, int p_depth, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_ch_pm_depth(int p_track_id, int p_depth, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_amplitude_modulation(int p_track_id, int p_depth, int p_end_depth, int p_delay, int p_term, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_pitch_modulation(int p_track_id, int p_depth, int p_end_depth, int p_delay, int p_term, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_pitch_bend(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_lfo_frequency_step(int p_track_id, int p_step, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
@@ -946,6 +977,8 @@ public:
 	void mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// strata macro-oscillator mailbox
 	void mailbox_set_strata_params(int p_track_id, int p_shape, int p_timbre, int p_color, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	// KS base voice mailbox
+	void mailbox_set_pms_guitar(int p_track_id, int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// KS extended resonator mailbox
 	void mailbox_set_ks_extended(int p_track_id,
 			int p_exciter_type, int p_exciter_color, int p_exciter_length,
@@ -967,6 +1000,13 @@ public:
 			int p_motion_target, int p_motion_amount, int p_motion_rate,
 			int p_width, int p_low_lock, int p_lens, int p_glide,
 			int p_sub_octave,
+			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	// Guitar6 physical model mailbox
+	void mailbox_set_guitar6(int p_track_id,
+			double p_character_seed, double p_character_variation,
+			double p_string_damp, double p_string_damp_variation,
+			double p_plug_damp, double p_plug_damp_variation,
+			double p_string_tension, double p_stereo_spread, bool p_body_bypass,
 			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// Analog-Like (AL) mailboxes
 	void mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
