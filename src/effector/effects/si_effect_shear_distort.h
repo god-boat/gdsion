@@ -82,8 +82,6 @@ private:
 	double _shear_phase = 0.0;
 	double _shear_phase2 = 0.0;
 
-	bool _initialized = false;
-
 	void _update_derived();
 	void _update_filters();
 

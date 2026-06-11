@@ -234,8 +234,8 @@ int SiEffectShearDistort::process(int p_channels, Vector<double> *r_buffer, int 
 		dist_l = _left.tone_lpf.process(dist_l);
 		dist_r = _right.tone_lpf.process(dist_r);
 
-		// Body recombine: blend clean lows back in.
-		// body=0 → full-band distortion, body=1 → clean low bypass.
+		// Body recombine.
+		// body=0 -> lows are also saturated, body=1 -> lows bypass the main distortion cleanly.
 		double low_out_l = low_l * _p_body + _soft_tanh(low_l * drive_l_mod * 0.5) * (1.0 - _p_body);
 		double low_out_r = low_r * _p_body + _soft_tanh(low_r * drive_r_mod * 0.5) * (1.0 - _p_body);
 
@@ -266,10 +266,6 @@ int SiEffectShearDistort::process(int p_channels, Vector<double> *r_buffer, int 
 }
 
 bool SiEffectShearDistort::set_arg(int p_arg_index, double p_value) {
-	if (!_initialized) {
-		return false;
-	}
-
 	switch (p_arg_index) {
 		case 0: _p_drive = CLAMP(p_value, 0.0, 1.0); break;
 		case 1: _p_shape = CLAMP(p_value, 0.0, 1.0); break;
@@ -298,12 +294,9 @@ void SiEffectShearDistort::set_by_mml(Vector<double> p_args) {
 	double mix = _get_mml_arg(p_args, 7, 1.0);
 
 	set_params(drive, shape, bias, tone, body, width, shear, mix);
-	_initialized = true;
 }
 
 void SiEffectShearDistort::reset() {
-	_initialized = false;
-
 	_p_drive = 0.35;
 	_p_shape = 0.35;
 	_p_bias = 0.0;
