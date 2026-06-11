@@ -38,6 +38,7 @@
 #include "effector/effects/si_effect_mb_compressor.h"
 #include "effector/effects/si_effect_linkwitz_riley_filter.h"
 #include "effector/effects/si_effect_graphic_equalizer_8.h"
+#include "effector/effects/si_effect_shear_distort.h"
 
 HashMap<String, Vector<Ref<SiEffectBase>>> SiEffector::_effect_instances;
 
@@ -133,6 +134,7 @@ Ref<SiEffectBase> SiEffector::get_effect_instance(const String &p_name) {
 	CREATE_EFFECT(SiEffectMultibandCompressor, "mb_comp");
 	CREATE_EFFECT(SiEffectLinkwitzRileyFilter, "lr_filter");
 	CREATE_EFFECT(SiEffectGraphicEqualizer8, "geq8");
+	CREATE_EFFECT(SiEffectShearDistort, "shear_dist");
 
 #undef CREATE_EFFECT
 
@@ -387,6 +389,7 @@ SiEffector::SiEffector(SiOPMSoundChip *p_chip) {
 	register_effect<SiEffectMultibandCompressor>("mb_comp");
 	register_effect<SiEffectLinkwitzRileyFilter>("lr_filter");
 	register_effect<SiEffectGraphicEqualizer8>("geq8");
+	register_effect<SiEffectShearDistort>("shear_dist");
 }
 
 SiEffector::~SiEffector() {
