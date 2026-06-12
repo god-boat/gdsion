@@ -8,7 +8,6 @@
 
 #include <godot_cpp/core/error_macros.hpp>
 #include <godot_cpp/classes/audio_stream.hpp>
-#include <godot_cpp/classes/audio_stream_wav.hpp>
 
 #include "sion_enums.h"
 #include <cmath>
@@ -22,6 +21,16 @@ using namespace godot;
 static constexpr int kDEFAULT_SAMPLE_RATE = 48000;
 static constexpr int kSAMPLER_GAIN_MIN_DB = -36;
 static constexpr int kSAMPLER_GAIN_MAX_DB = 36;
+
+static _FORCE_INLINE_ int _get_sampler_boundary_fade_samples(int p_sample_rate, int p_window_length) {
+	if (p_window_length <= 0) {
+		return 0;
+	}
+
+	const int rate = (p_sample_rate > 0) ? p_sample_rate : kDEFAULT_SAMPLE_RATE;
+	const int base_fade_samples = MAX(1, (int)Math::round(((double)rate * 128.0) / 48000.0));
+	return MIN(base_fade_samples, p_window_length);
+}
 
 void SiOPMWaveSamplerData::_prepare_wave_data(const Variant &p_data, int p_src_channel_count, int p_channel_count) {
 	int source_channels = CLAMP(p_src_channel_count, 1, 2);
@@ -77,9 +86,7 @@ void SiOPMWaveSamplerData::_prepare_wave_data(const Variant &p_data, int p_src_c
 
 	_channel_count = target_channels;
 	_end_point = get_length();
-
-	// Store unmodified copy for future fade reapplication.
-	_original_wave_data = _wave_data;
+	_cache_effective_window_defaults();
 }
 
 int SiOPMWaveSamplerData::_get_samples_for_duration_ms(double p_ms, int p_fallback) const {
@@ -101,13 +108,46 @@ int SiOPMWaveSamplerData::get_length() const {
 }
 
 void SiOPMWaveSamplerData::set_ignore_note_off(bool p_ignore) {
-	_ignore_note_off = (_loop_point == -1) && p_ignore;
+	_ignore_note_off = p_ignore;
 }
 
 //
 
+SiOPMWaveSamplerData::PlaybackWindow SiOPMWaveSamplerData::resolve_playback_window() const {
+	PlaybackWindow window;
+
+	const int length = get_length();
+	if (length <= 0) {
+		return window;
+	}
+
+	const int resolved_start = (_start_point >= 0) ? _start_point : _auto_start_point;
+	window.start_point = CLAMP(resolved_start, 0, length - 1);
+
+	int resolved_end = (_end_point >= 0) ? _end_point : _auto_end_point;
+	resolved_end = CLAMP(resolved_end, 0, length);
+	if (resolved_end <= window.start_point) {
+		// Keep authored values untouched, but avoid collapsing playback to a 1-sample
+		// window when start/end are authored independently or temporarily cross over.
+		resolved_end = length;
+	}
+	window.end_point = MAX(window.start_point + 1, resolved_end);
+
+	if (_loop_point >= 0) {
+		const int resolved_loop = CLAMP(_loop_point, 0, length - 1);
+		if (resolved_loop >= window.start_point && resolved_loop < window.end_point) {
+			window.loop_point = resolved_loop;
+		}
+	}
+
+	window.ignore_note_off = _ignore_note_off && window.loop_point == -1;
+	window.boundary_fade_samples = _get_sampler_boundary_fade_samples(_sample_rate, window.end_point - window.start_point);
+	return window;
+}
+
 int SiOPMWaveSamplerData::get_initial_sample_index(double p_phase) const {
-	return (int)(_start_point * (1 - p_phase) + _end_point * p_phase);
+	const PlaybackWindow window = resolve_playback_window();
+	return (int)(window.start_point * (1 - p_phase) + window.end_point * p_phase);
 }
 
 int SiOPMWaveSamplerData::_seek_head_silence() {
@@ -197,34 +237,64 @@ int SiOPMWaveSamplerData::_seek_end_gap() {
 	return MAX(i, (get_length() - tail_margin));
 }
 
-void SiOPMWaveSamplerData::_slice() {
-	if (_start_point < 0) {
-		_start_point = _seek_head_silence();
-	}
-	if (_loop_point < 0) {
-		_loop_point = -1;
-	}
-	if (_end_point < 0) {
-		_end_point = _seek_end_gap();
+void SiOPMWaveSamplerData::_cache_effective_window_defaults() {
+	const int length = get_length();
+	if (length <= 0) {
+		_auto_start_point = 0;
+		_auto_end_point = 0;
+		return;
 	}
 
-	if (_end_point < _loop_point) {
-		_loop_point = -1;
+	_auto_start_point = CLAMP(_seek_head_silence(), 0, length - 1);
+	_auto_end_point = CLAMP(_seek_end_gap() + 1, 1, length);
+	if (_auto_end_point <= _auto_start_point) {
+		_auto_end_point = length;
 	}
-	if (_end_point < _start_point) {
-		_end_point = get_length() - 1;
+}
+
+int SiOPMWaveSamplerData::_clamp_authored_start_point(int p_start) const {
+	if (p_start < 0) {
+		return -1;
 	}
 
-	// Finally, apply a tiny fade-in/out at the new boundaries to reduce clicks.
-	_apply_fade();
+	const int length = get_length();
+	if (length <= 0) {
+		return 0;
+	}
+
+	return CLAMP(p_start, 0, length - 1);
+}
+
+int SiOPMWaveSamplerData::_clamp_authored_end_point(int p_end) const {
+	if (p_end < 0) {
+		return -1;
+	}
+
+	const int length = get_length();
+	if (length <= 0) {
+		return 0;
+	}
+
+	return CLAMP(p_end, 0, length);
+}
+
+int SiOPMWaveSamplerData::_clamp_authored_loop_point(int p_loop) const {
+	if (p_loop < 0) {
+		return -1;
+	}
+
+	const int length = get_length();
+	if (length <= 0) {
+		return -1;
+	}
+
+	return CLAMP(p_loop, 0, length - 1);
 }
 
 void SiOPMWaveSamplerData::slice(int p_start_point, int p_end_point, int p_loop_point) {
-	_start_point = p_start_point;
-	_end_point = p_end_point;
-	_loop_point = p_loop_point;
-
-	_slice();
+	_start_point = _clamp_authored_start_point(p_start_point);
+	_end_point = _clamp_authored_end_point(p_end_point);
+	_loop_point = _clamp_authored_loop_point(p_loop_point);
 }
 
 //
@@ -251,20 +321,15 @@ void SiOPMWaveSamplerData::set_gain_db(int p_db) {
 }
 
 void SiOPMWaveSamplerData::set_start_point(int p_start) {
-	int len = get_length();
-	_start_point = (p_start >= 0 && len > 0) ? MIN(p_start, len - 1) : p_start;
-	_slice();
+	_start_point = _clamp_authored_start_point(p_start);
 }
 
 void SiOPMWaveSamplerData::set_end_point(int p_end) {
-	int len = get_length();
-	_end_point = (p_end >= 0 && len > 0) ? MIN(p_end, len) : p_end;
-	_slice();
+	_end_point = _clamp_authored_end_point(p_end);
 }
 
 void SiOPMWaveSamplerData::set_loop_point(int p_loop) {
-	_loop_point = p_loop;
-	_slice();
+	_loop_point = _clamp_authored_loop_point(p_loop);
 }
 
 void SiOPMWaveSamplerData::set_root_offset(int p_semitones) {
@@ -315,83 +380,11 @@ void SiOPMWaveSamplerData::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ignore_note_off"), "set_ignore_note_off", "get_ignore_note_off");
 }
 
-// ---------------------------------------------------------------------------
-
-// NOTE: This operation is intentionally simple - it linearly ramps the first and
-// last fade samples of the active region to and from 0. The fade length stays
-// close to the old 128-sample-at-48k window, but scales with source rate so the
-// audible fade duration stays stable across sources.
-
-void SiOPMWaveSamplerData::_apply_fade() {
-	const int fade_samples = _get_samples_for_duration_ms((128.0 * 1000.0) / 48000.0, 128);
-
-	if (_wave_data.is_empty() || _channel_count == 0) {
-		return;
-	}
-
-	int fade_len = MIN(fade_samples, _end_point - _start_point);
-	if (fade_len <= 0) {
-		return;
-	}
-
-	// Helper lambda to compute index for given mono sample index and channel.
-	auto _get_sample_index = [this](int p_sample_idx, int p_channel) {
-		return p_sample_idx * _channel_count + p_channel;
-	};
-
-	// 1. Restore the samples that were faded previously so we can re-apply with new
-	//    boundaries. This touches at most fade_samples * channel_count * 2 values
-	//    and avoids copying the whole buffer.
-	if (_prev_fade_len > 0) {
-		for (int i = 0; i < _prev_fade_len; i++) {
-			for (int ch = 0; ch < _channel_count; ch++) {
-				int idx_start = _get_sample_index(_prev_fade_start + i, ch);
-				int idx_end = _get_sample_index(_prev_fade_end - _prev_fade_len + 1 + i, ch);
-
-				if (idx_start >= 0 && idx_start < _wave_data.size()) {
-					_wave_data.write[idx_start] = _original_wave_data[idx_start];
-				}
-				if (idx_end >= 0 && idx_end < _wave_data.size()) {
-					_wave_data.write[idx_end] = _original_wave_data[idx_end];
-				}
-			}
-		}
-	}
-
-	// Fade-in.
-	for (int i = 0; i < fade_len; i++) {
-		double factor = (double)i / (double)fade_len;
-		for (int ch = 0; ch < _channel_count; ch++) {
-			int idx = _get_sample_index(_start_point + i, ch);
-			if (idx >= 0 && idx < _wave_data.size()) {
-				_wave_data.write[idx] *= factor;
-			}
-		}
-	}
-
-	// Fade-out.
-	for (int i = 0; i < fade_len; i++) {
-		double factor = 1.0 - ((double)i / (double)fade_len);
-		for (int ch = 0; ch < _channel_count; ch++) {
-			int idx = _get_sample_index(_end_point - fade_len + i, ch);
-			if (idx >= 0 && idx < _wave_data.size()) {
-				_wave_data.write[idx] *= factor;
-			}
-		}
-	}
-
-	// Store current fade region for next invocation.
-	_prev_fade_start = _start_point;
-	_prev_fade_end = _end_point;
-	_prev_fade_len = fade_len;
-}
-
 Ref<SiOPMWaveSamplerData> SiOPMWaveSamplerData::duplicate() const {
 	Ref<SiOPMWaveSamplerData> copy = Ref<SiOPMWaveSamplerData>(memnew(SiOPMWaveSamplerData));
 
 	// Shallow-copy primitive members.
 	copy->_wave_data = _wave_data; // Shared buffer (copy-on-write)
-	copy->_original_wave_data = _original_wave_data; // Shared buffer as well
 	copy->_channel_count = _channel_count;
 	copy->_pan = _pan;
 	copy->_gain_db = _gain_db;
@@ -407,12 +400,8 @@ Ref<SiOPMWaveSamplerData> SiOPMWaveSamplerData::duplicate() const {
 	copy->_start_point = _start_point;
 	copy->_end_point = _end_point;
 	copy->_loop_point = _loop_point;
-
-	// Fade bookkeeping values; the copy will re-apply fades when its slice
-	// window changes, so we reset these.
-	copy->_prev_fade_start = -1;
-	copy->_prev_fade_end = -1;
-	copy->_prev_fade_len = 0;
+	copy->_auto_start_point = _auto_start_point;
+	copy->_auto_end_point = _auto_end_point;
 
 	return copy;
 }

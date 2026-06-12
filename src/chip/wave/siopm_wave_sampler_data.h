@@ -17,8 +17,6 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
 	GDCLASS(SiOPMWaveSamplerData, SiOPMWaveBase)
 
 	Vector<double> _wave_data;
-	// Preserve original sample data to allow non-destructive re-application of fades
-	Vector<double> _original_wave_data;
 	int _channel_count = 0;
 	int _pan = 0;
 	int _gain_db = 0;
@@ -26,7 +24,7 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
 	// Native sample rate of the decoded audio (Hz). Falls back to 48000 only when
 	// no source metadata is available (for example raw float arrays).
 	int _sample_rate = 48000;
-	// This flag is only available for non-loop samples.
+	// Authored flag; effective note-off behavior is resolved against the playback window.
 	bool _ignore_note_off = false;
 	// When true, playback is forced at original pitch regardless of note input.
 	bool _fixed_pitch = false;
@@ -38,11 +36,6 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
 	int _coarse_offset = 0;    // -24..+24 semitones
 	int _fine_offset = 0;      // -100..+100 cents
 
-	// Track the last applied fade so we can efficiently undo it.
-	int _prev_fade_start = -1;
-	int _prev_fade_end = -1;
-	int _prev_fade_len = 0;
-
 	void _prepare_wave_data(const Variant &p_data, int p_src_channel_count, int p_channel_count);
 	int _get_samples_for_duration_ms(double p_ms, int p_fallback) const;
 
@@ -52,21 +45,29 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
 	int _start_point = 0;
 	int _end_point = 0;
 	int _loop_point = -1; // -1 means no looping.
+	int _auto_start_point = 0;
+	int _auto_end_point = 0;
 
 	// Seek head and end gaps in the sample.
 	int _seek_head_silence();
 	int _seek_end_gap();
-	void _slice();
-
-	// Apply short linear fades at the slice boundaries to avoid clicks when the
-	// sampler starts or ends playback away from a zero-crossing. This is a very
-	// small operation (<<1 ms) and is done once per slice change.
-	void _apply_fade();
+	void _cache_effective_window_defaults();
+	int _clamp_authored_start_point(int p_start) const;
+	int _clamp_authored_end_point(int p_end) const;
+	int _clamp_authored_loop_point(int p_loop) const;
 
 protected:
 	static void _bind_methods();
 
 public:
+	struct PlaybackWindow {
+		int start_point = 0;
+		int end_point = 0;
+		int loop_point = -1;
+		int boundary_fade_samples = 0;
+		bool ignore_note_off = false;
+	};
+
 	Vector<double> get_wave_data() const { return _wave_data; }
 	int get_channel_count() const { return _channel_count; }
 	int get_pan() const { return _pan; }
@@ -95,6 +96,7 @@ public:
 	int get_start_point() const { return _start_point; }
 	int get_end_point() const { return _end_point; }
 	int get_loop_point() const { return _loop_point; }
+	PlaybackWindow resolve_playback_window() const;
 	int get_initial_sample_index(double p_phase = 0) const;
 
 	void set_start_point(int p_start);

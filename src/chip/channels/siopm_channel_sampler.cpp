@@ -23,6 +23,25 @@ static _FORCE_INLINE_ double _am_gain_from_log_delta(int p_delta) {
 	return std::pow(2.0, -(double)p_delta / 512.0);
 }
 
+static _FORCE_INLINE_ double _get_sampler_boundary_gain(double p_sample_index, int p_start_point, int p_end_point, int p_fade_samples) {
+	if (p_fade_samples <= 0 || p_end_point <= p_start_point) {
+		return 1.0;
+	}
+
+	double gain = 1.0;
+	const double start_distance = p_sample_index - (double)p_start_point;
+	if (start_distance < (double)p_fade_samples) {
+		gain *= MAX(start_distance, 0.0) / (double)p_fade_samples;
+	}
+
+	const double end_distance = (double)p_end_point - p_sample_index;
+	if (end_distance < (double)p_fade_samples) {
+		gain *= MAX(end_distance, 0.0) / (double)p_fade_samples;
+	}
+
+	return CLAMP(gain, 0.0, 1.0);
+}
+
 // Track routing redirects the channel's main send into a per-track effect stream,
 // where track pan is applied later as post-pan. Neutral sampler pan must remain a
 // no-op here to preserve the ac6351b fix for doubled center-pan attenuation on
@@ -143,6 +162,16 @@ void SiOPMChannelSampler::set_wave_data(const Ref<SiOPMWaveBase> &p_wave_data) {
 	_sampler_table = p_wave_data;
 	// NOTE: Don't set _sample_data here - it should only hold individual samples from get_sample(),
 	// not the table itself. This is critical for voice stealing declick to work correctly.
+}
+
+Ref<SiOPMWaveSamplerData> SiOPMChannelSampler::resolve_sampler_data_for_note(int p_note) const {
+	if (!_sampler_table.is_valid()) {
+		return Ref<SiOPMWaveSamplerData>();
+	}
+	if (p_note < 0 || p_note >= SiOPMRefTable::SAMPLER_DATA_MAX) {
+		return Ref<SiOPMWaveSamplerData>();
+	}
+	return _sampler_table->get_sample(p_note);
 }
 
 void SiOPMChannelSampler::set_types(int p_pg_type, SiONPitchTableType p_pt_type) {
@@ -280,7 +309,6 @@ void SiOPMChannelSampler::_execute_note_on_immediate() {
 	if (_sample_data.is_valid() && _sample_start_phase != 255) {
 		_sample_index = _sample_data->get_initial_sample_index(_sample_start_phase * 0.00390625); // 1/256
 		_sample_index_fp = (double)_sample_index;
-		_sample_pan = _sample_data->get_pan();
 		
 		// Use unified pitch calculation
 		_note_on_pitch = get_pitch();
@@ -302,7 +330,12 @@ void SiOPMChannelSampler::_execute_note_on_immediate() {
 }
 
 void SiOPMChannelSampler::note_off() {
-	if (_sample_data.is_null() || _sample_data->get_ignore_note_off()) {
+	if (_sample_data.is_null()) {
+		return;
+	}
+
+	const SiOPMWaveSamplerData::PlaybackWindow playback_window = _sample_data->resolve_playback_window();
+	if (playback_window.ignore_note_off) {
 		return;
 	}
 
@@ -321,9 +354,13 @@ void SiOPMChannelSampler::buffer(int p_length) {
 
 	Vector<double> wave_data = _sample_data->get_wave_data();
 	int channels = _sample_data->get_channel_count();
-	int end_point = _sample_data->get_end_point();
-	int loop_point = _sample_data->get_loop_point();
+	const SiOPMWaveSamplerData::PlaybackWindow playback_window = _sample_data->resolve_playback_window();
+	int start_point = playback_window.start_point;
+	int end_point = playback_window.end_point;
+	int loop_point = playback_window.loop_point;
+	int boundary_fade_samples = playback_window.boundary_fade_samples;
 	double sample_gain = _sample_data->get_gain_linear();
+	const double live_tuning_ratio = _get_live_sample_tuning_ratio();
 
 	// Preserve the start of output pipes.
 	SinglyLinkedList<int>::Element *left_start = _out_pipe->get();
@@ -404,8 +441,9 @@ void SiOPMChannelSampler::buffer(int p_length) {
 
 		// Apply channel ADSR + AM depth.
 		double env = _envelope_level;
-		double outL = sampleL * env * _amplitude_modulation_gain * sample_gain;
-		double outR = sampleR * env * _amplitude_modulation_gain * sample_gain;
+		double boundary_gain = _get_sampler_boundary_gain(_sample_index_fp, start_point, end_point, boundary_fade_samples);
+		double outL = sampleL * env * _amplitude_modulation_gain * sample_gain * boundary_gain;
+		double outR = sampleR * env * _amplitude_modulation_gain * sample_gain * boundary_gain;
 
 		// Convert to engine int domain and write.
 		int vL = CLAMP((int)(outL * 8192.0), -8192, 8191);
@@ -420,7 +458,7 @@ void SiOPMChannelSampler::buffer(int p_length) {
 		// Advance sample position with pitch modulation (vibrato).
 		double pm_semitones = _pitch_modulation_output_level * (1.0 / 64.0);
 		double pitch_factor = std::pow(2.0, pm_semitones / 12.0);
-		double step = _pitch_step * pitch_factor;
+		double step = (_pitch_step * live_tuning_ratio) * pitch_factor;
 		_sample_index_fp += step;
 	}
 
@@ -526,7 +564,6 @@ void SiOPMChannelSampler::reset() {
 
 	_sample_start_phase = 0;
 	_sample_index = 0;
-	_sample_pan = 0;
 
 	_fine_pitch = 0;
 	_note_on_pitch = 0;
@@ -858,8 +895,9 @@ void SiOPMChannelSampler::_stop_click_guard() {
 void SiOPMChannelSampler::_write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length) {
 	double volume_coef = _expression * _sound_chip->get_sampler_volume() * _instrument_gain;
 	const bool is_redirected_main_stream = (_streams[0] != nullptr && _streams[0] != _sound_chip->get_output_stream());
-	const int combined_pan = CLAMP(_pan + _sample_pan, 0, 128);
-	const int redirected_main_pan = _get_sampler_write_pan(is_redirected_main_stream, _pan, _sample_pan);
+	const int sample_pan = _sample_data.is_valid() ? _sample_data->get_pan() : 0;
+	const int combined_pan = CLAMP(_pan + sample_pan, 0, 128);
+	const int redirected_main_pan = _get_sampler_write_pan(is_redirected_main_stream, _pan, sample_pan);
 
 	if (_kill_fade_remaining_samples > 0) {
 		_apply_kill_fade(p_output, p_length);
@@ -887,8 +925,9 @@ void SiOPMChannelSampler::_write_stream_mono(SinglyLinkedList<int>::Element *p_o
 void SiOPMChannelSampler::_write_stream_stereo(SinglyLinkedList<int>::Element *p_output_left, SinglyLinkedList<int>::Element *p_output_right, int p_length) {
 	double volume_coef = _expression * _sound_chip->get_sampler_volume() * _instrument_gain;
 	const bool is_redirected_main_stream = (_streams[0] != nullptr && _streams[0] != _sound_chip->get_output_stream());
-	const int combined_pan = CLAMP(_pan + _sample_pan, 0, 128);
-	const int redirected_main_pan = _get_sampler_write_pan(is_redirected_main_stream, _pan, _sample_pan);
+	const int sample_pan = _sample_data.is_valid() ? _sample_data->get_pan() : 0;
+	const int combined_pan = CLAMP(_pan + sample_pan, 0, 128);
+	const int redirected_main_pan = _get_sampler_write_pan(is_redirected_main_stream, _pan, sample_pan);
 
 	if (_kill_fade_remaining_samples > 0) {
 		_apply_kill_fade_stereo(p_output_left, p_output_right, p_length);
@@ -922,7 +961,7 @@ String SiOPMChannelSampler::_to_string() const {
 	return "SiOPMChannelSampler: " + params;
 }
 
-// Sampler-specific live param setters.
+// Pitch calculation helpers.
 
 double SiOPMChannelSampler::_get_note_pitch_ratio() const {
 	if (!_sample_data.is_valid()) {
@@ -938,11 +977,18 @@ double SiOPMChannelSampler::_get_note_pitch_ratio() const {
 		delta_semitones = ((double)get_pitch() - (double)(60 << 6)) / 64.0;
 	}
 
+	return std::pow(2.0, delta_semitones / 12.0);
+}
+
+double SiOPMChannelSampler::_get_live_sample_tuning_ratio() const {
+	if (!_sample_data.is_valid()) {
+		return 1.0;
+	}
+
 	const double user_offset = (double)_sample_data->get_root_offset()
 			+ (double)_sample_data->get_coarse_offset()
 			+ ((double)_sample_data->get_fine_offset() / 100.0);
-
-	return std::pow(2.0, (delta_semitones + user_offset) / 12.0);
+	return std::pow(2.0, user_offset / 12.0);
 }
 
 double SiOPMChannelSampler::_get_source_to_driver_rate_ratio() const {
@@ -965,81 +1011,6 @@ void SiOPMChannelSampler::_recalc_pitch_step() {
 	}
 
 	_pitch_step = _get_note_pitch_ratio() * _get_source_to_driver_rate_ratio();
-}
-
-void SiOPMChannelSampler::set_sampler_start_point(int p_start) {
-	if (_sample_data.is_valid()) {
-		_sample_data->set_start_point(p_start);
-	}
-}
-
-void SiOPMChannelSampler::set_sampler_end_point(int p_end) {
-	if (_sample_data.is_valid()) {
-		_sample_data->set_end_point(p_end);
-	}
-}
-
-void SiOPMChannelSampler::set_sampler_loop_point(int p_loop) {
-	if (_sample_data.is_valid()) {
-		_sample_data->set_loop_point(p_loop);
-	}
-}
-
-void SiOPMChannelSampler::set_sampler_ignore_note_off(bool p_ignore) {
-	if (_sample_data.is_valid()) {
-		_sample_data->set_ignore_note_off(p_ignore);
-	}
-}
-
-void SiOPMChannelSampler::set_sampler_pan(int p_pan) {
-	if (_sample_data.is_valid()) {
-		_sample_data->set_pan(p_pan);
-		// Update the channel's sample pan immediately.
-		_sample_pan = _sample_data->get_pan();
-	}
-}
-
-void SiOPMChannelSampler::set_sampler_gain_db(int p_db) {
-	if (_sample_data.is_valid()) {
-		_sample_data->set_gain_db(p_db);
-	}
-}
-
-int SiOPMChannelSampler::get_sampler_gain_db() const {
-	return _sample_data.is_valid() ? _sample_data->get_gain_db() : 0;
-}
-
-void SiOPMChannelSampler::set_sampler_root_offset(int p_semitones) {
-	if (_sample_data.is_valid()) {
-		_sample_data->set_root_offset(p_semitones);
-		_recalc_pitch_step();
-	}
-}
-
-void SiOPMChannelSampler::set_sampler_coarse_offset(int p_semitones) {
-	if (_sample_data.is_valid()) {
-		_sample_data->set_coarse_offset(p_semitones);
-		_recalc_pitch_step();
-	}
-}
-
-void SiOPMChannelSampler::set_sampler_fine_offset(int p_cents) {
-	if (_sample_data.is_valid()) {
-		_sample_data->set_fine_offset(p_cents);
-		_recalc_pitch_step();
-	}
-}
-
-int SiOPMChannelSampler::get_sampler_root_offset() const {
-	return _sample_data.is_valid() ? _sample_data->get_root_offset() : 0;
-}
-
-int SiOPMChannelSampler::get_sampler_coarse_offset() const {
-	return _sample_data.is_valid() ? _sample_data->get_coarse_offset() : 0;
-}
-
-int SiOPMChannelSampler::get_sampler_fine_offset() const {
-	return _sample_data.is_valid() ? _sample_data->get_fine_offset() : 0;
 }
 
 SiOPMChannelSampler::SiOPMChannelSampler(SiOPMSoundChip *p_chip) : SiOPMChannelBase(p_chip) {

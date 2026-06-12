@@ -405,7 +405,7 @@ private:
 		int amp_sustain = 128;
 		bool has_amp_release = false;
 		int amp_release = 0;
-		// Sampler-specific params (apply to SiOPMWaveSamplerData on playing channels)
+		// Sampler-specific params (apply to the addressed sampler-table slot)
 		bool has_sampler_start_point = false;
 		int sampler_start_point = 0;
 		bool has_sampler_end_point = false;
@@ -418,10 +418,6 @@ private:
 		int sampler_coarse_offset = 0;
 		bool has_sampler_fine_offset = false;
 		int sampler_fine_offset = 0;
-		bool has_sampler_coarse_pitch = false;
-		int sampler_coarse_pitch = 0;
-		bool has_sampler_fine_pitch = false;
-		int sampler_fine_pitch = 0;
 		bool has_sampler_ignore_note_off = false;
 		bool sampler_ignore_note_off = false;
 		bool has_sampler_pan = false;
@@ -444,7 +440,10 @@ private:
 		bool has_fm_op_sl = false;
 		bool has_fm_op_mute = false;
 		bool has_fm_op_env_reset = false;
-		int op_index = 0;
+		// Generic indexed-target axis for sub-channel updates: the FM operator
+		// index for fm_op updates, the sampler table slot (pad note) for sampler
+		// data updates. -1 means no indexed target was addressed.
+		int target_index = -1;
 		int fm_value = 0;
 		// Channel modulation (FM-only currently)
 		bool has_ch_am = false;
@@ -940,16 +939,17 @@ public:
 	void mailbox_set_track_amp_decay_rate(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_track_amp_sustain_level(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_track_amp_release_rate(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	// Sampler-specific params (apply to active sampler data on playing channels)
-	void mailbox_set_sampler_start_point(int p_track_id, int p_start, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_end_point(int p_track_id, int p_end, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_loop_point(int p_track_id, int p_loop, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_root_offset(int p_track_id, int p_semitones, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_coarse_offset(int p_track_id, int p_semitones, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_fine_offset(int p_track_id, int p_cents, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_ignore_note_off(int p_track_id, bool p_ignore, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_pan(int p_track_id, int p_pan, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_gain_db(int p_track_id, int p_db, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	// Sampler-specific params (apply to the addressed sampler table slot on playing channels;
+	// p_target_index is the table slot / pad note, independent of the live note)
+	void mailbox_set_sampler_start_point(int p_track_id, int p_target_index, int p_start, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_sampler_end_point(int p_track_id, int p_target_index, int p_end, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_sampler_loop_point(int p_track_id, int p_target_index, int p_loop, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_sampler_root_offset(int p_track_id, int p_target_index, int p_semitones, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_sampler_coarse_offset(int p_track_id, int p_target_index, int p_semitones, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_sampler_fine_offset(int p_track_id, int p_target_index, int p_cents, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_sampler_ignore_note_off(int p_track_id, int p_target_index, bool p_ignore, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_sampler_pan(int p_track_id, int p_target_index, int p_pan, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_sampler_gain_db(int p_track_id, int p_target_index, int p_db, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// FM operator params (by operator index)
 	void mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_fm_op_multiple(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);

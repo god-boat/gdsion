@@ -1512,15 +1512,15 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_amp_decay_rate", "track_id", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_track_amp_decay_rate, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_amp_sustain_level", "track_id", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_track_amp_sustain_level, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_amp_release_rate", "track_id", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_track_amp_release_rate, DEFVAL(-1), DEFVAL(-1));
-	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_start_point", "track_id", "start", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_start_point, DEFVAL(-1), DEFVAL(-1));
-	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_end_point", "track_id", "end", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_end_point, DEFVAL(-1), DEFVAL(-1));
-	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_loop_point", "track_id", "loop", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_loop_point, DEFVAL(-1), DEFVAL(-1));
-	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_root_offset", "track_id", "semitones", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_root_offset, DEFVAL(-1), DEFVAL(-1));
-	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_coarse_offset", "track_id", "semitones", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_coarse_offset, DEFVAL(-1), DEFVAL(-1));
-	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_fine_offset", "track_id", "cents", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_fine_offset, DEFVAL(-1), DEFVAL(-1));
-	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_ignore_note_off", "track_id", "ignore", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_ignore_note_off, DEFVAL(-1), DEFVAL(-1));
-	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_pan", "track_id", "pan", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_pan, DEFVAL(-1), DEFVAL(-1));
-	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_gain_db", "track_id", "db", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_gain_db, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_start_point", "track_id", "target_index", "start", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_start_point, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_end_point", "track_id", "target_index", "end", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_end_point, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_loop_point", "track_id", "target_index", "loop", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_loop_point, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_root_offset", "track_id", "target_index", "semitones", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_root_offset, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_coarse_offset", "track_id", "target_index", "semitones", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_coarse_offset, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_fine_offset", "track_id", "target_index", "cents", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_fine_offset, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_ignore_note_off", "track_id", "target_index", "ignore", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_ignore_note_off, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_pan", "track_id", "target_index", "pan", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_pan, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_sampler_gain_db", "track_id", "target_index", "db", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_sampler_gain_db, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_total_level", "track_id", "op_index", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_op_total_level, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_multiple", "track_id", "op_index", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_op_multiple, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_fine_multiple", "track_id", "op_index", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_op_fine_multiple, DEFVAL(-1), DEFVAL(-1));
@@ -2445,91 +2445,100 @@ void SiONDriver::mailbox_set_track_amp_release_rate(int p_track_id, int p_value,
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_sampler_start_point(int p_track_id, int p_start, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+void SiONDriver::mailbox_set_sampler_start_point(int p_track_id, int p_target_index, int p_start, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.entity_scope_id = p_entity_scope_id;
 	u.slot_scope_id = p_slot_scope_id;
+	u.target_index = p_target_index;
 	u.has_sampler_start_point = true;
 	u.sampler_start_point = p_start;
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_sampler_end_point(int p_track_id, int p_end, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+void SiONDriver::mailbox_set_sampler_end_point(int p_track_id, int p_target_index, int p_end, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.entity_scope_id = p_entity_scope_id;
 	u.slot_scope_id = p_slot_scope_id;
+	u.target_index = p_target_index;
 	u.has_sampler_end_point = true;
 	u.sampler_end_point = p_end;
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_sampler_loop_point(int p_track_id, int p_loop, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+void SiONDriver::mailbox_set_sampler_loop_point(int p_track_id, int p_target_index, int p_loop, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.entity_scope_id = p_entity_scope_id;
 	u.slot_scope_id = p_slot_scope_id;
+	u.target_index = p_target_index;
 	u.has_sampler_loop_point = true;
 	u.sampler_loop_point = p_loop;
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_sampler_root_offset(int p_track_id, int p_semitones, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+void SiONDriver::mailbox_set_sampler_root_offset(int p_track_id, int p_target_index, int p_semitones, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.entity_scope_id = p_entity_scope_id;
 	u.slot_scope_id = p_slot_scope_id;
+	u.target_index = p_target_index;
 	u.has_sampler_root_offset = true;
 	u.sampler_root_offset = p_semitones;
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_sampler_coarse_offset(int p_track_id, int p_semitones, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+void SiONDriver::mailbox_set_sampler_coarse_offset(int p_track_id, int p_target_index, int p_semitones, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.entity_scope_id = p_entity_scope_id;
 	u.slot_scope_id = p_slot_scope_id;
+	u.target_index = p_target_index;
 	u.has_sampler_coarse_offset = true;
 	u.sampler_coarse_offset = p_semitones;
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_sampler_fine_offset(int p_track_id, int p_cents, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+void SiONDriver::mailbox_set_sampler_fine_offset(int p_track_id, int p_target_index, int p_cents, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.entity_scope_id = p_entity_scope_id;
 	u.slot_scope_id = p_slot_scope_id;
+	u.target_index = p_target_index;
 	u.has_sampler_fine_offset = true;
 	u.sampler_fine_offset = p_cents;
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_sampler_ignore_note_off(int p_track_id, bool p_ignore, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+void SiONDriver::mailbox_set_sampler_ignore_note_off(int p_track_id, int p_target_index, bool p_ignore, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.entity_scope_id = p_entity_scope_id;
 	u.slot_scope_id = p_slot_scope_id;
+	u.target_index = p_target_index;
 	u.has_sampler_ignore_note_off = true;
 	u.sampler_ignore_note_off = p_ignore;
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_sampler_pan(int p_track_id, int p_pan, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+void SiONDriver::mailbox_set_sampler_pan(int p_track_id, int p_target_index, int p_pan, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.entity_scope_id = p_entity_scope_id;
 	u.slot_scope_id = p_slot_scope_id;
+	u.target_index = p_target_index;
 	u.has_sampler_pan = true;
 	u.sampler_pan = p_pan;
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_set_sampler_gain_db(int p_track_id, int p_db, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+void SiONDriver::mailbox_set_sampler_gain_db(int p_track_id, int p_target_index, int p_db, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.entity_scope_id = p_entity_scope_id;
 	u.slot_scope_id = p_slot_scope_id;
+	u.target_index = p_target_index;
 	u.has_sampler_gain_db = true;
 	u.sampler_gain_db = p_db;
 	_mb_try_push(u);
@@ -2541,7 +2550,7 @@ void SiONDriver::mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, i
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_tl = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2552,7 +2561,7 @@ void SiONDriver::mailbox_set_fm_op_multiple(int p_track_id, int p_op_index, int 
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_mul = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2563,7 +2572,7 @@ void SiONDriver::mailbox_set_fm_op_fine_multiple(int p_track_id, int p_op_index,
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_fmul = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2574,7 +2583,7 @@ void SiONDriver::mailbox_set_fm_op_detune1(int p_track_id, int p_op_index, int p
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_dt1 = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2585,7 +2594,7 @@ void SiONDriver::mailbox_set_fm_op_detune2(int p_track_id, int p_op_index, int p
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_dt2 = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2596,7 +2605,7 @@ void SiONDriver::mailbox_set_fm_op_super_count(int p_track_id, int p_op_index, i
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_super_count = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2607,7 +2616,7 @@ void SiONDriver::mailbox_set_fm_op_super_spread(int p_track_id, int p_op_index, 
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_super_spread = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2618,7 +2627,7 @@ void SiONDriver::mailbox_set_fm_op_super_stereo_spread(int p_track_id, int p_op_
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_super_stereo_spread = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2629,7 +2638,7 @@ void SiONDriver::mailbox_set_fm_op_attack_rate(int p_track_id, int p_op_index, i
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_ar = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2640,7 +2649,7 @@ void SiONDriver::mailbox_set_fm_op_decay_rate(int p_track_id, int p_op_index, in
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_dr = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2651,7 +2660,7 @@ void SiONDriver::mailbox_set_fm_op_sustain_rate(int p_track_id, int p_op_index, 
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_sr = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2662,7 +2671,7 @@ void SiONDriver::mailbox_set_fm_op_release_rate(int p_track_id, int p_op_index, 
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_rr = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2673,7 +2682,7 @@ void SiONDriver::mailbox_set_fm_op_sustain_level(int p_track_id, int p_op_index,
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_sl = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
 }
@@ -2684,7 +2693,7 @@ void SiONDriver::mailbox_set_fm_op_mute(int p_track_id, int p_op_index, bool p_m
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_mute = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_mute ? 1 : 0;
     _mb_try_push(u);
 }
@@ -2695,7 +2704,7 @@ void SiONDriver::mailbox_set_fm_op_envelope_reset(int p_track_id, int p_op_index
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_env_reset = true;
-    u.op_index = p_op_index;
+    u.target_index = p_op_index;
     u.fm_value = p_reset ? 1 : 0;
     _mb_try_push(u);
 }
@@ -3549,33 +3558,51 @@ void SiONDriver::_drain_track_mailbox() {
 				if (u.has_amp_release) {
 					sampler->set_amp_release_rate(u.amp_release);
 				}
-				// Sampler-specific params (apply to active sample data).
-				if (u.has_sampler_start_point) {
-					sampler->set_sampler_start_point(u.sampler_start_point);
-				}
-				if (u.has_sampler_end_point) {
-					sampler->set_sampler_end_point(u.sampler_end_point);
-				}
-				if (u.has_sampler_loop_point) {
-					sampler->set_sampler_loop_point(u.sampler_loop_point);
-				}
-				if (u.has_sampler_root_offset) {
-					sampler->set_sampler_root_offset(u.sampler_root_offset);
-				}
-				if (u.has_sampler_coarse_offset) {
-					sampler->set_sampler_coarse_offset(u.sampler_coarse_offset);
-				}
-				if (u.has_sampler_fine_offset) {
-					sampler->set_sampler_fine_offset(u.sampler_fine_offset);
-				}
-				if (u.has_sampler_ignore_note_off) {
-					sampler->set_sampler_ignore_note_off(u.sampler_ignore_note_off);
-				}
-				if (u.has_sampler_pan) {
-					sampler->set_sampler_pan(u.sampler_pan);
-				}
-				if (u.has_sampler_gain_db) {
-					sampler->set_sampler_gain_db(u.sampler_gain_db);
+				// The track/entity/slot gates above already scope this mailbox update to one
+				// live sampler voice instance. The remaining split here is about target kind:
+				// sampler ADSR lives on the channel, while authored per-pad params live on the
+				// addressed sampler-table slot carried in target_index.
+				const bool has_sampler_data_update =
+						u.has_sampler_start_point ||
+						u.has_sampler_end_point ||
+						u.has_sampler_loop_point ||
+						u.has_sampler_root_offset ||
+						u.has_sampler_coarse_offset ||
+						u.has_sampler_fine_offset ||
+						u.has_sampler_ignore_note_off ||
+						u.has_sampler_pan ||
+						u.has_sampler_gain_db;
+				if (has_sampler_data_update && u.target_index >= 0) {
+					Ref<SiOPMWaveSamplerData> sampler_data = sampler->resolve_sampler_data_for_note(u.target_index);
+					if (sampler_data.is_valid()) {
+						if (u.has_sampler_start_point) {
+							sampler_data->set_start_point(u.sampler_start_point);
+						}
+						if (u.has_sampler_end_point) {
+							sampler_data->set_end_point(u.sampler_end_point);
+						}
+						if (u.has_sampler_loop_point) {
+							sampler_data->set_loop_point(u.sampler_loop_point);
+						}
+						if (u.has_sampler_root_offset) {
+							sampler_data->set_root_offset(u.sampler_root_offset);
+						}
+						if (u.has_sampler_coarse_offset) {
+							sampler_data->set_coarse_offset(u.sampler_coarse_offset);
+						}
+						if (u.has_sampler_fine_offset) {
+							sampler_data->set_fine_offset(u.sampler_fine_offset);
+						}
+						if (u.has_sampler_ignore_note_off) {
+							sampler_data->set_ignore_note_off(u.sampler_ignore_note_off);
+						}
+						if (u.has_sampler_pan) {
+							sampler_data->set_pan(u.sampler_pan);
+						}
+						if (u.has_sampler_gain_db) {
+							sampler_data->set_gain_db(u.sampler_gain_db);
+						}
+					}
 				}
 			}
             // strata macro-oscillator updates
@@ -3645,64 +3672,64 @@ void SiONDriver::_drain_track_mailbox() {
             SiOPMChannelFM *fm = Object::cast_to<SiOPMChannelFM>(ch);
             if (fm) {
                 if (u.has_fm_op_tl) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_total_level(u.fm_value);
                 }
                 if (u.has_fm_op_mul) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_multiple(u.fm_value);
                 }
                 if (u.has_fm_op_fmul) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_fine_multiple(u.fm_value);
                 }
                 if (u.has_fm_op_dt1) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_detune1(u.fm_value);
                 }
                 if (u.has_fm_op_dt2) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     // Interpret fm_value as PTSS detune index (engine uses ptss_detune)
                     fm->set_detune(u.fm_value);
                 }
                 if (u.has_fm_op_super_count) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_operator_super_count(u.fm_value);
                 }
                 if (u.has_fm_op_super_spread) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_operator_super_spread(u.fm_value);
                 }
                 if (u.has_fm_op_super_stereo_spread) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_operator_super_stereo_spread(u.fm_value);
                 }
                 if (u.has_fm_op_ar) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_attack_rate(u.fm_value);
                 }
                 if (u.has_fm_op_dr) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_decay_rate(u.fm_value);
                 }
                 if (u.has_fm_op_sr) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_sustain_rate(u.fm_value);
                 }
                 if (u.has_fm_op_rr) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_release_rate(u.fm_value);
                 }
                 if (u.has_fm_op_sl) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_sustain_level(u.fm_value);
                 }
                 if (u.has_fm_op_mute) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_mute(u.fm_value != 0);
                 }
                 if (u.has_fm_op_env_reset) {
-                    fm->set_active_operator_index(CLAMP(u.op_index, 0, 3));
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     fm->set_envelope_reset_on_attack(u.fm_value != 0);
                 }
                 // Apply Analog-Like live params if present. These map to AL operator/channel fields.

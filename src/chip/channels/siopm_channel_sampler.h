@@ -30,14 +30,12 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 	int _sample_start_phase = 0;
 	int _sample_index = 0;
 	std::atomic<int64_t> _reported_source_sample_abs{0}; // Main-thread readable cursor in absolute source frames.
-	// Pan of the current note.
-	int _sample_pan = 0;
 
 	// Pitching support.
 	int _fine_pitch = 0; // Fine pitch (0-63).
 	int _note_on_pitch = 0; // Base pitch at note-on (fixed-point, 64 steps per semitone).
 	bool _has_note_on_pitch = false;
-	double _pitch_step = 1.0; // Playback rate step per output sample.
+	double _pitch_step = 1.0; // Base playback rate per output sample; sample tuning is read live from SamplerData.
 	double _sample_index_fp = 0.0; // Fractional sample position.
 
 	enum AmplitudeStage {
@@ -108,6 +106,7 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 	// Unified pitch calculation.
 	double _get_note_pitch_ratio() const;
 	double _get_source_to_driver_rate_ratio() const;
+	double _get_live_sample_tuning_ratio() const;
 	void _recalc_pitch_step();
 
 	// Stream writers (mirror PCM).
@@ -124,6 +123,7 @@ public:
 	virtual void set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation = true) override;
 
 	virtual void set_wave_data(const Ref<SiOPMWaveBase> &p_wave_data) override;
+	Ref<SiOPMWaveSamplerData> resolve_sampler_data_for_note(int p_note) const;
 
 	virtual void set_types(int p_pg_type, SiONPitchTableType p_pt_type) override;
 
@@ -160,22 +160,6 @@ public:
 	void set_amp_sustain_level(int p_value);
 	void set_amp_release_rate(int p_value);
 
-	// Sampler-specific live param setters/getters (update active sample data).
-	void set_sampler_start_point(int p_start);
-	void set_sampler_end_point(int p_end);
-	void set_sampler_loop_point(int p_loop);
-	void set_sampler_ignore_note_off(bool p_ignore);
-	void set_sampler_pan(int p_pan);
-	void set_sampler_gain_db(int p_db);
-	int get_sampler_gain_db() const;
-	
-	// Performance pitch offset setters/getters (delegate to current _sample_data).
-	void set_sampler_root_offset(int p_semitones);
-	void set_sampler_coarse_offset(int p_semitones);
-	void set_sampler_fine_offset(int p_cents);
-	int get_sampler_root_offset() const;
-	int get_sampler_coarse_offset() const;
-	int get_sampler_fine_offset() const;
 	virtual int64_t get_reported_source_sample() const override { return _reported_source_sample_abs.load(std::memory_order_relaxed); }
 
 	SiOPMChannelSampler(SiOPMSoundChip *p_chip = nullptr);
