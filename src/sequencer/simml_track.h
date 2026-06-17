@@ -9,11 +9,13 @@
 
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/variant/callable.hpp>
+#include <godot_cpp/variant/string_name.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <cstdint>
 #include "sion_enums.h"
 #include "sequencer/base/beats_per_minute.h"
 #include "sequencer/simml_data.h"
+#include "sequencer/simml_envelope_table.h"
 #include "sequencer/simml_ref_table.h"
 #include "templates/singly_linked_list.h"
 
@@ -22,7 +24,6 @@ using namespace godot;
 class MMLExecutor;
 class MMLSequence;
 class SiMMLChannelSettings;
-class SiMMLEnvelopeTable;
 class SiOPMChannelBase;
 
 class SiMMLTrack : public Object {
@@ -189,6 +190,35 @@ private:
 
 	// Residue of the previous envelope process
 	int _residue = 0;
+
+	// Generic note-envelope bindings. GDScript lowers canonical ParamSpec ids to
+	// one of the five native sinks before calling this API; the engine keeps only
+	// sink ids and strong table Refs, then delegates behavior to the native
+	// envelope setters.
+	enum NoteEnvelopeSink {
+		NE_SINK_NONE      = 0,
+		NE_SINK_PITCH     = 1,
+		NE_SINK_FILTER    = 2,
+		NE_SINK_AMPLITUDE = 3,
+		NE_SINK_NOTE      = 4,
+		NE_SINK_TONE      = 5,
+	};
+
+	struct NoteEnvelopeBinding {
+		StringName sink_id;
+		NoteEnvelopeSink sink = NE_SINK_NONE;
+		// Index 1 is the note-on phase, index 0 the note-off phase, matching the
+		// legacy p_note_on convention.
+		Ref<SiMMLEnvelopeTable> table[2];
+	};
+
+	Vector<NoteEnvelopeBinding> _note_envelope_bindings;
+
+	static NoteEnvelopeSink _resolve_note_envelope_sink(const StringName &p_sink_id);
+	NoteEnvelopeBinding *_find_note_envelope_binding(const StringName &p_sink_id);
+	void _remove_note_envelope_binding(const StringName &p_sink_id);
+	void _set_note_envelope_sink_phase(NoteEnvelopeSink p_sink, int p_phase, const Ref<SiMMLEnvelopeTable> &p_table, int p_step);
+	void _clear_note_envelope_sink_phase(NoteEnvelopeSink p_sink, int p_phase);
 
 	SinglyLinkedList<int> *_make_modulation_table(int p_depth, int p_end_depth, int p_delay, int p_term);
 
@@ -392,6 +422,18 @@ public:
 	void set_filter_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step);
 	void set_pitch_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step);
 	void set_note_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step);
+
+	// Generic note-envelope binding layer.
+	//
+	// Bind a compiled note-envelope table to a native sink id. p_note_on is 1
+	// for the note-on phase and 0 for the note-off phase. A null table or
+	// step == 0 clears that phase.
+	void set_note_envelope_binding(int p_note_on, const StringName &p_sink_id, const Ref<SiMMLEnvelopeTable> &p_table, int p_step);
+	// Clears both phases of a single native sink (generic unbind for
+	// route removal / live-slot retarget).
+	void clear_note_envelope_binding(const StringName &p_sink_id);
+	// Clears every generic note-envelope binding on this track.
+	void clear_note_envelope_bindings();
 
 	// Events.
 

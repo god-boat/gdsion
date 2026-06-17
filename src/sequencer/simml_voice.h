@@ -179,6 +179,8 @@ public:
 	void set_channel_num(int p_num) { channel_num = p_num; }
 	int get_tone_num() const { return tone_num; }
 	void set_tone_num(int p_num) { tone_num = p_num; }
+	int get_note_shift() const { return note_shift; }
+	void set_note_shift(int p_value) { note_shift = p_value; }
 
 	Ref<SiOPMChannelParams> get_channel_params() const { return channel_params; }
 	Ref<SiOPMWaveBase> get_wave_data() const { return wave_data; }

@@ -495,6 +495,8 @@ void SiMMLVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_channel_num", "num"), &SiMMLVoice::set_channel_num);
 	ClassDB::bind_method(D_METHOD("get_tone_num"), &SiMMLVoice::get_tone_num);
 	ClassDB::bind_method(D_METHOD("set_tone_num", "num"), &SiMMLVoice::set_tone_num);
+	ClassDB::bind_method(D_METHOD("get_note_shift"), &SiMMLVoice::get_note_shift);
+	ClassDB::bind_method(D_METHOD("set_note_shift", "value"), &SiMMLVoice::set_note_shift);
 
 	ClassDB::bind_method(D_METHOD("is_fm_voice"), &SiMMLVoice::is_fm_voice);
 	ClassDB::bind_method(D_METHOD("is_pcm_voice"), &SiMMLVoice::is_pcm_voice);

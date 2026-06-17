@@ -385,6 +385,127 @@ void SiMMLTrack::set_note_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> 
 	}
 }
 
+// Generic note-envelope binding layer.
+
+SiMMLTrack::NoteEnvelopeSink SiMMLTrack::_resolve_note_envelope_sink(const StringName &p_sink_id) {
+	static const StringName PITCH = StringName("pitch");
+	static const StringName FILTER = StringName("filter");
+	static const StringName AMPLITUDE = StringName("amplitude");
+	static const StringName NOTE = StringName("note");
+	static const StringName TONE = StringName("tone");
+
+	if (p_sink_id == PITCH) {
+		return NE_SINK_PITCH;
+	}
+	if (p_sink_id == FILTER) {
+		return NE_SINK_FILTER;
+	}
+	if (p_sink_id == AMPLITUDE) {
+		return NE_SINK_AMPLITUDE;
+	}
+	if (p_sink_id == NOTE) {
+		return NE_SINK_NOTE;
+	}
+	if (p_sink_id == TONE) {
+		return NE_SINK_TONE;
+	}
+	return NE_SINK_NONE;
+}
+
+SiMMLTrack::NoteEnvelopeBinding *SiMMLTrack::_find_note_envelope_binding(const StringName &p_sink_id) {
+	for (int i = 0; i < _note_envelope_bindings.size(); i++) {
+		if (_note_envelope_bindings[i].sink_id == p_sink_id) {
+			return &_note_envelope_bindings.write[i];
+		}
+	}
+	return nullptr;
+}
+
+void SiMMLTrack::_remove_note_envelope_binding(const StringName &p_sink_id) {
+	for (int i = 0; i < _note_envelope_bindings.size(); i++) {
+		if (_note_envelope_bindings[i].sink_id == p_sink_id) {
+			_note_envelope_bindings.remove_at(i);
+			return;
+		}
+	}
+}
+
+void SiMMLTrack::_set_note_envelope_sink_phase(NoteEnvelopeSink p_sink, int p_phase, const Ref<SiMMLEnvelopeTable> &p_table, int p_step) {
+	switch (p_sink) {
+		case NE_SINK_PITCH:
+			set_pitch_envelope(p_phase, p_table, p_step);
+			break;
+		case NE_SINK_FILTER:
+			set_filter_envelope(p_phase, p_table, p_step);
+			break;
+		case NE_SINK_AMPLITUDE:
+			set_amplitude_envelope(p_phase, p_table, p_step, true);
+			break;
+		case NE_SINK_NOTE:
+			set_note_envelope(p_phase, p_table, p_step);
+			break;
+		case NE_SINK_TONE:
+			set_tone_envelope(p_phase, p_table, p_step);
+			break;
+		default:
+			break;
+	}
+}
+
+void SiMMLTrack::_clear_note_envelope_sink_phase(NoteEnvelopeSink p_sink, int p_phase) {
+	_set_note_envelope_sink_phase(p_sink, p_phase, Ref<SiMMLEnvelopeTable>(), 0);
+}
+
+void SiMMLTrack::set_note_envelope_binding(int p_note_on, const StringName &p_sink_id, const Ref<SiMMLEnvelopeTable> &p_table, int p_step) {
+	int phase = (p_note_on != 0) ? 1 : 0;
+	NoteEnvelopeSink sink = _resolve_note_envelope_sink(p_sink_id);
+	ERR_FAIL_COND_MSG(sink == NE_SINK_NONE, vformat("SiMMLTrack: Invalid note-envelope sink '%s'.", String(p_sink_id)));
+
+	NoteEnvelopeBinding *binding = _find_note_envelope_binding(p_sink_id);
+	if (p_table.is_null() || p_step == 0) {
+		if (binding) {
+			binding->table[phase] = Ref<SiMMLEnvelopeTable>();
+			if (binding->table[0].is_null() && binding->table[1].is_null()) {
+				_remove_note_envelope_binding(p_sink_id);
+			}
+		}
+		_clear_note_envelope_sink_phase(sink, phase);
+		return;
+	}
+
+	if (!binding) {
+		NoteEnvelopeBinding new_binding;
+		new_binding.sink_id = p_sink_id;
+		new_binding.sink = sink;
+		_note_envelope_bindings.push_back(new_binding);
+		binding = &_note_envelope_bindings.write[_note_envelope_bindings.size() - 1];
+	}
+
+	binding->sink = sink;
+	binding->table[phase] = p_table; // Strong ref keeps the list-element data alive.
+	_set_note_envelope_sink_phase(sink, phase, p_table, p_step);
+}
+
+void SiMMLTrack::clear_note_envelope_binding(const StringName &p_sink_id) {
+	NoteEnvelopeSink sink = _resolve_note_envelope_sink(p_sink_id);
+	ERR_FAIL_COND_MSG(sink == NE_SINK_NONE, vformat("SiMMLTrack: Invalid note-envelope sink '%s'.", String(p_sink_id)));
+	for (int phase = 0; phase < 2; phase++) {
+		_clear_note_envelope_sink_phase(sink, phase);
+	}
+	_remove_note_envelope_binding(p_sink_id);
+}
+
+void SiMMLTrack::clear_note_envelope_bindings() {
+	for (int phase = 0; phase < 2; phase++) {
+		_clear_note_envelope_sink_phase(NE_SINK_PITCH, phase);
+		_clear_note_envelope_sink_phase(NE_SINK_FILTER, phase);
+		_clear_note_envelope_sink_phase(NE_SINK_AMPLITUDE, phase);
+		_clear_note_envelope_sink_phase(NE_SINK_NOTE, phase);
+		_clear_note_envelope_sink_phase(NE_SINK_TONE, phase);
+	}
+	_note_envelope_bindings.clear();
+}
+
 // Events.
 
 void SiMMLTrack::_default_update_register(int p_address, int p_data) {
@@ -652,6 +773,7 @@ void SiMMLTrack::_process_envelope_tick() {
 	} else {
 		_envelope_mod_pitch = nullptr;
 	}
+
 }
 
 int SiMMLTrack::_buffer_envelope(int p_length, int p_step) {
@@ -884,6 +1006,7 @@ void SiMMLTrack::_key_off() {
 
 void SiMMLTrack::_update_process(int p_key_on) {
 	_process_mode = _setting_process_mode[p_key_on];
+
 	if (_process_mode != ProcessMode::ENVELOPE) {
 		return;
 	}
@@ -1165,6 +1288,11 @@ void SiMMLTrack::reset(int p_buffer_index) {
 		_table_envelope_mod_pitch.write[i] = nullptr;
 	}
 
+	// Clear generic note-envelope bindings. Track reset must release the strong
+	// table Refs the engine holds; the owning runtime kernel re-stamps bindings
+	// as needed.
+	_note_envelope_bindings.clear();
+
 	// Reset executor.
 	_executor->reset_pointer();
 }
@@ -1216,6 +1344,11 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_filter_envelope", "note_on", "table", "step"), &SiMMLTrack::set_filter_envelope);
 	ClassDB::bind_method(D_METHOD("set_pitch_envelope", "note_on", "table", "step"), &SiMMLTrack::set_pitch_envelope);
 	ClassDB::bind_method(D_METHOD("set_note_envelope", "note_on", "table", "step"), &SiMMLTrack::set_note_envelope);
+
+	// Generic note-envelope binding layer.
+	ClassDB::bind_method(D_METHOD("set_note_envelope_binding", "note_on", "sink_id", "table", "step"), &SiMMLTrack::set_note_envelope_binding);
+	ClassDB::bind_method(D_METHOD("clear_note_envelope_binding", "sink_id"), &SiMMLTrack::clear_note_envelope_binding);
+	ClassDB::bind_method(D_METHOD("clear_note_envelope_bindings"), &SiMMLTrack::clear_note_envelope_bindings);
 
 	// Real-time note control
 	ClassDB::bind_method(D_METHOD("key_on", "note", "tick_length", "sample_delay"), &SiMMLTrack::key_on, DEFVAL(0), DEFVAL(0));
