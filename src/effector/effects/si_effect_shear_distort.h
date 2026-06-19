@@ -20,16 +20,15 @@
 //   - The shaper runs 4x oversampled through polyphase IIR halfbands and all
 //     curves are C1-continuous, which keeps aliasing (the main source of
 //     digital harshness) low.
-//   - Wet level is auto-compensated against drive/shape/bias so it tracks the
-//     dry level instead of slamming full scale as drive goes up; this also
-//     keeps the protected low band balanced against the distorted band.
+//   - Wet level is auto-compensated against drive/bias on a fixed character
+//     reference so Shape can stay audible instead of leveling itself away.
 //   - Lows below the body crossover can bypass the shaper (Body), keeping the
 //     bottom end full instead of letting saturation flatten it.
 //   - All audible parameters are smoothed (~5 ms) to avoid zipper noise.
 //
 // Parameters (normalized 0..1 except bias -1..+1):
 //   0  Drive  – gain into the shaper, 0..+48 dB on a perceptual curve
-//   1  Shape  – morph: warm -> tube (even harmonics) -> clip -> fold
+//   1  Shape  – morph: warm -> tube (even harmonics) -> clip -> chew
 //   2  Bias   – shifts the shaper operating point (gated/sputtery fuzz)
 //   3  Tone   – tilt into the shaper + post lowpass macro (dark..open)
 //   4  Body   – 0: lows fully distorted, 1: lows bypass the shaper cleanly
@@ -173,8 +172,8 @@ private:
 	static double _curve_warm(double p_x);
 	static double _curve_tube(double p_x);
 	static double _curve_clip(double p_x);
-	static double _curve_fold(double p_x);
-	static double _shape_sample(double p_input, double p_shape);
+	static double _curve_chew(double p_x);
+	static double _shape_sample(double p_input, double p_drive, double p_bias, double p_shape);
 
 	double _process_channel(ChannelState &p_ch, double p_input, double p_drive, double p_bias,
 			double p_makeup, double p_body, double p_shape,

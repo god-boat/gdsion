@@ -219,34 +219,38 @@ double SiEffectShearDistort::_fast_tanh(double p_x) {
 }
 
 double SiEffectShearDistort::_curve_warm(double p_x) {
-	return _fast_tanh(p_x);
+	return _fast_tanh(p_x * 0.45);
 }
 
 double SiEffectShearDistort::_curve_tube(double p_x) {
-	// tanh plus an even-symmetric term in tanh-space: adds even harmonics
-	// (tube character) while staying smooth, bounded and zero at rest.
-	double t = _fast_tanh(p_x * 1.1);
-	double t2 = t * t;
-	return t + 0.55 * t2 * (1.0 - t2);
+	// Smooth asymmetric knee: the negative side stays softer while the
+	// positive side pushes harder, adding audible even harmonics.
+	double soft = _fast_tanh(p_x * 0.55);
+	double hard = _fast_tanh(p_x * 2.50);
+	double side = 0.5 + 0.5 * _fast_tanh(p_x * 1.80);
+	return soft + (hard - soft) * side;
 }
 
 double SiEffectShearDistort::_curve_clip(double p_x) {
-	// Cubic soft clip: hard-clip aggression but C1 at the corners.
-	if (p_x >= 1.5) {
+	// Cubic soft clip: reaches the rails sooner, with zero slope at the corners.
+	if (p_x >= 1.0) {
 		return 1.0;
 	}
-	if (p_x <= -1.5) {
+	if (p_x <= -1.0) {
 		return -1.0;
 	}
-	return p_x - p_x * p_x * p_x * (4.0 / 27.0);
+	return p_x * (1.5 - 0.5 * p_x * p_x);
 }
 
-double SiEffectShearDistort::_curve_fold(double p_x) {
-	// Sine fold: smooth everywhere, far fewer aliases than a triangle fold.
-	return Math::sin(p_x * (M_PI * 0.5));
+double SiEffectShearDistort::_curve_chew(double p_x) {
+	// Parallel dual-knee saturation. The fast path clamps the center hard while
+	// the slow path keeps body, so it growls without folding back on itself.
+	double slow = _fast_tanh(p_x * 0.055);
+	double fast = _fast_tanh(p_x * 5.50);
+	return slow * 0.42 + fast * 0.58;
 }
 
-double SiEffectShearDistort::_shape_sample(double p_input, double p_shape) {
+double SiEffectShearDistort::_shape_sample(double p_input, double p_drive, double p_bias, double p_shape) {
 	double pos = p_shape * 3.0;
 	int region = MIN((int)pos, 2);
 	double t = pos - (double)region;
@@ -254,16 +258,16 @@ double SiEffectShearDistort::_shape_sample(double p_input, double p_shape) {
 	double y_a, y_b;
 	switch (region) {
 		case 0:
-			y_a = _curve_warm(p_input);
-			y_b = _curve_tube(p_input);
+			y_a = _curve_warm(p_input * p_drive * 0.30 + p_bias * 0.65);
+			y_b = _curve_tube(p_input * p_drive * 0.62 + p_bias * 1.10);
 			break;
 		case 1:
-			y_a = _curve_tube(p_input);
-			y_b = _curve_clip(p_input);
+			y_a = _curve_tube(p_input * p_drive * 0.62 + p_bias * 1.10);
+			y_b = _curve_clip(p_input * p_drive * 1.00 + p_bias * 0.90);
 			break;
 		default:
-			y_a = _curve_clip(p_input);
-			y_b = _curve_fold(p_input);
+			y_a = _curve_clip(p_input * p_drive * 1.00 + p_bias * 0.90);
+			y_b = _curve_chew(p_input * p_drive * 1.30 + p_bias * 1.20);
 			break;
 	}
 
@@ -279,15 +283,14 @@ void SiEffectShearDistort::_update_derived() {
 	double drive_linear = Math::pow(10.0, drive_db / 20.0);
 	double bias_term = _p_bias * 1.5;
 
-	// Auto makeup: measure the shaper's AC swing at a few reference
-	// amplitudes and normalize toward 0.5, so wet level tracks dry level
-	// instead of growing with drive. This also keeps the distorted band
-	// balanced against the protected low band.
+	// Auto makeup: measure a fixed character reference and normalize toward
+	// 0.5, so Drive tracks dry level without leveling Shape differences away.
 	static const double refs[3] = { 0.35, 0.55, 0.75 };
+	const double makeup_reference_shape = 0.25;
 	double sum = 0.0;
 	for (int i = 0; i < 3; i++) {
-		double pos = _shape_sample(refs[i] * drive_linear + bias_term, _p_shape);
-		double neg = _shape_sample(-refs[i] * drive_linear + bias_term, _p_shape);
+		double pos = _shape_sample(refs[i], drive_linear, bias_term, makeup_reference_shape);
+		double neg = _shape_sample(-refs[i], drive_linear, bias_term, makeup_reference_shape);
 		double swing = (pos - neg) * 0.5;
 		sum += swing * swing;
 	}
@@ -389,21 +392,17 @@ double SiEffectShearDistort::_process_channel(ChannelState &p_ch, double p_input
 	double tilt_low = p_ch.tilt_pre_lpf.process(into);
 	into = tilt_low + (into - tilt_low) * p_tilt_pre;
 
-	// Drive and bias are linear/DC, so they commute with the upsampler and
-	// can be applied at the base rate.
-	double driven = into * p_drive + p_bias;
-
 	// 4x oversampled waveshaping.
 	double u0, u1;
-	p_ch.up_steep.upsample(driven, u0, u1);
+	p_ch.up_steep.upsample(into, u0, u1);
 	double s0, s1, s2, s3;
 	p_ch.up_light.upsample(u0, s0, s1);
 	p_ch.up_light.upsample(u1, s2, s3);
 
-	s0 = _shape_sample(s0, p_shape);
-	s1 = _shape_sample(s1, p_shape);
-	s2 = _shape_sample(s2, p_shape);
-	s3 = _shape_sample(s3, p_shape);
+	s0 = _shape_sample(s0, p_drive, p_bias, p_shape);
+	s1 = _shape_sample(s1, p_drive, p_bias, p_shape);
+	s2 = _shape_sample(s2, p_drive, p_bias, p_shape);
+	s3 = _shape_sample(s3, p_drive, p_bias, p_shape);
 
 	double d0 = p_ch.down_light.downsample(s0, s1);
 	double d1 = p_ch.down_light.downsample(s2, s3);
