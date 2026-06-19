@@ -105,19 +105,21 @@ Ref<SiEffectBase> SiEffector::get_effect_instance(const String &p_name) {
 		return effect;                                                \
 	}
 
-	CREATE_EFFECT(SiEffectAutopan, "autopan");
-	CREATE_EFFECT(SiEffectCompressor, "comp");
-	CREATE_EFFECT(SiEffectDistortion, "dist");
-	CREATE_EFFECT(SiEffectDownsampler, "ds");
-	CREATE_EFFECT(SiEffectEqualizer, "eq");
-	CREATE_EFFECT(SiEffectSpeakerSimulator, "speaker");
+	// App effect devices: registered under canonical device kinds (see EffectCatalog).
+	CREATE_EFFECT(SiEffectAutopan, "autoPan");
+	CREATE_EFFECT(SiEffectCompressor, "compressor");
+	CREATE_EFFECT(SiEffectDistortion, "distortion");
+	CREATE_EFFECT(SiEffectDownsampler, "downsampler");
+	CREATE_EFFECT(SiEffectEqualizer, "threeBandEqualizer");
+	CREATE_EFFECT(SiEffectSpeakerSimulator, "speakerSimulator");
 	CREATE_EFFECT(SiEffectBloomReverb, "bloom");
 	CREATE_EFFECT(SiEffectStereoChorus, "chorus");
 	CREATE_EFFECT(SiEffectStereoDelay, "delay");
-	CREATE_EFFECT(SiEffectStereoExpander, "stereo");
+	CREATE_EFFECT(SiEffectStereoExpander, "stereoExpander");
 	CREATE_EFFECT(SiEffectStereoReverb, "reverb");
-	CREATE_EFFECT(SiEffectWaveShaper, "ws");
+	CREATE_EFFECT(SiEffectWaveShaper, "waveShaper");
 
+	// MML-only filter commands (not app device kinds): left as MML tokens.
 	CREATE_EFFECT(SiFilterAllPass, "af");
 	CREATE_EFFECT(SiFilterBandPass, "bf");
 	CREATE_EFFECT(SiFilterHighBoost, "hb");
@@ -128,13 +130,13 @@ Ref<SiEffectBase> SiEffector::get_effect_instance(const String &p_name) {
 	CREATE_EFFECT(SiFilterPeak, "pf");
 	CREATE_EFFECT(SiFilterVowel, "vowel");
 
-	CREATE_EFFECT(SiControllableFilterHighPass, "nhf");
-	CREATE_EFFECT(SiControllableFilterLowPass, "nlf");
+	CREATE_EFFECT(SiControllableFilterHighPass, "highPassFilter");
+	CREATE_EFFECT(SiControllableFilterLowPass, "lowPassFilter");
 
-	CREATE_EFFECT(SiEffectMultibandCompressor, "mb_comp");
-	CREATE_EFFECT(SiEffectLinkwitzRileyFilter, "lr_filter");
-	CREATE_EFFECT(SiEffectGraphicEqualizer8, "geq8");
-	CREATE_EFFECT(SiEffectShearDistort, "shear_dist");
+	CREATE_EFFECT(SiEffectMultibandCompressor, "multiBandCompressor");
+	CREATE_EFFECT(SiEffectLinkwitzRileyFilter, "linkwitzRileyFilter");
+	CREATE_EFFECT(SiEffectGraphicEqualizer8, "graphicEqualizer8");
+	CREATE_EFFECT(SiEffectShearDistort, "shearDistortion");
 
 #undef CREATE_EFFECT
 
@@ -360,19 +362,21 @@ SiEffector::SiEffector(SiOPMSoundChip *p_chip) {
 
 	// Register default effect instances.
 
-	register_effect<SiEffectAutopan>("autopan");
-	register_effect<SiEffectCompressor>("comp");
-	register_effect<SiEffectDistortion>("dist");
-	register_effect<SiEffectDownsampler>("ds");
-	register_effect<SiEffectEqualizer>("eq");
-	register_effect<SiEffectSpeakerSimulator>("speaker");
+	// App effect devices: registered under canonical device kinds (see EffectCatalog).
+	register_effect<SiEffectAutopan>("autoPan");
+	register_effect<SiEffectCompressor>("compressor");
+	register_effect<SiEffectDistortion>("distortion");
+	register_effect<SiEffectDownsampler>("downsampler");
+	register_effect<SiEffectEqualizer>("threeBandEqualizer");
+	register_effect<SiEffectSpeakerSimulator>("speakerSimulator");
 	register_effect<SiEffectBloomReverb>("bloom");
 	register_effect<SiEffectStereoChorus>("chorus");
 	register_effect<SiEffectStereoDelay>("delay");
-	register_effect<SiEffectStereoExpander>("stereo");
+	register_effect<SiEffectStereoExpander>("stereoExpander");
 	register_effect<SiEffectStereoReverb>("reverb");
-	register_effect<SiEffectWaveShaper>("ws");
+	register_effect<SiEffectWaveShaper>("waveShaper");
 
+	// MML-only filter commands (not app device kinds): left as MML tokens.
 	register_effect<SiFilterAllPass>("af");
 	register_effect<SiFilterBandPass>("bf");
 	register_effect<SiFilterHighBoost>("hb");
@@ -383,13 +387,13 @@ SiEffector::SiEffector(SiOPMSoundChip *p_chip) {
 	register_effect<SiFilterPeak>("pf");
 	register_effect<SiFilterVowel>("vowel");
 
-	register_effect<SiControllableFilterHighPass>("nhf");
-	register_effect<SiControllableFilterLowPass>("nlf");
+	register_effect<SiControllableFilterHighPass>("highPassFilter");
+	register_effect<SiControllableFilterLowPass>("lowPassFilter");
 
-	register_effect<SiEffectMultibandCompressor>("mb_comp");
-	register_effect<SiEffectLinkwitzRileyFilter>("lr_filter");
-	register_effect<SiEffectGraphicEqualizer8>("geq8");
-	register_effect<SiEffectShearDistort>("shear_dist");
+	register_effect<SiEffectMultibandCompressor>("multiBandCompressor");
+	register_effect<SiEffectLinkwitzRileyFilter>("linkwitzRileyFilter");
+	register_effect<SiEffectGraphicEqualizer8>("graphicEqualizer8");
+	register_effect<SiEffectShearDistort>("shearDistortion");
 }
 
 SiEffector::~SiEffector() {

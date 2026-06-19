@@ -3229,13 +3229,13 @@ void SiONDriver::mailbox_track_effects_set_chain(int p_track_id, const Array &p_
 			continue;
 		}
 		Dictionary slot_dict = slot_variant;
-		String effect_type = slot_dict.get("effect_type", String());
-		if (effect_type.is_empty()) {
+		String kind = slot_dict.get("kind", String());
+		if (kind.is_empty()) {
 			continue;
 		}
-		CharString cs = effect_type.utf8();
-		memset(u.fx_chain_effect_type[count], 0, sizeof(u.fx_chain_effect_type[count]));
-		strncpy(u.fx_chain_effect_type[count], cs.get_data(), sizeof(u.fx_chain_effect_type[count]) - 1);
+		CharString cs = kind.utf8();
+		memset(u.fx_chain_kind[count], 0, sizeof(u.fx_chain_kind[count]));
+		strncpy(u.fx_chain_kind[count], cs.get_data(), sizeof(u.fx_chain_kind[count]) - 1);
 
 		Vector<double> args = _args_from_variant(slot_dict.get("args", Variant()));
 		u.fx_chain_argc[count] = MIN(SiONDriver::TRACK_EFFECT_ARG_MAX, args.size());
@@ -3255,16 +3255,16 @@ void SiONDriver::mailbox_track_effects_insert_effect(int p_track_id, const Dicti
 	if (_ensure_track_effect_stream(p_track_id) == nullptr) {
 		return;
 	}
-	String effect_type = p_slot.get("effect_type", String());
-	ERR_FAIL_COND_MSG(effect_type.is_empty(), "SiONDriver: Cannot insert an empty effect via mailbox.");
+	String kind = p_slot.get("kind", String());
+	ERR_FAIL_COND_MSG(kind.is_empty(), "SiONDriver: Cannot insert an empty effect via mailbox.");
 
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.fx_op = _TrackUpdate::FX_OP_INSERT;
 	u.fx_index = p_index;
-	CharString cs = effect_type.utf8();
-	memset(u.fx_effect_type, 0, sizeof(u.fx_effect_type));
-	strncpy(u.fx_effect_type, cs.get_data(), sizeof(u.fx_effect_type) - 1);
+	CharString cs = kind.utf8();
+	memset(u.fx_kind, 0, sizeof(u.fx_kind));
+	strncpy(u.fx_kind, cs.get_data(), sizeof(u.fx_kind) - 1);
 
 	Vector<double> args = _args_from_variant(p_slot.get("args", Variant()));
 	u.fx_argc = MIN(SiONDriver::TRACK_EFFECT_ARG_MAX, args.size());
@@ -3371,11 +3371,11 @@ void SiONDriver::_drain_track_mailbox() {
 				if (u.fx_op == _TrackUpdate::FX_OP_SET_CHAIN) {
 					Vector<Ref<SiEffectBase>> chain;
 					for (int i = 0; i < u.fx_chain_count; i++) {
-						String effect_type = String::utf8(u.fx_chain_effect_type[i]);
-						if (effect_type.is_empty()) {
+						String kind = String::utf8(u.fx_chain_kind[i]);
+						if (kind.is_empty()) {
 							continue;
 						}
-						Ref<SiEffectBase> effect = SiEffector::get_effect_instance(effect_type);
+						Ref<SiEffectBase> effect = SiEffector::get_effect_instance(kind);
 						if (effect.is_null()) {
 							continue;
 						}
@@ -3395,9 +3395,9 @@ void SiONDriver::_drain_track_mailbox() {
 						stream->set_effect_bypass(i, u.fx_chain_bypassed[i]);
 					}
 				} else if (u.fx_op == _TrackUpdate::FX_OP_INSERT) {
-					String effect_type = String::utf8(u.fx_effect_type);
-					if (!effect_type.is_empty()) {
-						Ref<SiEffectBase> effect = SiEffector::get_effect_instance(effect_type);
+					String kind = String::utf8(u.fx_kind);
+					if (!kind.is_empty()) {
+						Ref<SiEffectBase> effect = SiEffector::get_effect_instance(kind);
 						if (!effect.is_null()) {
 							Vector<double> args;
 							args.resize(u.fx_argc);
@@ -4016,13 +4016,13 @@ Vector<double> SiONDriver::_args_from_variant(const Variant &p_value) const {
 }
 
 Ref<SiEffectBase> SiONDriver::_build_effect_from_dict(const Dictionary &p_slot) {
-	String effect_type = p_slot.get("effect_type", String());
-	if (effect_type.is_empty()) {
+	String kind = p_slot.get("kind", String());
+	if (kind.is_empty()) {
 		return Ref<SiEffectBase>();
 	}
-	Ref<SiEffectBase> effect = SiEffector::get_effect_instance(effect_type);
+	Ref<SiEffectBase> effect = SiEffector::get_effect_instance(kind);
 	if (effect.is_null()) {
-		ERR_PRINT(vformat("SiONDriver: Unknown insert effect '%s'.", effect_type));
+		ERR_PRINT(vformat("SiONDriver: Unknown insert effect '%s'.", kind));
 		return Ref<SiEffectBase>();
 	}
 	Variant args_variant = p_slot.get("args", Variant());

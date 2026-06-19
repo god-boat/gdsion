@@ -634,11 +634,11 @@ private:
 		int fx_argc = 0;
 		double fx_args[TRACK_EFFECT_ARG_MAX] = { 0.0 };
 		bool fx_bypassed = false;
-		char fx_effect_type[32] = { 0 };
+		char fx_kind[32] = { 0 };
 
 		// Chain payload cap for mailbox snapshots. The SiEffectStream itself is vector-backed.
 		int fx_chain_count = 0;
-		char fx_chain_effect_type[TRACK_EFFECT_CHAIN_MAX][32] = { { 0 } };
+		char fx_chain_kind[TRACK_EFFECT_CHAIN_MAX][32] = { { 0 } };
 		int fx_chain_argc[TRACK_EFFECT_CHAIN_MAX] = { 0 };
 		double fx_chain_args[TRACK_EFFECT_CHAIN_MAX][TRACK_EFFECT_ARG_MAX] = { { 0.0 } };
 		bool fx_chain_bypassed[TRACK_EFFECT_CHAIN_MAX] = { false };
