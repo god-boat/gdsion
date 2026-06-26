@@ -207,6 +207,7 @@ private:
 	Vector<double> _residual_buffer;        // Interleaved stereo float64 (matches sound_chip output)
 	int _residual_buffer_frame_count = 0;  // Number of frames currently in residual buffer
 	int _residual_frame_offset = 0;        // Current read position in frames (not samples)
+	std::atomic<uint64_t> _rendered_frame_count{0};
 
 	// --- Professional audio metering infrastructure ---
 public:
@@ -787,6 +788,7 @@ public:
 	void set_notify_change_bpm_on_position_changed(bool p_enabled) { _notify_change_bpm_on_position_changed = p_enabled; }
 
 	double get_streaming_position() const;
+	int64_t get_rendered_frame_count() const;
 	void set_start_position(double p_value);
 
 	bool get_suspend_while_loading() { return _suspend_while_loading; }

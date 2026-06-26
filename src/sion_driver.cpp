@@ -380,6 +380,10 @@ double SiONDriver::get_streaming_position() const {
 	return sequencer->get_processed_sample_count() * 1000.0 / _sample_rate;
 }
 
+int64_t SiONDriver::get_rendered_frame_count() const {
+	return (int64_t)_rendered_frame_count.load(std::memory_order_relaxed);
+}
+
 void SiONDriver::set_start_position(double p_value) {
 	_start_position = p_value;
 	if (sequencer->is_ready_to_process()) {
@@ -600,6 +604,7 @@ void SiONDriver::_prepare_stream(const Variant &p_data, bool p_reset_effector) {
 
 	_residual_buffer_frame_count = 0;
 	_residual_frame_offset = 0;
+	_rendered_frame_count.store(0, std::memory_order_relaxed);
 
 	_is_streaming = true;
 
@@ -1445,6 +1450,7 @@ void SiONDriver::stream_without_output(bool p_reset_effector) {
 
 	_residual_buffer_frame_count = 0;
 	_residual_frame_offset = 0;
+	_rendered_frame_count.store(0, std::memory_order_relaxed);
 
 	_is_streaming = true;
 	_set_processing_immediate();
@@ -1631,6 +1637,8 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_channel_num"), &SiONDriver::get_channel_num);
 	ClassDB::bind_method(D_METHOD("get_preferred_sample_rate"), &SiONDriver::get_preferred_sample_rate);
 	ClassDB::bind_method(D_METHOD("get_sample_rate"), &SiONDriver::get_sample_rate);
+	ClassDB::bind_method(D_METHOD("get_streaming_position"), &SiONDriver::get_streaming_position);
+	ClassDB::bind_method(D_METHOD("get_rendered_frame_count"), &SiONDriver::get_rendered_frame_count);
 	ClassDB::bind_method(D_METHOD("get_bitrate"), &SiONDriver::get_bitrate);
 
 	ClassDB::bind_method(D_METHOD("get_volume"), &SiONDriver::get_volume);
@@ -1983,6 +1991,7 @@ int SiONDriver::render_interleaved(float *p_output, int p_frames, int p_channels
 
 	if (!effector || !sequencer || !sound_chip) {
 		memset(p_output, 0, sizeof(float) * p_frames * p_channels);
+		_rendered_frame_count.fetch_add((uint64_t)p_frames, std::memory_order_relaxed);
 		return p_frames;
 	}
 
@@ -2053,6 +2062,7 @@ int SiONDriver::render_interleaved(float *p_output, int p_frames, int p_channels
 		}
 	}
 
+	_rendered_frame_count.fetch_add((uint64_t)frames_generated, std::memory_order_relaxed);
 	return frames_generated;
 }
 
