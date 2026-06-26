@@ -252,6 +252,7 @@ public:
 
 	virtual void set_all_attack_rate(int p_value) override;
 	virtual void set_all_release_rate(int p_value) override;
+	virtual void set_release_rate(int p_value) override;
 
 	virtual void offset_volume(int p_expression, int p_velocity) override;
 

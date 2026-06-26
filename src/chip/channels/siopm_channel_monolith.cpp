@@ -378,7 +378,8 @@ void SiOPMChannelMonolith::_advance_amp_stage() {
 		} break;
 		case AMP_STAGE_RELEASE: {
 			_set_amp_stage(AMP_STAGE_IDLE);
-			_is_idling = true;
+			_declick_target = 0.0;
+			_is_idling = false;
 		} break;
 		default:
 			break;
@@ -678,7 +679,7 @@ void SiOPMChannelMonolith::set_channel_params(const Ref<SiOPMChannelParams> &p_p
 	_amp_attack_rate = CLAMP(p_params->get_amplitude_attack_rate(), 0, 63);
 	_amp_decay_rate = CLAMP(p_params->get_amplitude_decay_rate(), 0, 63);
 	_amp_sustain_level = CLAMP(p_params->get_amplitude_sustain_level(), 0, 128);
-	_amp_release_rate = CLAMP(p_params->get_amplitude_release_rate(), 0, 63);
+	set_release_rate(p_params->get_amplitude_release_rate());
 
 	_filter_type = p_params->get_filter_type();
 	set_sv_filter(
@@ -707,7 +708,18 @@ void SiOPMChannelMonolith::set_all_attack_rate(int p_value) {
 }
 
 void SiOPMChannelMonolith::set_all_release_rate(int p_value) {
-	_amp_release_rate = CLAMP(p_value, 0, 63);
+	set_release_rate(p_value);
+}
+
+void SiOPMChannelMonolith::set_release_rate(int p_value) {
+	int clamped = CLAMP(p_value, 0, 63);
+	if (_amp_release_rate == clamped) {
+		return;
+	}
+	_amp_release_rate = clamped;
+	if (_amp_stage == AMP_STAGE_RELEASE) {
+		_configure_amp_stage(0.0, _amp_release_rate);
+	}
 }
 
 void SiOPMChannelMonolith::note_on() {
@@ -751,7 +763,9 @@ void SiOPMChannelMonolith::note_on() {
 
 void SiOPMChannelMonolith::note_off() {
 	_is_note_on = false;
-	_declick_target = 0.0;
+	if (_amp_stage != AMP_STAGE_IDLE) {
+		_declick_target = 1.0;
+	}
 
 	_begin_amp_release();
 
