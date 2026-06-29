@@ -311,10 +311,10 @@ double SiONDriver::get_background_sample_volume() const {
 void SiONDriver::set_background_sample_volume(double p_value) {
 	_background_voice->get_channel_params()->set_master_volume(0, p_value);
 	if (_background_track) {
-		_background_track->set_master_volume(p_value * 128);
+		_background_track->set_master_volume_linear(p_value);
 	}
 	if (_background_fade_out_track) {
-		_background_fade_out_track->set_master_volume(p_value * 128);
+		_background_fade_out_track->set_master_volume_linear(p_value);
 	}
 }
 
@@ -3463,8 +3463,7 @@ void SiONDriver::_drain_track_mailbox() {
                 // Allow up to 2.0× (200%) for hot mixing headroom.
                 // This lets individual tracks exceed 0dBFS during mixing; downstream gain staging
                 // (driver volume / Godot buses) is expected to keep the final output in range.
-                int vol128 = (int)Math::round(CLAMP(u.vol_linear, 0.0, 2.0) * 128.0);
-                ch->set_master_volume(vol128);
+                ch->set_master_volume_linear(CLAMP(u.vol_linear, 0.0, 2.0));
             }
             if (u.has_inst_gain) {
                 ch->set_instrument_gain_db(u.inst_gain_db);

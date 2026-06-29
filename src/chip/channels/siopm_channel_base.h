@@ -189,6 +189,8 @@ public:
 
 	virtual int get_master_volume() const;
 	virtual void set_master_volume(int p_value);
+	virtual double get_master_volume_linear() const;
+	virtual void set_master_volume_linear(double p_value);
 	virtual int get_instrument_gain_db() const { return _instrument_gain_db; }
 	virtual void set_instrument_gain_db(int p_db);
 

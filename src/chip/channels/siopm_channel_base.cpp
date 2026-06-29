@@ -123,12 +123,19 @@ inline void _process_sv_filter_samples(
 } // namespace
 
 int SiOPMChannelBase::get_master_volume() const {
-	return _volumes[0] * 128;
+	return get_master_volume_linear() * 128;
 }
 
 void SiOPMChannelBase::set_master_volume(int p_value) {
-	int value = CLAMP(p_value, 0, 256);
-	_volumes.write[0] = value * 0.0078125; // 0.0078125 = 1/128
+	set_master_volume_linear(CLAMP(p_value, 0, 256) * 0.0078125); // 0.0078125 = 1/128
+}
+
+double SiOPMChannelBase::get_master_volume_linear() const {
+	return _volumes[0];
+}
+
+void SiOPMChannelBase::set_master_volume_linear(double p_value) {
+	_volumes.write[0] = CLAMP(p_value, 0.0, 2.0);
 }
 
 void SiOPMChannelBase::set_instrument_gain_db(int p_db) {
@@ -792,6 +799,8 @@ void SiOPMChannelBase::_bind_methods() {
 	// Volume getters/setters
 	ClassDB::bind_method(D_METHOD("get_master_volume"), &SiOPMChannelBase::get_master_volume);
 	ClassDB::bind_method(D_METHOD("set_master_volume", "value"), &SiOPMChannelBase::set_master_volume);
+	ClassDB::bind_method(D_METHOD("get_master_volume_linear"), &SiOPMChannelBase::get_master_volume_linear);
+	ClassDB::bind_method(D_METHOD("set_master_volume_linear", "value"), &SiOPMChannelBase::set_master_volume_linear);
 }
 
 SiOPMChannelBase::SiOPMChannelBase(SiOPMSoundChip *p_chip) {
