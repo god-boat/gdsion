@@ -85,9 +85,13 @@ private:
 		void reset();
 	};
 
-	struct AttackSmoother {
-		double coeff = 1.0;
-		double state = 0.0;
+	struct BloomEnvelope {
+		double fast_attack_coeff = 1.0;
+		double fast_release_coeff = 1.0;
+		double slow_attack_coeff = 1.0;
+		double slow_release_coeff = 1.0;
+		double fast_env = 0.0;
+		double slow_env = 0.0;
 
 		void set_attack_ms(double p_ms, double p_sample_rate);
 		double process(double p_input);
@@ -183,8 +187,8 @@ private:
 	OnePoleHighPass _input_hp_right;
 	OnePoleLowPass _wet_lp_left;
 	OnePoleLowPass _wet_lp_right;
-	AttackSmoother _bloom_smoother_left;
-	AttackSmoother _bloom_smoother_right;
+	BloomEnvelope _bloom_envelope_left;
+	BloomEnvelope _bloom_envelope_right;
 
 	double _duck_env = 0.0;
 	int _cached_sample_rate = 0;

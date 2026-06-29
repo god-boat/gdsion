@@ -104,18 +104,31 @@ void SiEffectBloomReverb::OnePoleHighPass::reset() {
 	y1 = 0.0;
 }
 
-void SiEffectBloomReverb::AttackSmoother::set_attack_ms(double p_ms, double p_sample_rate) {
-	double seconds = MAX(p_ms * 0.001, 0.0005);
-	coeff = 1.0 - Math::exp(-1.0 / (seconds * p_sample_rate));
+void SiEffectBloomReverb::BloomEnvelope::set_attack_ms(double p_ms, double p_sample_rate) {
+	double sample_rate = MAX(p_sample_rate, 1.0);
+	double slow_attack_s = MAX(p_ms * 0.001, 0.001);
+	double fast_attack_s = 0.003;
+	double fast_release_s = 0.045;
+	double slow_release_s = MAX(slow_attack_s * 1.6, 0.160);
+
+	fast_attack_coeff = 1.0 - Math::exp(-1.0 / (fast_attack_s * sample_rate));
+	fast_release_coeff = 1.0 - Math::exp(-1.0 / (fast_release_s * sample_rate));
+	slow_attack_coeff = 1.0 - Math::exp(-1.0 / (slow_attack_s * sample_rate));
+	slow_release_coeff = 1.0 - Math::exp(-1.0 / (slow_release_s * sample_rate));
 }
 
-double SiEffectBloomReverb::AttackSmoother::process(double p_input) {
-	state += (p_input - state) * coeff;
-	return state;
+double SiEffectBloomReverb::BloomEnvelope::process(double p_input) {
+	double level = Math::abs(p_input);
+	double fast_coeff = level > fast_env ? fast_attack_coeff : fast_release_coeff;
+	fast_env += (level - fast_env) * fast_coeff;
+	double slow_coeff = level > slow_env ? slow_attack_coeff : slow_release_coeff;
+	slow_env += (level - slow_env) * slow_coeff;
+	return CLAMP(slow_env / MAX(fast_env, 1.0e-8), 0.0, 1.0);
 }
 
-void SiEffectBloomReverb::AttackSmoother::reset() {
-	state = 0.0;
+void SiEffectBloomReverb::BloomEnvelope::reset() {
+	fast_env = 0.0;
+	slow_env = 0.0;
 }
 
 double SiEffectBloomReverb::Lfo::process(double p_rate_hz, double p_depth_samples, double p_sample_rate) {
@@ -226,8 +239,8 @@ void SiEffectBloomReverb::_reset_signal_state() {
 	_input_hp_right.reset();
 	_wet_lp_left.reset();
 	_wet_lp_right.reset();
-	_bloom_smoother_left.reset();
-	_bloom_smoother_right.reset();
+	_bloom_envelope_left.reset();
+	_bloom_envelope_right.reset();
 	_duck_env = 0.0;
 }
 
@@ -242,26 +255,29 @@ void SiEffectBloomReverb::_derive_params(const BloomParams &p_params, DerivedPar
 	double mix = _clamp01(p_params.mix);
 	double duck = _clamp01(p_params.duck);
 	double freeze = _clamp01(p_params.freeze);
+	double bloom_curve = Math::pow(bloom, 0.7);
+	double bloom_depth = bloom * bloom;
 
 	r_out.size_scale = Math::lerp(0.55, 2.75, Math::pow(size, 1.7));
 	r_out.decay_seconds = _exp_lerp(0.35, 18.0, decay);
 	r_out.predelay_samples = MAX(0.0, p_params.predelay_ms) * _get_samples_per_ms();
-	r_out.bloom_attack_ms = Math::lerp(1.0, 180.0, bloom * bloom);
-	r_out.direct_late_amount = Math::lerp(0.9, 0.2, bloom);
-	r_out.bloom_amount = Math::lerp(0.1, 1.1, bloom);
-	r_out.diffusion_feedback = Math::lerp(0.45, 0.78, bloom);
-	r_out.early_gain = Math::lerp(0.8, 0.15, bloom);
-	r_out.late_gain = Math::lerp(0.85, 1.25, bloom);
-	r_out.drive = Math::lerp(1.0, 1.4, bloom);
+	r_out.bloom_attack_ms = Math::lerp(8.0, 520.0, bloom_depth);
+	r_out.direct_late_amount = Math::lerp(1.0, 0.05, bloom_curve);
+	r_out.bloom_amount = Math::lerp(0.0, 3.25, bloom_depth);
+	r_out.diffusion_feedback = Math::lerp(0.38, 0.88, bloom_curve);
+	r_out.early_gain = Math::lerp(0.9, 0.03, bloom_curve);
+	r_out.late_gain = Math::lerp(0.8, 2.2, bloom_depth);
+	r_out.drive = Math::lerp(1.0, 1.05, bloom);
 	r_out.high_damp_hz = MIN(_exp_lerp(1800.0, 14000.0, tone), MAX(p_params.high_cut_hz, 2500.0));
 	r_out.low_cut_hz = CLAMP(p_params.low_cut_hz, 20.0, 800.0);
 	r_out.feedback_low_cut_hz = CLAMP(r_out.low_cut_hz * 0.65, 40.0, 420.0);
 	r_out.high_cut_hz = CLAMP(p_params.high_cut_hz, 1000.0, 20000.0);
-	r_out.mod_depth_samples = (_get_sampling_rate() * Math::lerp(0.0, 8.0, Math::pow(motion, 1.5))) / 1000.0;
-	r_out.width_gain = Math::lerp(0.3, 1.35, width);
-	r_out.air_gain = Math::pow(air, 1.4) * 0.35;
+	double motion_depth_ms = Math::lerp(0.0, 8.0, Math::pow(motion, 1.5)) + Math::lerp(0.0, 9.0, bloom_depth);
+	r_out.mod_depth_samples = (_get_sampling_rate() * motion_depth_ms) / 1000.0;
+	r_out.width_gain = Math::lerp(0.3, 1.35, width) * Math::lerp(0.85, 1.65, bloom_curve);
+	r_out.air_gain = Math::pow(air, 1.4) * 0.35 + bloom_depth * 0.22;
 	r_out.air_hp_hz = _exp_lerp(1800.0, 6500.0, 1.0 - air);
-	r_out.wet_makeup_gain = 2.0;
+	r_out.wet_makeup_gain = 1.8;
 	r_out.duck = duck;
 	r_out.freeze = freeze;
 
@@ -429,8 +445,8 @@ int SiEffectBloomReverb::process(int p_channels, Vector<double> *r_buffer, int p
 		_input_hp_right.set_cutoff(params.low_cut_hz, _get_sampling_rate());
 		_wet_lp_left.set_cutoff(params.high_cut_hz, _get_sampling_rate());
 		_wet_lp_right.set_cutoff(params.high_cut_hz, _get_sampling_rate());
-		_bloom_smoother_left.set_attack_ms(params.bloom_attack_ms, _get_sampling_rate());
-		_bloom_smoother_right.set_attack_ms(params.bloom_attack_ms, _get_sampling_rate());
+		_bloom_envelope_left.set_attack_ms(params.bloom_attack_ms, _get_sampling_rate());
+		_bloom_envelope_right.set_attack_ms(params.bloom_attack_ms, _get_sampling_rate());
 
 		for (int line = 0; line < TANK_LINE_COUNT; line++) {
 			_tank[line].hp.set_cutoff(params.feedback_low_cut_hz, _get_sampling_rate());
@@ -462,11 +478,13 @@ int SiEffectBloomReverb::process(int p_channels, Vector<double> *r_buffer, int p
 			early_l *= params.early_gain;
 			early_r *= params.early_gain;
 
-			double smoothed_l = _bloom_smoother_left.process(predelayed_l);
-			double smoothed_r = _bloom_smoother_right.process(predelayed_r);
+			double bloom_gain_l = Math::pow(_bloom_envelope_left.process(predelayed_l), 1.7);
+			double bloom_gain_r = Math::pow(_bloom_envelope_right.process(predelayed_r), 1.7);
+			double bloomed_l = (predelayed_l * 0.65 + predelayed_r * 0.35) * bloom_gain_l;
+			double bloomed_r = (predelayed_r * 0.65 + predelayed_l * 0.35) * bloom_gain_r;
 
-			double tank_input_l = predelayed_l * params.direct_late_amount + smoothed_l * params.bloom_amount;
-			double tank_input_r = predelayed_r * params.direct_late_amount + smoothed_r * params.bloom_amount;
+			double tank_input_l = predelayed_l * params.direct_late_amount + bloomed_l * params.bloom_amount;
+			double tank_input_r = predelayed_r * params.direct_late_amount + bloomed_r * params.bloom_amount;
 			double freeze_input_scale = Math::lerp(1.0, 0.05, params.freeze);
 			tank_input_l = _softclip(tank_input_l * params.drive) / params.drive * params.late_gain * freeze_input_scale;
 			tank_input_r = _softclip(tank_input_r * params.drive) / params.drive * params.late_gain * freeze_input_scale;
