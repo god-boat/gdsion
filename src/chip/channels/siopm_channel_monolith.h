@@ -26,8 +26,8 @@ public:
 		SUB_ROUNDED_SQUARE = 2,
 		SUB_SATURATED_SINE = 3,
 		SUB_OCTAVE_STACK = 4,
-		SUB_CLICK = 5,
-		SUB_808 = 6,
+		SUB_DUAL_HARMONIC = 5,
+		SUB_PHASE_WARP = 6,
 		SUB_SHAPE_MAX
 	};
 
@@ -109,13 +109,9 @@ private:
 	double _osc1_dt = 0.0;
 	double _osc2_dt = 0.0;
 
-	// 808 pitch envelope.
+	// Pitch-drop envelope.
 	double _pitch_env_level = 0.0;
 	double _pitch_env_decay_coeff = 0.9995;
-
-	// Sub click transient.
-	double _click_level = 0.0;
-	static constexpr double CLICK_DECAY = 0.992;
 
 	// Motion LFO.
 	uint32_t _motion_phase = 0;

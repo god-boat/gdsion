@@ -157,13 +157,17 @@ double SiOPMChannelMonolith::_generate_sub_sample() {
 			sample = fund * 0.6 + oct_below * 0.4;
 		} break;
 
-		case SUB_CLICK: {
-			double s = std::sin((double)_sub_phase * PHASE_TO_RAD);
-			sample = s + _click_level * 0.5;
+		case SUB_DUAL_HARMONIC: {
+			double harmonic_mix = 0.22 + ((double)_shape_warp / 127.0) * 0.23;
+			double fund = std::sin((double)_sub_phase * PHASE_TO_RAD);
+			double second = std::sin((double)_sub_phase * PHASE_TO_RAD * 2.0);
+			sample = fund * (1.0 - harmonic_mix) + second * harmonic_mix;
 		} break;
 
-		case SUB_808: {
-			sample = std::sin((double)_sub_phase * PHASE_TO_RAD);
+		case SUB_PHASE_WARP: {
+			double warp = 0.75 + ((double)_shape_warp / 127.0) * 1.25;
+			double phase = (double)_sub_phase * PHASE_TO_RAD;
+			sample = std::sin(phase + std::sin(phase) * warp);
 		} break;
 
 		default:
@@ -546,7 +550,7 @@ void SiOPMChannelMonolith::set_monolith_params(
 	double motion_freq = 0.1 * std::pow(200.0, (double)_motion_rate / 127.0);
 	_motion_phase_inc = _freq_to_phase_inc(motion_freq);
 
-	// 808 pitch envelope decay: shorter pitch_drop = faster decay.
+	// Pitch-drop envelope decay: shorter pitch_drop = faster decay.
 	if (_pitch_drop > 0) {
 		double decay_ms = 20.0 + (double)_pitch_drop * 5.0;
 		double decay_samples = decay_ms * _sample_rate / 1000.0;
@@ -738,11 +742,6 @@ void SiOPMChannelMonolith::note_on() {
 	_motion_filter_ic1 = 0.0;
 	_motion_filter_ic2 = 0.0;
 	_drive_tone_lp_z1 = 0.0;
-
-	// Click transient.
-	if (_sub_shape == SUB_CLICK) {
-		_click_level = 1.0;
-	}
 
 	// Glide: keep previous pitch if legato, otherwise snap.
 	if (_is_note_on && _glide_time > 0) {
@@ -990,11 +989,6 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 			_pitch_env_level *= _pitch_env_decay_coeff;
 		}
 
-		// Click transient decay.
-		if (_click_level > 0.001) {
-			_click_level *= CLICK_DECAY;
-		}
-
 		in_pipe = in_pipe->next();
 		base_pipe = base_pipe->next();
 		out_pipe = out_pipe->next();
@@ -1047,7 +1041,6 @@ void SiOPMChannelMonolith::initialize(SiOPMChannelBase *p_prev, int p_buffer_ind
 	_osc1_dt = 0.0;
 	_osc2_dt = 0.0;
 	_pitch_env_level = 0.0;
-	_click_level = 0.0;
 	_motion_phase = 0;
 	_motion_phase_inc = 0;
 	_motion_value = 0.0;
@@ -1097,7 +1090,6 @@ void SiOPMChannelMonolith::reset() {
 	_osc2_phase = 0;
 	_noise_state = 0x12345678;
 	_pitch_env_level = 0.0;
-	_click_level = 0.0;
 	_motion_phase = 0;
 	_mass_drift_phase = 0.0;
 	_mass_drift_value = 0.0;
