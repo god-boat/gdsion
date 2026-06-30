@@ -25,9 +25,67 @@ namespace {
 // Tunable parameters
 // ---------------------------------------------------------------------------
 
-static constexpr double WINDOW_TIME_SECONDS = 0.010666666666666666;
-static constexpr double HOP_TIME_SECONDS = 0.005333333333333333;
-static constexpr double MIN_ONSET_INTERVAL_SECONDS = 0.05;
+struct OnsetProfile {
+	const char *debug_prefix;
+	double window_time_seconds;
+	double hop_time_seconds;
+	double min_interval_seconds;
+	double threshold_floor_ratio;
+	double threshold_k_min;
+	double threshold_k_range;
+	bool use_channel_power_envelope;
+	bool use_strength_release;
+	double strength_release_ratio;
+	double strength_release_floor_ratio;
+	bool use_envelope_retrigger_guard;
+	double envelope_retrigger_ratio;
+	double envelope_retrigger_floor_ratio;
+	bool use_start_boundary_as_onset;
+};
+
+static constexpr double BPM_WINDOW_TIME_SECONDS = 0.010666666666666666;
+static constexpr double BPM_HOP_TIME_SECONDS = 0.005333333333333333;
+static constexpr double BPM_MIN_ONSET_INTERVAL_SECONDS = 0.05;
+
+static constexpr double SLICE_WINDOW_TIME_SECONDS = 0.005333333333333333;
+static constexpr double SLICE_HOP_TIME_SECONDS = 0.0026666666666666666;
+static constexpr double SLICE_MIN_ONSET_INTERVAL_SECONDS = 0.085;
+
+static constexpr OnsetProfile BPM_ONSET_PROFILE = {
+	"BPM",
+	BPM_WINDOW_TIME_SECONDS,
+	BPM_HOP_TIME_SECONDS,
+	BPM_MIN_ONSET_INTERVAL_SECONDS,
+	0.02,
+	1.0,
+	3.0,
+	false,
+	false,
+	0.0,
+	0.0,
+	false,
+	0.0,
+	0.0,
+	false
+};
+
+static constexpr OnsetProfile SLICE_ONSET_PROFILE = {
+	"SLICE",
+	SLICE_WINDOW_TIME_SECONDS,
+	SLICE_HOP_TIME_SECONDS,
+	SLICE_MIN_ONSET_INTERVAL_SECONDS,
+	0.008,
+	0.35,
+	1.75,
+	true,
+	true,
+	0.08,
+	0.01,
+	true,
+	0.35,
+	0.03,
+	true
+};
 
 // BPM working range. Tempi outside are folded by halving/doubling. Wider than a
 // single octave so common slow (ambient) and fast (DnB/footwork) tempi are kept
@@ -87,6 +145,7 @@ static constexpr double BAR_ALIGNMENT_TOLERANCE = 0.03; // max fractional-bar er
 struct OnsetAnalysis {
 	Vector<int> positions;
 	Vector<double> strengths;
+	Vector<double> rms_envelope;
 	Vector<double> onset_strength_envelope;
 	int hop_size = 0;
 	int window_size = 0;
@@ -170,6 +229,15 @@ Dictionary _build_empty_result() {
 	return d;
 }
 
+PackedInt32Array _pack_onset_positions(const Vector<int> &p_onsets) {
+	PackedInt32Array result;
+	result.resize(p_onsets.size());
+	for (int i = 0; i < p_onsets.size(); i++) {
+		result.set(i, p_onsets[i]);
+	}
+	return result;
+}
+
 // ---------------------------------------------------------------------------
 // Onset analysis pipeline
 // ---------------------------------------------------------------------------
@@ -179,6 +247,8 @@ Vector<double> _compute_onset_strength_envelope(
 	const Vector<double> &p_wave_data,
 	int p_channel_count,
 	int p_sample_rate,
+	const OnsetProfile &p_profile,
+	Vector<double> *r_rms_envelope,
 	int *r_window_size,
 	int *r_hop_size,
 	int *r_frame_count
@@ -186,13 +256,16 @@ Vector<double> _compute_onset_strength_envelope(
 	*r_window_size = 0;
 	*r_hop_size = 0;
 	*r_frame_count = 0;
+	if (r_rms_envelope != nullptr) {
+		r_rms_envelope->clear();
+	}
 
 	if (p_wave_data.is_empty() || p_channel_count < 1 || p_sample_rate <= 0) {
 		return Vector<double>();
 	}
 
-	int window_size = MAX(static_cast<int>(p_sample_rate * WINDOW_TIME_SECONDS), 64);
-	int hop_size = MAX(static_cast<int>(p_sample_rate * HOP_TIME_SECONDS), 32);
+	int window_size = MAX(static_cast<int>(p_sample_rate * p_profile.window_time_seconds), 64);
+	int hop_size = MAX(static_cast<int>(p_sample_rate * p_profile.hop_time_seconds), 32);
 	int frame_count = p_wave_data.size() / p_channel_count;
 
 	*r_window_size = window_size;
@@ -217,12 +290,21 @@ Vector<double> _compute_onset_strength_envelope(
 		for (int f = 0; f < window_size; f++) {
 			int fi = start + f;
 			if (fi >= frame_count) break;
-			double sample = 0.0;
-			for (int ch = 0; ch < p_channel_count; ch++) {
-				sample += data[fi * p_channel_count + ch];
+			if (p_profile.use_channel_power_envelope) {
+				double frame_sum_sq = 0.0;
+				for (int ch = 0; ch < p_channel_count; ch++) {
+					double sample = data[fi * p_channel_count + ch];
+					frame_sum_sq += sample * sample;
+				}
+				sum_sq += frame_sum_sq / p_channel_count;
+			} else {
+				double sample = 0.0;
+				for (int ch = 0; ch < p_channel_count; ch++) {
+					sample += data[fi * p_channel_count + ch];
+				}
+				sample /= p_channel_count;
+				sum_sq += sample * sample;
 			}
-			sample /= p_channel_count;
-			sum_sq += sample * sample;
 		}
 		envelope.write[w] = std::sqrt(sum_sq / window_size);
 	}
@@ -233,7 +315,10 @@ Vector<double> _compute_onset_strength_envelope(
 		if (envelope[w] > env_max) env_max = envelope[w];
 		env_sum += envelope[w];
 	}
-	debug_print(vformat("[BPM] _compute_onset_strength_envelope: %d windows, RMS envelope min=%.6f max=%.6f mean=%.6f", num_windows, env_min, env_max, env_sum / num_windows));
+	debug_print(vformat("[%s] _compute_onset_strength_envelope: %d windows, RMS envelope min=%.6f max=%.6f mean=%.6f", String(p_profile.debug_prefix), num_windows, env_min, env_max, env_sum / num_windows));
+	if (r_rms_envelope != nullptr) {
+		*r_rms_envelope = envelope;
+	}
 
 	Vector<double> onset_strength;
 	onset_strength.resize_zeroed(num_windows);
@@ -248,17 +333,51 @@ Vector<double> _compute_onset_strength_envelope(
 // local maximum for sub-hop sample precision.
 void _peak_pick_onsets(
 	const Vector<double> &p_onset_strength,
+	const Vector<double> &p_rms_envelope,
 	int p_hop_size,
 	int p_min_onset_interval_samples,
 	double p_threshold,
+	const OnsetProfile &p_profile,
 	Vector<int> *r_positions,
 	Vector<double> *r_strengths
 ) {
 	int num_windows = p_onset_strength.size();
 	if (num_windows < 3) return;
 
-	int last_pos = -p_min_onset_interval_samples;
+	bool use_release = p_profile.use_strength_release;
+	bool use_envelope_guard = p_profile.use_envelope_retrigger_guard && p_rms_envelope.size() == num_windows;
+	double max_release_strength = 0.0;
+	if (use_release) {
+		for (int w = 0; w < num_windows; w++) {
+			if (p_onset_strength[w] > max_release_strength) {
+				max_release_strength = p_onset_strength[w];
+			}
+		}
+	}
+	double max_guard_envelope = 0.0;
+	if (use_envelope_guard) {
+		for (int w = 0; w < num_windows; w++) {
+			if (p_rms_envelope[w] > max_guard_envelope) {
+				max_guard_envelope = p_rms_envelope[w];
+			}
+		}
+	}
+
+	int last_pos = p_profile.use_start_boundary_as_onset ? 0 : -p_min_onset_interval_samples;
+	bool start_boundary_pending = p_profile.use_start_boundary_as_onset;
+	bool strength_released = true;
+	double release_threshold = 0.0;
+	bool have_guard_origin = false;
+	double last_guard_envelope = 0.0;
+	double min_guard_envelope_since_last = 0.0;
 	for (int w = 1; w < num_windows - 1; w++) {
+		if (use_release && !strength_released && p_onset_strength[w] <= release_threshold) {
+			strength_released = true;
+		}
+		if (use_envelope_guard && have_guard_origin && p_rms_envelope[w] < min_guard_envelope_since_last) {
+			min_guard_envelope_since_last = p_rms_envelope[w];
+		}
+
 		double s = p_onset_strength[w];
 		if (s < p_threshold) continue;
 		double sp = p_onset_strength[w - 1];
@@ -267,11 +386,42 @@ void _peak_pick_onsets(
 
 		double off = _parabolic_peak_offset(sp, s, sn);
 		int sample_pos = static_cast<int>(std::round((static_cast<double>(w) + off) * p_hop_size));
-		if (sample_pos - last_pos < p_min_onset_interval_samples) continue;
+		int samples_since_last = sample_pos - last_pos;
+		if (use_release) {
+			if (start_boundary_pending && samples_since_last < p_min_onset_interval_samples) {
+				last_pos = sample_pos;
+				strength_released = false;
+				release_threshold = MAX(s * p_profile.strength_release_ratio, max_release_strength * p_profile.strength_release_floor_ratio);
+				if (use_envelope_guard) {
+					last_guard_envelope = p_rms_envelope[w];
+					min_guard_envelope_since_last = last_guard_envelope;
+					have_guard_origin = true;
+				}
+				start_boundary_pending = false;
+				continue;
+			}
+			if (!strength_released || samples_since_last < p_min_onset_interval_samples) continue;
+		} else if (samples_since_last < p_min_onset_interval_samples) {
+			continue;
+		}
+		if (use_envelope_guard && have_guard_origin) {
+			double guard_threshold = MAX(last_guard_envelope * p_profile.envelope_retrigger_ratio, max_guard_envelope * p_profile.envelope_retrigger_floor_ratio);
+			if (min_guard_envelope_since_last > guard_threshold) continue;
+		}
 
 		r_positions->push_back(sample_pos);
 		r_strengths->push_back(s);
 		last_pos = sample_pos;
+		start_boundary_pending = false;
+		if (use_envelope_guard) {
+			last_guard_envelope = p_rms_envelope[w];
+			min_guard_envelope_since_last = last_guard_envelope;
+			have_guard_origin = true;
+		}
+		if (use_release) {
+			strength_released = false;
+			release_threshold = MAX(s * p_profile.strength_release_ratio, max_release_strength * p_profile.strength_release_floor_ratio);
+		}
 	}
 }
 
@@ -279,27 +429,32 @@ OnsetAnalysis _analyze_onsets(
 	const Vector<double> &p_wave_data,
 	int p_channel_count,
 	int p_sensitivity,
-	int p_sample_rate
+	int p_sample_rate,
+	const OnsetProfile &p_profile
 ) {
 	OnsetAnalysis result;
+	String debug_prefix = String(p_profile.debug_prefix);
 	if (p_wave_data.is_empty() || p_channel_count < 1 || p_sample_rate <= 0) {
 		return result;
 	}
 
 	int window_size = 0, hop_size = 0, frame_count = 0;
+	Vector<double> rms_envelope;
 	Vector<double> onset_strength = _compute_onset_strength_envelope(
-		p_wave_data, p_channel_count, p_sample_rate,
+		p_wave_data, p_channel_count, p_sample_rate, p_profile,
+		&rms_envelope,
 		&window_size, &hop_size, &frame_count
 	);
 	if (onset_strength.is_empty()) return result;
 
+	result.rms_envelope = rms_envelope;
 	result.onset_strength_envelope = onset_strength;
 	result.window_size = window_size;
 	result.hop_size = hop_size;
 	result.sample_rate = p_sample_rate;
 	result.frame_count = frame_count;
 
-	int min_onset_interval = MAX(static_cast<int>(p_sample_rate * MIN_ONSET_INTERVAL_SECONDS), hop_size * 2);
+	int min_onset_interval = MAX(static_cast<int>(p_sample_rate * p_profile.min_interval_seconds), hop_size * 2);
 	int clamped_sens = CLAMP(p_sensitivity, 1, 100);
 	double sens = (clamped_sens - 1) / 99.0;
 
@@ -317,6 +472,13 @@ OnsetAnalysis _analyze_onsets(
 		}
 	}
 
+	if (max_strength <= 0.0) {
+		debug_print(vformat("[%s] _analyze_onsets: sample_rate=%d channels=%d sensitivity=%d", debug_prefix, p_sample_rate, p_channel_count, p_sensitivity));
+		debug_print(vformat("[%s]   frame_count=%d window_size=%d hop_size=%d envelope_frames=%d", debug_prefix, frame_count, window_size, hop_size, n));
+		debug_print(vformat("[%s]   no positive onset strength", debug_prefix));
+		return result;
+	}
+
 	double threshold = max_strength * 0.05;
 	double nz_mean = 0.0;
 	double nz_stddev = 0.0;
@@ -332,34 +494,41 @@ OnsetAnalysis _analyze_onsets(
 		}
 		nz_stddev = std::sqrt(var_sum / (nz_count - 1));
 
-		double k = 1.0 + (1.0 - sens) * 3.0;
+		double k = p_profile.threshold_k_min + (1.0 - sens) * p_profile.threshold_k_range;
 		threshold = nz_mean + k * nz_stddev;
-		threshold = MAX(threshold, max_strength * 0.02);
+		threshold = MAX(threshold, max_strength * p_profile.threshold_floor_ratio);
 	}
 
-	debug_print(vformat("[BPM] _analyze_onsets: sample_rate=%d channels=%d sensitivity=%d", p_sample_rate, p_channel_count, p_sensitivity));
-	debug_print(vformat("[BPM]   frame_count=%d window_size=%d hop_size=%d envelope_frames=%d", frame_count, window_size, hop_size, n));
-	debug_print(vformat("[BPM]   duration=%.2fs", double(frame_count) / double(p_sample_rate)));
-	debug_print(vformat("[BPM]   nonzero_count=%d/%d mean=%.6f stddev=%.6f max=%.6f", nz_count, n, nz_mean, nz_stddev, max_strength));
-	debug_print(vformat("[BPM]   k=%.2f threshold=%.6f (%.1f%% of max)", 1.0 + (1.0 - sens) * 3.0, threshold, 100.0 * threshold / max_strength));
+	double k = p_profile.threshold_k_min + (1.0 - sens) * p_profile.threshold_k_range;
+	debug_print(vformat("[%s] _analyze_onsets: sample_rate=%d channels=%d sensitivity=%d", debug_prefix, p_sample_rate, p_channel_count, p_sensitivity));
+	debug_print(vformat("[%s]   frame_count=%d window_size=%d hop_size=%d envelope_frames=%d", debug_prefix, frame_count, window_size, hop_size, n));
+	debug_print(vformat("[%s]   duration=%.2fs", debug_prefix, double(frame_count) / double(p_sample_rate)));
+	debug_print(vformat("[%s]   nonzero_count=%d/%d mean=%.6f stddev=%.6f max=%.6f", debug_prefix, nz_count, n, nz_mean, nz_stddev, max_strength));
+	debug_print(vformat("[%s]   k=%.2f threshold=%.6f (%.1f%% of max)", debug_prefix, k, threshold, 100.0 * threshold / max_strength));
+	if (p_profile.use_strength_release) {
+		debug_print(vformat("[%s]   release: strength_reset_ratio=%.2f reset_floor=%.1f%% of max_strength", debug_prefix, p_profile.strength_release_ratio, p_profile.strength_release_floor_ratio * 100.0));
+	}
+	if (p_profile.use_envelope_retrigger_guard) {
+		debug_print(vformat("[%s]   retrigger_guard: rms_dip_ratio=%.2f rms_floor=%.1f%% of max_rms", debug_prefix, p_profile.envelope_retrigger_ratio, p_profile.envelope_retrigger_floor_ratio * 100.0));
+	}
 
-	_peak_pick_onsets(onset_strength, hop_size, min_onset_interval, threshold,
+	_peak_pick_onsets(onset_strength, rms_envelope, hop_size, min_onset_interval, threshold, p_profile,
 		&result.positions, &result.strengths);
 
-	debug_print(vformat("[BPM]   detected %d onsets (min_interval=%d samples = %.3fs)", result.positions.size(), min_onset_interval, double(min_onset_interval) / double(p_sample_rate)));
+	debug_print(vformat("[%s]   detected %d onsets (min_interval=%d samples = %.3fs)", debug_prefix, result.positions.size(), min_onset_interval, double(min_onset_interval) / double(p_sample_rate)));
 	if (result.positions.size() > 0) {
 		double min_str = result.strengths[0], max_str = result.strengths[0];
 		for (int i = 1; i < result.strengths.size(); i++) {
 			if (result.strengths[i] < min_str) min_str = result.strengths[i];
 			if (result.strengths[i] > max_str) max_str = result.strengths[i];
 		}
-		debug_print(vformat("[BPM]   onset strengths: min=%.6f max=%.6f", min_str, max_str));
+		debug_print(vformat("[%s]   onset strengths: min=%.6f max=%.6f", debug_prefix, min_str, max_str));
 		int show = MIN(result.positions.size(), 10);
 		for (int i = 0; i < show; i++) {
-			debug_print(vformat("[BPM]   onset[%d] pos=%d (%.3fs) strength=%.6f", i, result.positions[i], double(result.positions[i]) / double(p_sample_rate), result.strengths[i]));
+			debug_print(vformat("[%s]   onset[%d] pos=%d (%.3fs) strength=%.6f", debug_prefix, i, result.positions[i], double(result.positions[i]) / double(p_sample_rate), result.strengths[i]));
 		}
 		if (result.positions.size() > 10) {
-			debug_print(vformat("[BPM]   ... (%d more onsets)", result.positions.size() - 10));
+			debug_print(vformat("[%s]   ... (%d more onsets)", debug_prefix, result.positions.size() - 10));
 		}
 	}
 
@@ -642,7 +811,7 @@ Dictionary _estimate_bpm_detailed_internal(
 	int frame_count = p_wave_data.size() / p_channel_count;
 	debug_print(vformat("[BPM]   total duration: %.3fs (%d frames)", double(frame_count) / double(p_sample_rate), frame_count));
 
-	OnsetAnalysis a = _analyze_onsets(p_wave_data, p_channel_count, 50, p_sample_rate);
+	OnsetAnalysis a = _analyze_onsets(p_wave_data, p_channel_count, 50, p_sample_rate, BPM_ONSET_PROFILE);
 	if (a.positions.size() < 3) {
 		debug_print(vformat("[BPM]   EARLY EXIT: too few onsets (%d < 3)", a.positions.size()));
 		return _build_empty_result();
@@ -839,6 +1008,10 @@ void OnsetDetector::_bind_methods() {
 		&OnsetDetector::detect_onsets, DEFVAL(2), DEFVAL(50), DEFVAL(0));
 	ClassDB::bind_static_method("OnsetDetector", D_METHOD("detect_onsets_from_stream", "stream", "sensitivity"),
 		&OnsetDetector::detect_onsets_from_stream, DEFVAL(50));
+	ClassDB::bind_static_method("OnsetDetector", D_METHOD("detect_slice_onsets", "wave_data", "channel_count", "sensitivity", "sample_rate"),
+		&OnsetDetector::detect_slice_onsets, DEFVAL(2), DEFVAL(75), DEFVAL(0));
+	ClassDB::bind_static_method("OnsetDetector", D_METHOD("detect_slice_onsets_from_stream", "stream", "sensitivity"),
+		&OnsetDetector::detect_slice_onsets_from_stream, DEFVAL(75));
 	ClassDB::bind_static_method("OnsetDetector", D_METHOD("estimate_bpm", "wave_data", "channel_count", "sample_rate"),
 		&OnsetDetector::estimate_bpm, DEFVAL(2), DEFVAL(0));
 	ClassDB::bind_static_method("OnsetDetector", D_METHOD("estimate_bpm_from_stream", "stream"),
@@ -865,12 +1038,7 @@ PackedInt32Array OnsetDetector::detect_onsets(
 
 	Vector<int> onsets = detect_onsets_internal(wave_data, p_channel_count, p_sensitivity, p_sample_rate);
 
-	PackedInt32Array result;
-	result.resize(onsets.size());
-	for (int i = 0; i < onsets.size(); i++) {
-		result.set(i, onsets[i]);
-	}
-	return result;
+	return _pack_onset_positions(onsets);
 }
 
 PackedInt32Array OnsetDetector::detect_onsets_from_stream(
@@ -889,11 +1057,43 @@ PackedInt32Array OnsetDetector::detect_onsets_from_stream(
 
 	Vector<int> onsets = detect_onsets_internal(wave_data, channel_count, p_sensitivity, sample_rate);
 
-	result.resize(onsets.size());
-	for (int i = 0; i < onsets.size(); i++) {
-		result.set(i, onsets[i]);
+	return _pack_onset_positions(onsets);
+}
+
+PackedInt32Array OnsetDetector::detect_slice_onsets(
+	const PackedFloat32Array &p_wave_data,
+	int p_channel_count,
+	int p_sensitivity,
+	int p_sample_rate
+) {
+	ERR_FAIL_COND_V_MSG(p_sample_rate <= 0, PackedInt32Array(), vformat("OnsetDetector: detect_slice_onsets() requires an explicit positive sample rate, got %d.", p_sample_rate));
+
+	Vector<double> wave_data;
+	wave_data.resize(p_wave_data.size());
+	for (int i = 0; i < p_wave_data.size(); i++) {
+		wave_data.write[i] = static_cast<double>(p_wave_data[i]);
 	}
-	return result;
+
+	Vector<int> onsets = detect_slice_onsets_internal(wave_data, p_channel_count, p_sensitivity, p_sample_rate);
+	return _pack_onset_positions(onsets);
+}
+
+PackedInt32Array OnsetDetector::detect_slice_onsets_from_stream(
+	const Ref<AudioStream> &p_stream,
+	int p_sensitivity
+) {
+	PackedInt32Array result;
+	if (p_stream.is_null()) return result;
+
+	const int sample_rate = _resolve_stream_sample_rate(p_stream);
+	if (sample_rate <= 0) return result;
+
+	int channel_count = 2;
+	Vector<double> wave_data = SiOPMWaveBase::extract_wave_data(p_stream, &channel_count);
+	if (wave_data.is_empty() || channel_count < 1) return result;
+
+	Vector<int> onsets = detect_slice_onsets_internal(wave_data, channel_count, p_sensitivity, sample_rate);
+	return _pack_onset_positions(onsets);
 }
 
 Vector<int> OnsetDetector::detect_onsets_internal(
@@ -906,7 +1106,21 @@ Vector<int> OnsetDetector::detect_onsets_internal(
 	if (p_wave_data.is_empty() || p_channel_count < 1) return onsets;
 	ERR_FAIL_COND_V_MSG(p_sample_rate <= 0, onsets, vformat("OnsetDetector: detect_onsets_internal() requires an explicit positive sample rate, got %d.", p_sample_rate));
 
-	OnsetAnalysis a = _analyze_onsets(p_wave_data, p_channel_count, p_sensitivity, p_sample_rate);
+	OnsetAnalysis a = _analyze_onsets(p_wave_data, p_channel_count, p_sensitivity, p_sample_rate, BPM_ONSET_PROFILE);
+	return a.positions;
+}
+
+Vector<int> OnsetDetector::detect_slice_onsets_internal(
+	const Vector<double> &p_wave_data,
+	int p_channel_count,
+	int p_sensitivity,
+	int p_sample_rate
+) {
+	Vector<int> onsets;
+	if (p_wave_data.is_empty() || p_channel_count < 1) return onsets;
+	ERR_FAIL_COND_V_MSG(p_sample_rate <= 0, onsets, vformat("OnsetDetector: detect_slice_onsets_internal() requires an explicit positive sample rate, got %d.", p_sample_rate));
+
+	OnsetAnalysis a = _analyze_onsets(p_wave_data, p_channel_count, p_sensitivity, p_sample_rate, SLICE_ONSET_PROFILE);
 	return a.positions;
 }
 

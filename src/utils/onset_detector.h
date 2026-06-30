@@ -44,8 +44,29 @@ public:
 		int p_sensitivity = 50
 	);
 
+	// Detect denser transient positions for sampler slicing.
+	static PackedInt32Array detect_slice_onsets(
+		const PackedFloat32Array &p_wave_data,
+		int p_channel_count = 2,
+		int p_sensitivity = 75,
+		int p_sample_rate = 0
+	);
+
+	// Detect denser transient positions directly from an AudioStream (WAV supported).
+	static PackedInt32Array detect_slice_onsets_from_stream(
+		const Ref<AudioStream> &p_stream,
+		int p_sensitivity = 75
+	);
+
 	// Overload accepting Vector<double> for internal C++ use.
 	static Vector<int> detect_onsets_internal(
+		const Vector<double> &p_wave_data,
+		int p_channel_count,
+		int p_sensitivity,
+		int p_sample_rate
+	);
+
+	static Vector<int> detect_slice_onsets_internal(
 		const Vector<double> &p_wave_data,
 		int p_channel_count,
 		int p_sensitivity,
