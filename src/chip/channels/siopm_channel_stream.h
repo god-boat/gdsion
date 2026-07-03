@@ -89,6 +89,7 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	// Unified pitch step recalculation from _pitch_cents.
 	void _recalc_pitch_step();
 	double _get_source_to_driver_rate_ratio() const;
+	bool _is_live_stream() const;
 
 	// Compute the effective clip length in source frames (accounts for trim).
 	int64_t _effective_clip_length() const;

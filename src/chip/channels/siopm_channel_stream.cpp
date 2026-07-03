@@ -15,6 +15,7 @@
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <cmath>
+#include <limits>
 
 static constexpr int kSTREAM_GAIN_MIN_DB = -36;
 static constexpr int kSTREAM_GAIN_MAX_DB = 36;
@@ -125,11 +126,18 @@ double SiOPMChannelStream::_get_source_to_driver_rate_ratio() const {
 	return (double)source_rate / (double)driver_rate;
 }
 
+bool SiOPMChannelStream::_is_live_stream() const {
+	return _stream_data.is_valid() && _stream_data->is_live_stream();
+}
+
 // ---------------------------------------------------------------------------
 // Effective clip length helper
 // ---------------------------------------------------------------------------
 
 int64_t SiOPMChannelStream::_effective_clip_length() const {
+	if (_is_live_stream()) {
+		return std::numeric_limits<int64_t>::max() / 4;
+	}
 	if (_out_sample > 0) {
 		return _out_sample - _in_sample;
 	}
@@ -144,6 +152,10 @@ int64_t SiOPMChannelStream::_effective_clip_length() const {
 // ---------------------------------------------------------------------------
 
 double SiOPMChannelStream::_compute_technical_envelope(double p_source_frame) const {
+	if (_is_live_stream()) {
+		return 1.0;
+	}
+
 	double env = 1.0;
 
 	// NOTE: User clip fades (fade-in / fade-out) are now handled by
@@ -862,7 +874,6 @@ void SiOPMChannelStream::set_stream_out_sample(int64_t p_sample) {
 	_out_sample = MAX(p_sample, (int64_t)0);
 	if (_stream_data.is_valid()) {
 		_stream_data->set_out_sample(_out_sample);
-		
 	}
 }
 

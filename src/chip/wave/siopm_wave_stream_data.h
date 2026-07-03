@@ -8,6 +8,7 @@
 #define SIOPM_WAVE_STREAM_DATA_H
 
 #include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include "chip/wave/siopm_wave_base.h"
@@ -41,7 +42,7 @@ public:
 	static constexpr int DECODE_CHUNK_FRAMES = 4096;
 
 private:
-	// ---- Immutable after load_wav() (safe from any thread) ----
+	// ---- Immutable after load_wav()/configure_live() (safe from any thread) ----
 
 	String _file_path;
 	int _source_sample_rate = 0;
@@ -53,6 +54,7 @@ private:
 	int _bytes_per_frame = 0;     // = channel_count * (bits_per_sample / 8).
 	int _total_source_frames = 0; // Total frames in the source file.
 	bool _valid = false;
+	bool _live_mode = false;
 
 	// ---- Ring buffer (SPSC: audio reads, loader writes) ----
 
@@ -67,6 +69,7 @@ private:
 	std::atomic<bool> _active{false};
 	std::atomic<bool> _seek_requested{false};
 	std::atomic<int64_t> _seek_target{0};
+	std::atomic<int64_t> _live_dropped_frames{0};
 
 	// ---- Lock-free MPSC queue (intrusive Treiber stack) ----
 	//
@@ -155,7 +158,11 @@ public:
 	// Load a WAV file and prepare the ring buffer. Returns true on success.
 	bool load_wav(const String &p_file_path, int p_ring_capacity = 0);
 
+	// Configure this stream as a live-fed PCM source. Returns true on success.
+	bool configure_live(int p_source_sample_rate, int p_channel_count = 2, int p_ring_capacity = 0);
+
 	bool is_valid() const { return _valid; }
+	bool is_live_stream() const { return _live_mode; }
 	int get_channel_count() const { return _channel_count; }
 	int get_source_sample_rate() const { return _source_sample_rate; }
 	int64_t get_total_frames() const { return _total_source_frames; }
@@ -192,6 +199,13 @@ public:
 	// Enqueue a refill request into the MPSC work queue (lock-free).
 	// Called by the audio thread when the ring buffer drops below the low-water mark.
 	void request_refill();
+
+	// Main-thread live push API. Returns the number of source frames accepted.
+	int push_interleaved_pcm(const PackedFloat32Array &p_pcm, int p_frame_count = 0);
+	void clear_live_buffer();
+	int64_t get_live_dropped_frames() const { return _live_dropped_frames.load(std::memory_order_relaxed); }
+	int get_ring_capacity() const { return _ring_capacity; }
+	int get_ring_available() const { return ring_available(); }
 
 	// ---- Lifecycle ----
 

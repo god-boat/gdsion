@@ -55,10 +55,17 @@ static int _next_power_of_2(int p_value) {
 
 void SiOPMWaveStreamData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("load_wav", "file_path", "ring_capacity"), &SiOPMWaveStreamData::load_wav, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("configure_live", "source_sample_rate", "channel_count", "ring_capacity"), &SiOPMWaveStreamData::configure_live, DEFVAL(2), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("is_valid"), &SiOPMWaveStreamData::is_valid);
+	ClassDB::bind_method(D_METHOD("is_live_stream"), &SiOPMWaveStreamData::is_live_stream);
 	ClassDB::bind_method(D_METHOD("get_channel_count"), &SiOPMWaveStreamData::get_channel_count);
 	ClassDB::bind_method(D_METHOD("get_source_sample_rate"), &SiOPMWaveStreamData::get_source_sample_rate);
 	ClassDB::bind_method(D_METHOD("get_total_frames"), &SiOPMWaveStreamData::get_total_frames);
+	ClassDB::bind_method(D_METHOD("push_interleaved_pcm", "pcm", "frame_count"), &SiOPMWaveStreamData::push_interleaved_pcm, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("clear_live_buffer"), &SiOPMWaveStreamData::clear_live_buffer);
+	ClassDB::bind_method(D_METHOD("get_live_dropped_frames"), &SiOPMWaveStreamData::get_live_dropped_frames);
+	ClassDB::bind_method(D_METHOD("get_ring_capacity"), &SiOPMWaveStreamData::get_ring_capacity);
+	ClassDB::bind_method(D_METHOD("get_ring_available"), &SiOPMWaveStreamData::get_ring_available);
 	ClassDB::bind_method(D_METHOD("set_in_sample", "sample"), &SiOPMWaveStreamData::set_in_sample);
 	ClassDB::bind_method(D_METHOD("get_in_sample"), &SiOPMWaveStreamData::get_in_sample);
 	ClassDB::bind_method(D_METHOD("set_out_sample", "sample"), &SiOPMWaveStreamData::set_out_sample);
@@ -101,7 +108,9 @@ bool SiOPMWaveStreamData::load_wav(const String &p_file_path, int p_ring_capacit
 	_s_wait_until_idle(this);
 	_loader_file = Ref<FileAccess>();
 	_valid = false;
+	_live_mode = false;
 	_file_path = p_file_path;
+	_live_dropped_frames.store(0, std::memory_order_relaxed);
 
 	if (!_parse_wav_header()) {
 		ERR_PRINT("SiOPMWaveStreamData: Failed to parse WAV header: " + p_file_path);
@@ -127,6 +136,48 @@ bool SiOPMWaveStreamData::load_wav(const String &p_file_path, int p_ring_capacit
 	// Synchronous prefill so data is immediately available for playback.
 	prefill_sync();
 
+	return true;
+}
+
+bool SiOPMWaveStreamData::configure_live(int p_source_sample_rate, int p_channel_count, int p_ring_capacity) {
+	deactivate();
+	_s_wait_until_idle(this);
+	_loader_file = Ref<FileAccess>();
+
+	ERR_FAIL_COND_V_MSG(p_source_sample_rate <= 0, false, "SiOPMWaveStreamData: Live stream requires a positive source sample rate.");
+	ERR_FAIL_COND_V_MSG(p_channel_count < 1 || p_channel_count > 2, false, "SiOPMWaveStreamData: Live stream supports mono or stereo PCM.");
+
+	_file_path = String();
+	_source_sample_rate = p_source_sample_rate;
+	_channel_count = p_channel_count;
+	_bits_per_sample = 32;
+	_audio_format = WAV_FORMAT_FLOAT;
+	_data_offset = 0;
+	_data_size = 0;
+	_bytes_per_frame = _channel_count * (int)sizeof(float);
+	_total_source_frames = 0;
+	_decode_buf_valid = 0;
+	_file_read_pos_frames = 0;
+	_decode_pos_frames = 0;
+	_decode_buffer.resize(0);
+
+	int capacity = (p_ring_capacity > 0) ? p_ring_capacity : DEFAULT_RING_CAPACITY;
+	_ring_capacity = _next_power_of_2(capacity);
+	_ring_mask = _ring_capacity - 1;
+	_ring_data.assign(_ring_capacity * _channel_count, 0.0);
+	_ring_read_pos.store(0, std::memory_order_relaxed);
+	_ring_write_pos.store(0, std::memory_order_relaxed);
+	_live_dropped_frames.store(0, std::memory_order_relaxed);
+	_seek_requested.store(false, std::memory_order_relaxed);
+	_seek_target.store(0, std::memory_order_relaxed);
+	_in_sample.store(0, std::memory_order_relaxed);
+	_out_sample.store(0, std::memory_order_relaxed);
+	_loop_start_sample.store(0, std::memory_order_relaxed);
+	_loop_end_sample.store(0, std::memory_order_relaxed);
+	_looping.store(false, std::memory_order_relaxed);
+
+	_live_mode = true;
+	_valid = true;
 	return true;
 }
 
@@ -260,7 +311,8 @@ int SiOPMWaveStreamData::ring_available() const {
 
 double SiOPMWaveStreamData::ring_read_sample(int p_offset, int p_channel) const {
 	uint32_t rp = _ring_read_pos.load(std::memory_order_relaxed);
-	int idx = ((rp + p_offset) & _ring_mask) * _channel_count + p_channel;
+	int channel = (_channel_count > 1) ? CLAMP(p_channel, 0, _channel_count - 1) : 0;
+	int idx = ((rp + p_offset) & _ring_mask) * _channel_count + channel;
 	return _ring_data[idx];
 }
 
@@ -270,7 +322,57 @@ void SiOPMWaveStreamData::ring_advance_read(int p_frames) {
 }
 
 void SiOPMWaveStreamData::request_refill() {
+	if (_live_mode) {
+		return;
+	}
 	_s_enqueue(this);
+}
+
+int SiOPMWaveStreamData::push_interleaved_pcm(const PackedFloat32Array &p_pcm, int p_frame_count) {
+	if (!_valid || !_live_mode || _channel_count <= 0 || _ring_capacity <= 0) {
+		return 0;
+	}
+
+	int max_frames = p_pcm.size() / _channel_count;
+	int frames = (p_frame_count > 0) ? MIN(p_frame_count, max_frames) : max_frames;
+	if (frames <= 0) {
+		return 0;
+	}
+
+	uint32_t rp = _ring_read_pos.load(std::memory_order_acquire);
+	uint32_t wp = _ring_write_pos.load(std::memory_order_relaxed);
+	int available = (int)(wp - rp);
+	int space = _ring_capacity - available;
+	if (space <= 0) {
+		_live_dropped_frames.fetch_add(frames, std::memory_order_relaxed);
+		return 0;
+	}
+
+	int frames_to_write = MIN(frames, space);
+	const float *src = p_pcm.ptr();
+	for (int frame = 0; frame < frames_to_write; frame++) {
+		int dst_idx = ((wp + frame) & _ring_mask) * _channel_count;
+		int src_idx = frame * _channel_count;
+		for (int ch = 0; ch < _channel_count; ch++) {
+			_ring_data[dst_idx + ch] = (double)src[src_idx + ch];
+		}
+	}
+
+	_ring_write_pos.store(wp + frames_to_write, std::memory_order_release);
+
+	if (frames_to_write < frames) {
+		_live_dropped_frames.fetch_add(frames - frames_to_write, std::memory_order_relaxed);
+	}
+	return frames_to_write;
+}
+
+void SiOPMWaveStreamData::clear_live_buffer() {
+	if (!_live_mode) {
+		return;
+	}
+	uint32_t wp = _ring_write_pos.load(std::memory_order_relaxed);
+	_ring_read_pos.store(wp, std::memory_order_release);
+	_live_dropped_frames.store(0, std::memory_order_relaxed);
 }
 
 // ---------------------------------------------------------------------------
@@ -282,6 +384,9 @@ void SiOPMWaveStreamData::activate() {
 		return;
 	}
 	_active.store(true, std::memory_order_release);
+	if (_live_mode) {
+		return;
+	}
 	_s_ensure_loader_running();
 	_s_enqueue(this);
 }
@@ -297,6 +402,13 @@ void SiOPMWaveStreamData::deactivate() {
 }
 
 void SiOPMWaveStreamData::seek(int64_t p_position_sample) {
+	if (_live_mode) {
+		(void)p_position_sample;
+		_seek_requested.store(false, std::memory_order_relaxed);
+		clear_live_buffer();
+		return;
+	}
+
 	_seek_target.store(p_position_sample, std::memory_order_relaxed);
 	_seek_requested.store(true, std::memory_order_release);
 
@@ -308,7 +420,7 @@ void SiOPMWaveStreamData::seek(int64_t p_position_sample) {
 }
 
 void SiOPMWaveStreamData::prefill_sync() {
-	if (!_valid) {
+	if (!_valid || _live_mode) {
 		return;
 	}
 
@@ -504,7 +616,7 @@ void SiOPMWaveStreamData::_ring_write_frames(const double *p_data, int p_frame_c
 // ---------------------------------------------------------------------------
 
 void SiOPMWaveStreamData::_fill_ring_buffer_impl() {
-	if (!_valid) {
+	if (!_valid || _live_mode) {
 		return;
 	}
 
