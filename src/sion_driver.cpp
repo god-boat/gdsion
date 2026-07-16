@@ -3849,9 +3849,10 @@ void SiONDriver::_drain_track_mailbox() {
                     if (u.has_key_on_stream_start_sample) {
                         trk->set_pending_key_on_stream_start(u.key_on_stream_start_sample);
                     }
+					// TODO: this needs to be cleaned up, maybe a real key on velocity
                     if (u.key_velocity_16 >= 0) {
-                        const int engine_velocity = (int)(((int64_t)CLAMP(u.key_velocity_16, 0, 65535) * 512 + 32767) / 65535);
-                        trk->set_velocity(CLAMP(engine_velocity, 0, 512));
+                        const int key_expression = (int)(((int64_t)CLAMP(u.key_velocity_16, 0, 65535) * 127 + 32767) / 65535);
+                        trk->set_expression(CLAMP(key_expression, 0, 128));
                     }
                     trk->key_on(u.key_on_note, u.key_on_length, 0);
                 }
