@@ -60,8 +60,8 @@ protected:
 public:
 	// Prepares for offline rendering using an already-configured driver.
 	// The driver should be in streaming mode (stream() called) with instruments,
-	// effects, and BPM already set up. This does NOT modify driver state — it simply
-	// caches internal pointers for direct render pipeline access.
+	// effects, and BPM already set up. This does not reset channel or effect
+	// DSP state; the caller owns any explicit playback/export preparation.
 	bool begin(SiONDriver *p_driver);
 
 	// Processes one internal buffer block and returns the audio.

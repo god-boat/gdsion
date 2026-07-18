@@ -236,6 +236,12 @@ private:
 	MeterSnapshot _master_meter;
 	mutable std::mutex _master_meter_mutex;
 
+	// Flush denormals to zero on the render thread. Read once per render_interleaved()
+	// call, so it can be toggled from the main thread while audio is running --
+	// which is what lets a benchmark interleave A/B in one process instead of
+	// comparing across two builds.
+	std::atomic<bool> _denormal_flush_enabled{true};
+
 	// Metering settings - DISABLED BY DEFAULT for real-time safety
 	// Time::get_singleton() calls from audio thread can block on main thread!
 	std::atomic<bool> _metering_enabled{false};
@@ -850,6 +856,12 @@ public:
 	void abort_output_capture();
 	bool is_output_capturing() const;
 	PackedFloat32Array poll_output_capture_chunk(int p_max_frames = 0);
+
+	// Denormal handling. On by default; exposed so a benchmark can A/B it in-process
+	// and so it can be ruled out when diagnosing DSP cost. Turning it off makes
+	// decaying tails fall into denormal range, where arithmetic is ~100x slower.
+	void set_denormal_flush_enabled(bool p_enabled);
+	bool is_denormal_flush_enabled() const;
 
 	// Metering API (professional post-effects, post-fader metering).
 	void set_metering_enabled(bool p_enabled);

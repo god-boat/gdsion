@@ -7,6 +7,7 @@
 #include "sion_driver.h"
 #include "sion_stream.h"
 #include "sion_stream_playback.h"
+#include "utils/denormals.h"
 #include <algorithm>
 
 #include <godot_cpp/classes/time.hpp>
@@ -1662,6 +1663,9 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("poll_output_capture_chunk", "max_frames"), &SiONDriver::poll_output_capture_chunk, DEFVAL(0));
 
 	// Metering API (professional post-effects, post-fader metering).
+	ClassDB::bind_method(D_METHOD("set_denormal_flush_enabled", "enabled"), &SiONDriver::set_denormal_flush_enabled);
+	ClassDB::bind_method(D_METHOD("is_denormal_flush_enabled"), &SiONDriver::is_denormal_flush_enabled);
+
 	ClassDB::bind_method(D_METHOD("set_metering_enabled", "enabled"), &SiONDriver::set_metering_enabled);
 	ClassDB::bind_method(D_METHOD("is_metering_enabled"), &SiONDriver::is_metering_enabled);
 	ClassDB::bind_method(D_METHOD("set_meter_downsample_factor", "factor"), &SiONDriver::set_meter_downsample_factor);
@@ -1989,6 +1993,11 @@ int SiONDriver::render_interleaved(float *p_output, int p_frames, int p_channels
 		return 0;
 	}
 
+	// FTZ/DAZ are per-thread CPU state, so they have to be armed on whichever thread
+	// is doing the rendering -- the audio callback thread live, or the caller's thread
+	// during an offline render. This is the single entry point both go through.
+	sion::set_denormals_flushed(_denormal_flush_enabled.load(std::memory_order_relaxed));
+
 	if (!effector || !sequencer || !sound_chip) {
 		memset(p_output, 0, sizeof(float) * p_frames * p_channels);
 		_rendered_frame_count.fetch_add((uint64_t)p_frames, std::memory_order_relaxed);
@@ -2248,6 +2257,14 @@ void SiONDriver::_meter_all_track_outputs(int frames) {
 		// Meter this track's post-effects output
 		_meter_track_output(track_id, track_buf, frames, stream->get_post_fader_gain(), stream->get_post_pan());
 	}
+}
+
+void SiONDriver::set_denormal_flush_enabled(bool p_enabled) {
+	_denormal_flush_enabled.store(p_enabled, std::memory_order_release);
+}
+
+bool SiONDriver::is_denormal_flush_enabled() const {
+	return _denormal_flush_enabled.load(std::memory_order_acquire);
 }
 
 void SiONDriver::set_metering_enabled(bool p_enabled) {
