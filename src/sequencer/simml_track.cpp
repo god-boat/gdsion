@@ -112,12 +112,12 @@ void SiMMLTrack::set_expression(int p_value) {
 }
 
 double SiMMLTrack::get_output_level() const {
-	int volume = _channel->get_master_volume();
+	double volume = _channel->get_master_volume_linear();
 	if (volume == 0) {
 		return _velocity * _expression * 0.0000152587890625; // 0.5 / (128 * 256);
 	}
 
-	return volume * _velocity * _expression * 2.384185791015625e-7; // 1 / (128 * 128 * 256)
+	return volume * _velocity * _expression * 0.000030517578125; // 1 / (128 * 256)
 }
 
 void SiMMLTrack::set_pitch_bend(int p_value) {
@@ -176,6 +176,14 @@ double SiMMLTrack::get_reported_clip_time_steps() const {
 
 void SiMMLTrack::set_master_volume(int p_value) {
 	_channel->set_master_volume(p_value);
+}
+
+double SiMMLTrack::get_master_volume_linear() const {
+	return _channel->get_master_volume_linear();
+}
+
+void SiMMLTrack::set_master_volume_linear(double p_value) {
+	_channel->set_master_volume_linear(p_value);
 }
 
 int SiMMLTrack::get_effect_send1() const {
