@@ -447,6 +447,12 @@ private:
 		bool has_fm_op_sl = false;
 		bool has_fm_op_mute = false;
 		bool has_fm_op_env_reset = false;
+		bool has_fm_operator_count = false;
+		int fm_operator_count = 1;
+		int fm_algorithm = 0;
+		bool fm_analog_like = false;
+		int fm_feedback = 0;
+		int fm_feedback_connection = 0;
 		// Generic indexed-target axis for sub-channel updates: the FM operator
 		// index for fm_op updates, the sampler table slot (pad note) for sampler
 		// data updates. -1 means no indexed target was addressed.
@@ -967,6 +973,7 @@ public:
 	void mailbox_set_sampler_pan(int p_track_id, int p_target_index, int p_pan, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_sampler_gain_db(int p_track_id, int p_target_index, int p_db, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// FM operator params (by operator index)
+	void mailbox_set_fm_operator_count(int p_track_id, int p_operator_count, int p_algorithm, bool p_analog_like, int p_feedback, int p_feedback_connection, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_fm_op_multiple(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_fm_op_fine_multiple(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
