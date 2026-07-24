@@ -11,6 +11,7 @@
 void SiMMLEnvelopeTable::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("parse_mml", "table_numbers", "postfix", "max_index"), &SiMMLEnvelopeTable::parse_mml, DEFVAL(""), DEFVAL(65536));
 	ClassDB::bind_method(D_METHOD("from_array", "table", "loop_point"), &SiMMLEnvelopeTable::from_array, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("get_length"), &SiMMLEnvelopeTable::get_length);
 }
 
 void SiMMLEnvelopeTable::from_array(const PackedInt32Array &p_table, int p_loop_point) {
@@ -56,6 +57,10 @@ SinglyLinkedList<int>::Element *SiMMLEnvelopeTable::get_tail() const {
 	}
 
 	return _data->get_back();
+}
+
+int SiMMLEnvelopeTable::get_length() const {
+	return _data ? _data->size() : 0;
 }
 
 void SiMMLEnvelopeTable::parse_mml(String p_table_numbers, String p_postfix, int p_max_index) {

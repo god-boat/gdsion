@@ -47,6 +47,18 @@ void SiMMLSequencer::set_effective_bpm(double p_value) {
 	set_bpm(p_value);
 }
 
+double SiMMLSequencer::_resolve_track_envelope_bpm(SiMMLTrack *p_track) const {
+	Ref<BeatsPerMinute> track_bpm = p_track->get_bpm_settings();
+	if (track_bpm.is_valid()) {
+		return track_bpm->get_bpm();
+	}
+	return get_effective_bpm();
+}
+
+void SiMMLSequencer::_sync_track_envelope_bpm(SiMMLTrack *p_track) const {
+	p_track->set_envelope_bpm(_resolve_track_envelope_bpm(p_track));
+}
+
 // Tracks.
 
 void SiMMLSequencer::_free_all_tracks() {
@@ -63,6 +75,7 @@ void SiMMLSequencer::reset_all_tracks() {
 		track->set_quantize_ratio((double)_parser_settings->default_quant_ratio / _parser_settings->max_quant_ratio);
 		track->set_quantize_count(calculate_sample_count(_parser_settings->default_quant_count));
 		track->get_channel()->set_master_volume(_parser_settings->default_fine_volume);
+		_sync_track_envelope_bpm(track);
 	}
 
 	_processed_sample_count = 0;
@@ -74,6 +87,7 @@ void SiMMLSequencer::_initialize_track(SiMMLTrack *p_track, int p_internal_track
 	p_track->initialize(Ref<SiMMLData>(), nullptr, 240, (p_internal_track_id >= 0 ? p_internal_track_id : 0), _callback_event_note_on, _callback_event_note_off, p_disposable);
 	p_track->reset(_global_buffer_index);
 	p_track->get_channel()->set_master_volume(_parser_settings->default_fine_volume);
+	_sync_track_envelope_bpm(p_track);
 }
 
 SiMMLTrack *SiMMLSequencer::_find_lowest_priority_track() {
@@ -364,6 +378,7 @@ void SiMMLSequencer::_on_table_parse(MMLEvent *p_prev, String p_table) {
 
 void SiMMLSequencer::_on_tempo_changed(double p_tempo_ratio) {
 	for (SiMMLTrack *track : _tracks) {
+		_sync_track_envelope_bpm(track);
 		if (track->get_bpm_settings().is_null()) {
 			track->get_executor()->on_tempo_changed(p_tempo_ratio);
 		}

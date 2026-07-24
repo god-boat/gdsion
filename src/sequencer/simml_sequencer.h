@@ -49,6 +49,8 @@ class SiMMLSequencer : public MMLSequencer {
 	void _free_all_tracks();
 	void _initialize_track(SiMMLTrack *p_track, int p_internal_track_id, bool p_disposable);
 	SiMMLTrack *_find_lowest_priority_track();
+	double _resolve_track_envelope_bpm(SiMMLTrack *p_track) const;
+	void _sync_track_envelope_bpm(SiMMLTrack *p_track) const;
 
 	// Compilation and processing.
 

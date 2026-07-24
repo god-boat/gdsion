@@ -7,6 +7,7 @@
 #include "simml_track.h"
 
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/core/math.hpp>
 #include "sion_enums.h"
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/channels/siopm_channel_manager.h"
@@ -281,6 +282,20 @@ void SiMMLTrack::set_portament(int p_frame) {
 void SiMMLTrack::set_envelope_fps(int p_fps) {
 	int fps = MAX(p_fps, 1);
 	_envelope_interval = MAX(1, SiOPMRefTable::get_instance()->sampling_rate / fps);
+	_refresh_envelope_clock_counters(0);
+	_refresh_envelope_clock_counters(1);
+}
+
+void SiMMLTrack::set_envelope_bpm(double p_bpm) {
+	if (p_bpm <= 0.0) {
+		return;
+	}
+	if (_envelope_bpm == p_bpm) {
+		return;
+	}
+	_envelope_bpm = p_bpm;
+	_refresh_envelope_clock_counters(0);
+	_refresh_envelope_clock_counters(1);
 }
 
 void SiMMLTrack::set_release_sweep(int p_sweep) {
@@ -335,59 +350,177 @@ void SiMMLTrack::set_modulation_envelope(bool p_is_pitch_mod, int p_depth, int p
 	}
 }
 
-void SiMMLTrack::set_tone_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step) {
+void SiMMLTrack::_store_envelope_clock(EnvelopeClockSetting *p_settings, int p_phase, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode, int p_time_value) {
+	EnvelopeClockSetting &setting = p_settings[p_phase];
+	setting.step = MAX(1, p_step);
+	setting.time_mode = p_time_mode;
+	setting.time_value = p_time_value;
+	setting.table_length = p_table.is_valid() ? p_table->get_length() : 0;
+}
+
+int SiMMLTrack::_resolve_envelope_counter(const EnvelopeClockSetting &p_setting) const {
+	double residue = 0.0;
+	return _next_envelope_counter(p_setting, &residue);
+}
+
+int SiMMLTrack::_next_envelope_counter(const EnvelopeClockSetting &p_setting, double *r_residue) const {
+	if (p_setting.time_mode != ENVELOPE_TIME_SYNCED || p_setting.table_length <= 0 || _envelope_interval <= 0) {
+		return MAX(1, p_setting.step);
+	}
+
+	int window_length = p_setting.table_length;
+
+	double beat_multiplier = 1.0;
+	switch (p_setting.time_value) {
+		case ENVELOPE_BEAT_1_64:
+			beat_multiplier = 0.015625;
+			break;
+		case ENVELOPE_BEAT_1_32:
+			beat_multiplier = 0.03125;
+			break;
+		case ENVELOPE_BEAT_1_16:
+			beat_multiplier = 0.0625;
+			break;
+		case ENVELOPE_BEAT_1_8:
+			beat_multiplier = 0.125;
+			break;
+		case ENVELOPE_BEAT_1_4:
+			beat_multiplier = 0.25;
+			break;
+		case ENVELOPE_BEAT_1_2:
+			beat_multiplier = 0.5;
+			break;
+		case ENVELOPE_BEAT_1_BEAT:
+			beat_multiplier = 1.0;
+			break;
+		case ENVELOPE_BEAT_1_5_BEATS:
+			beat_multiplier = 1.5;
+			break;
+		case ENVELOPE_BEAT_2_BEATS:
+			beat_multiplier = 2.0;
+			break;
+		case ENVELOPE_BEAT_4_BEATS:
+			beat_multiplier = 4.0;
+			break;
+		case ENVELOPE_BEAT_8_BEATS:
+			beat_multiplier = 8.0;
+			break;
+		default:
+			beat_multiplier = 1.0;
+			break;
+	}
+
+	double samples_per_quarter = (double)SiOPMRefTable::get_instance()->sampling_rate * 60.0 / _envelope_bpm;
+	double samples_per_window = samples_per_quarter * beat_multiplier;
+	double counter_length = samples_per_window / (double)(window_length * _envelope_interval);
+	if (counter_length <= 1.0) {
+		*r_residue = 0.0;
+		return 1;
+	}
+
+	double adjusted_counter = counter_length + *r_residue;
+	int counter = (int)Math::round(adjusted_counter);
+	*r_residue = adjusted_counter - (double)counter;
+	return MAX(1, counter);
+}
+
+void SiMMLTrack::_advance_envelope_runtime_clock(EnvelopeRuntimeClock &r_clock, const EnvelopeClockSetting &p_setting) {
+	r_clock.max_counter = _next_envelope_counter(p_setting, &r_clock.residue);
+	r_clock.counter = r_clock.max_counter;
+}
+
+void SiMMLTrack::_restart_envelope_runtime_clock(EnvelopeRuntimeClock &r_clock, const EnvelopeClockSetting &p_setting) {
+	r_clock.residue = 0.0;
+	_advance_envelope_runtime_clock(r_clock, p_setting);
+}
+
+void SiMMLTrack::_refresh_envelope_clock_counter(int p_phase, EnvelopeClockSetting *p_settings, int *p_counters, EnvelopeRuntimeClock &r_clock) {
+	double next_residue = 0.0;
+	int old_max = (_active_envelope_phase == p_phase) ? r_clock.max_counter : p_counters[p_phase];
+	int next_max = _next_envelope_counter(p_settings[p_phase], &next_residue);
+	p_counters[p_phase] = next_max;
+
+	if (_active_envelope_phase != p_phase) {
+		return;
+	}
+
+	r_clock.residue = next_residue;
+	r_clock.max_counter = next_max;
+	if (old_max <= 0 || r_clock.counter <= 0) {
+		r_clock.counter = next_max;
+		return;
+	}
+
+	double ratio = (double)r_clock.counter / (double)old_max;
+	r_clock.counter = MAX(1, (int)Math::round(ratio * next_max));
+}
+
+void SiMMLTrack::_refresh_envelope_clock_counters(int p_phase) {
+	_refresh_envelope_clock_counter(p_phase, _setting_clock_exp, _setting_counter_exp, _runtime_clock_exp);
+	_refresh_envelope_clock_counter(p_phase, _setting_clock_voice, _setting_counter_voice, _runtime_clock_voice);
+	_refresh_envelope_clock_counter(p_phase, _setting_clock_note, _setting_counter_note, _runtime_clock_note);
+	_refresh_envelope_clock_counter(p_phase, _setting_clock_pitch, _setting_counter_pitch, _runtime_clock_pitch);
+	_refresh_envelope_clock_counter(p_phase, _setting_clock_filter, _setting_counter_filter, _runtime_clock_filter);
+}
+
+void SiMMLTrack::set_tone_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode, int p_time_value) {
+	_store_envelope_clock(_setting_clock_voice, p_note_on, p_table, p_step, p_time_mode, p_time_value);
 	if (p_table.is_null() || p_step == 0) {
 		_setting_envelope_voice.write[p_note_on] = nullptr;
 		_disable_envelope_mode(p_note_on);
 	} else {
 		_setting_envelope_voice.write[p_note_on] = p_table->get_head();
-		_setting_counter_voice[p_note_on] = p_step;
+		_setting_counter_voice[p_note_on] = _resolve_envelope_counter(_setting_clock_voice[p_note_on]);
 		_enable_envelope_mode(p_note_on);
 	}
 }
 
-void SiMMLTrack::set_amplitude_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, bool p_offset) {
+void SiMMLTrack::set_amplitude_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, bool p_offset, int p_time_mode, int p_time_value) {
+	_store_envelope_clock(_setting_clock_exp, p_note_on, p_table, p_step, p_time_mode, p_time_value);
 	if (p_table.is_null() || p_step == 0) {
 		_setting_envelope_exp.write[p_note_on] = nullptr;
 		_disable_envelope_mode(p_note_on);
 	} else {
 		_setting_envelope_exp.write[p_note_on] = p_table->get_head();
-		_setting_counter_exp[p_note_on] = p_step;
+		_setting_counter_exp[p_note_on] = _resolve_envelope_counter(_setting_clock_exp[p_note_on]);
 		_setting_exp_offset[p_note_on] = p_offset;
 		_enable_envelope_mode(p_note_on);
 	}
 }
 
-void SiMMLTrack::set_filter_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step) {
+void SiMMLTrack::set_filter_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode, int p_time_value) {
+	_store_envelope_clock(_setting_clock_filter, p_note_on, p_table, p_step, p_time_mode, p_time_value);
 	if (p_table.is_null() || p_step == 0) {
 		_setting_envelope_filter.write[p_note_on] = nullptr;
 		_disable_envelope_mode(p_note_on);
 	} else {
 		_setting_envelope_filter.write[p_note_on] = p_table->get_head();
-		_setting_counter_filter[p_note_on] = p_step;
+		_setting_counter_filter[p_note_on] = _resolve_envelope_counter(_setting_clock_filter[p_note_on]);
 		_enable_envelope_mode(p_note_on);
 	}
 }
 
-void SiMMLTrack::set_pitch_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step) {
+void SiMMLTrack::set_pitch_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode, int p_time_value) {
+	_store_envelope_clock(_setting_clock_pitch, p_note_on, p_table, p_step, p_time_mode, p_time_value);
 	if (p_table.is_null() || p_step == 0) {
 		_setting_envelope_pitch.write[p_note_on] = _envelope_zero_table->get_front();
 		_disable_envelope_mode(p_note_on);
 	} else {
 		_setting_envelope_pitch.write[p_note_on] = p_table->get_head();
-		_setting_counter_pitch[p_note_on] = p_step;
+		_setting_counter_pitch[p_note_on] = _resolve_envelope_counter(_setting_clock_pitch[p_note_on]);
 		_setting_pns_or[p_note_on] = true;
 		_enable_envelope_mode(p_note_on);
 	}
 }
 
-void SiMMLTrack::set_note_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step) {
+void SiMMLTrack::set_note_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode, int p_time_value) {
+	_store_envelope_clock(_setting_clock_note, p_note_on, p_table, p_step, p_time_mode, p_time_value);
 	if (p_table.is_null() || p_step == 0) {
 		_setting_envelope_note.write[p_note_on] = _envelope_zero_table->get_front();
 		_disable_envelope_mode(p_note_on);
 	} else {
 		_setting_envelope_note.write[p_note_on] = p_table->get_head();
-		_setting_counter_note[p_note_on] = p_step;
+		_setting_counter_note[p_note_on] = _resolve_envelope_counter(_setting_clock_note[p_note_on]);
 		_setting_pns_or[p_note_on] = true;
 		_enable_envelope_mode(p_note_on);
 	}
@@ -438,22 +571,22 @@ void SiMMLTrack::_remove_note_envelope_binding(const StringName &p_sink_id) {
 	}
 }
 
-void SiMMLTrack::_set_note_envelope_sink_phase(NoteEnvelopeSink p_sink, int p_phase, const Ref<SiMMLEnvelopeTable> &p_table, int p_step) {
+void SiMMLTrack::_set_note_envelope_sink_phase(NoteEnvelopeSink p_sink, int p_phase, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode, int p_time_value) {
 	switch (p_sink) {
 		case NE_SINK_PITCH:
-			set_pitch_envelope(p_phase, p_table, p_step);
+			set_pitch_envelope(p_phase, p_table, p_step, p_time_mode, p_time_value);
 			break;
 		case NE_SINK_FILTER:
-			set_filter_envelope(p_phase, p_table, p_step);
+			set_filter_envelope(p_phase, p_table, p_step, p_time_mode, p_time_value);
 			break;
 		case NE_SINK_AMPLITUDE:
-			set_amplitude_envelope(p_phase, p_table, p_step, true);
+			set_amplitude_envelope(p_phase, p_table, p_step, true, p_time_mode, p_time_value);
 			break;
 		case NE_SINK_NOTE:
-			set_note_envelope(p_phase, p_table, p_step);
+			set_note_envelope(p_phase, p_table, p_step, p_time_mode, p_time_value);
 			break;
 		case NE_SINK_TONE:
-			set_tone_envelope(p_phase, p_table, p_step);
+			set_tone_envelope(p_phase, p_table, p_step, p_time_mode, p_time_value);
 			break;
 		default:
 			break;
@@ -464,7 +597,7 @@ void SiMMLTrack::_clear_note_envelope_sink_phase(NoteEnvelopeSink p_sink, int p_
 	_set_note_envelope_sink_phase(p_sink, p_phase, Ref<SiMMLEnvelopeTable>(), 0);
 }
 
-void SiMMLTrack::set_note_envelope_binding(int p_note_on, const StringName &p_sink_id, const Ref<SiMMLEnvelopeTable> &p_table, int p_step) {
+void SiMMLTrack::set_note_envelope_binding(int p_note_on, const StringName &p_sink_id, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode, int p_time_value) {
 	int phase = (p_note_on != 0) ? 1 : 0;
 	NoteEnvelopeSink sink = _resolve_note_envelope_sink(p_sink_id);
 	ERR_FAIL_COND_MSG(sink == NE_SINK_NONE, vformat("SiMMLTrack: Invalid note-envelope sink '%s'.", String(p_sink_id)));
@@ -491,7 +624,7 @@ void SiMMLTrack::set_note_envelope_binding(int p_note_on, const StringName &p_si
 
 	binding->sink = sink;
 	binding->table[phase] = p_table; // Strong ref keeps the list-element data alive.
-	_set_note_envelope_sink_phase(sink, phase, p_table, p_step);
+	_set_note_envelope_sink_phase(sink, phase, p_table, p_step, p_time_mode, p_time_value);
 }
 
 void SiMMLTrack::clear_note_envelope_binding(const StringName &p_sink_id) {
@@ -692,29 +825,29 @@ int SiMMLTrack::prepare_buffer(int p_buffer_length) {
 
 void SiMMLTrack::_process_envelope_tick() {
 	// Advance all envelope counters.
-	if (_counter_exp > 0) {
-		_counter_exp--;
+	if (_runtime_clock_exp.counter > 0) {
+		_runtime_clock_exp.counter--;
 	}
-	if (_counter_voice > 0) {
-		_counter_voice--;
+	if (_runtime_clock_voice.counter > 0) {
+		_runtime_clock_voice.counter--;
 	}
-	if (_counter_note > 0) {
-		_counter_note--;
+	if (_runtime_clock_note.counter > 0) {
+		_runtime_clock_note.counter--;
 	}
-	if (_counter_pitch > 0) {
-		_counter_pitch--;
+	if (_runtime_clock_pitch.counter > 0) {
+		_runtime_clock_pitch.counter--;
 	}
-	if (_counter_filter > 0) {
-		_counter_filter--;
+	if (_runtime_clock_filter.counter > 0) {
+		_runtime_clock_filter.counter--;
 	}
 
 	// Update expression.
-	if (_envelope_exp && _counter_exp == 0) {
+	if (_envelope_exp && _runtime_clock_exp.counter == 0) {
 		int expression = CLAMP(_envelope_exp_offset + _envelope_exp->value, 0, 128);
 		_channel->offset_volume(expression, _velocity);
 
 		_envelope_exp = _envelope_exp->next();
-		_counter_exp = _max_counter_exp;
+		_advance_envelope_runtime_clock(_runtime_clock_exp, _setting_clock_exp[_active_envelope_phase]);
 	}
 
 	// Update pitch/note.
@@ -726,15 +859,15 @@ void SiMMLTrack::_process_envelope_tick() {
 		_channel->set_pitch(pitch_env_val + (note_env_val << 6) + (_sweep_pitch >> FIXED_BITS));
 
 		// Advance pitch envelope.
-		if (_counter_pitch == 0 && _envelope_pitch) {
+		if (_runtime_clock_pitch.counter == 0 && _envelope_pitch) {
 			_envelope_pitch = _envelope_pitch->next();
-			_counter_pitch = _max_counter_pitch;
+			_advance_envelope_runtime_clock(_runtime_clock_pitch, _setting_clock_pitch[_active_envelope_phase]);
 		}
 
 		// Advance note envelope.
-		if (_counter_note == 0 && _envelope_note) {
+		if (_runtime_clock_note.counter == 0 && _envelope_note) {
 			_envelope_note = _envelope_note->next();
-			_counter_note = _max_counter_note;
+			_advance_envelope_runtime_clock(_runtime_clock_note, _setting_clock_note[_active_envelope_phase]);
 		}
 
 		// If either envelope reached the end, deactivate pitch-envelope processing to avoid nullptr deref.
@@ -753,19 +886,19 @@ void SiMMLTrack::_process_envelope_tick() {
 	}
 
 	// Update filter.
-	if (_envelope_filter && _counter_filter == 0) {
+	if (_envelope_filter && _runtime_clock_filter.counter == 0) {
 		_channel->offset_filter(_envelope_filter->value);
 
 		_envelope_filter = _envelope_filter->next();
-		_counter_filter = _max_counter_filter;
+		_advance_envelope_runtime_clock(_runtime_clock_filter, _setting_clock_filter[_active_envelope_phase]);
 	}
 
 	// Update tone.
-	if (_envelope_voice && _counter_voice == 0) {
+	if (_envelope_voice && _runtime_clock_voice.counter == 0) {
 		_channel_settings->select_tone(this, _envelope_voice->value);
 
 		_envelope_voice = _envelope_voice->next();
-		_counter_voice = _max_counter_voice;
+		_advance_envelope_runtime_clock(_runtime_clock_voice, _setting_clock_voice[_active_envelope_phase]);
 	}
 
 	// Update modulations.
@@ -1016,8 +1149,10 @@ void SiMMLTrack::_update_process(int p_key_on) {
 	_process_mode = _setting_process_mode[p_key_on];
 
 	if (_process_mode != ProcessMode::ENVELOPE) {
+		_active_envelope_phase = -1;
 		return;
 	}
+	_active_envelope_phase = p_key_on;
 
 	// Set envelope tables.
 	_envelope_exp    = _setting_envelope_exp[p_key_on];
@@ -1027,17 +1162,11 @@ void SiMMLTrack::_update_process(int p_key_on) {
 	_envelope_filter = _setting_envelope_filter[p_key_on];
 
 	// Set envelope counters.
-	_max_counter_exp    = _setting_counter_exp[p_key_on];
-	_max_counter_voice  = _setting_counter_voice[p_key_on];
-	_max_counter_note   = _setting_counter_note[p_key_on];
-	_max_counter_pitch  = _setting_counter_pitch[p_key_on];
-	_max_counter_filter = _setting_counter_filter[p_key_on];
-
-	_counter_exp    = _max_counter_exp;
-	_counter_voice  = _max_counter_voice;
-	_counter_note   = _max_counter_note;
-	_counter_pitch  = _max_counter_pitch;
-	_counter_filter = _max_counter_filter;
+	_restart_envelope_runtime_clock(_runtime_clock_exp, _setting_clock_exp[p_key_on]);
+	_restart_envelope_runtime_clock(_runtime_clock_voice, _setting_clock_voice[p_key_on]);
+	_restart_envelope_runtime_clock(_runtime_clock_note, _setting_clock_note[p_key_on]);
+	_restart_envelope_runtime_clock(_runtime_clock_pitch, _setting_clock_pitch[p_key_on]);
+	_restart_envelope_runtime_clock(_runtime_clock_filter, _setting_clock_filter[p_key_on]);
 
 	// Set modulation envelopes.
 	// The cursor reset matches the original behavior, but maybe it's unnecessary.
@@ -1154,6 +1283,10 @@ void SiMMLTrack::sequence_on(const Ref<SiMMLData> &p_data, MMLSequence *p_sequen
 	_mml_data = p_data;
 	_track_start_delay = p_sample_delay;
 	_track_stop_delay = p_sample_length;
+	Ref<BeatsPerMinute> bpm_settings = get_bpm_settings();
+	if (bpm_settings.is_valid()) {
+		set_envelope_bpm(bpm_settings->get_bpm());
+	}
 
 	_executor->initialize(p_sequence);
 }
@@ -1254,6 +1387,12 @@ void SiMMLTrack::reset(int p_buffer_index) {
 
 	_envelope_pitch_active = false;
 	_envelope_exp_offset = 0;
+	_active_envelope_phase = -1;
+	_runtime_clock_exp = EnvelopeRuntimeClock();
+	_runtime_clock_voice = EnvelopeRuntimeClock();
+	_runtime_clock_note = EnvelopeRuntimeClock();
+	_runtime_clock_pitch = EnvelopeRuntimeClock();
+	_runtime_clock_filter = EnvelopeRuntimeClock();
 	set_envelope_fps(_default_fps);
 
 	_callback_before_note_on = Callable();
@@ -1288,6 +1427,12 @@ void SiMMLTrack::reset(int p_buffer_index) {
 		_setting_counter_note[i]   = 1;
 		_setting_counter_pitch[i]  = 1;
 		_setting_counter_filter[i] = 1;
+
+		_setting_clock_exp[i] = EnvelopeClockSetting();
+		_setting_clock_voice[i] = EnvelopeClockSetting();
+		_setting_clock_note[i] = EnvelopeClockSetting();
+		_setting_clock_pitch[i] = EnvelopeClockSetting();
+		_setting_clock_filter[i] = EnvelopeClockSetting();
 
 		_setting_sweep_step[i] = 0;
 		_setting_sweep_end[i]  = 0;
@@ -1345,16 +1490,17 @@ void SiMMLTrack::_bind_methods() {
 	// Envelope and modulation controls exposed to GDScript
 	ClassDB::bind_method(D_METHOD("set_portament", "frame"), &SiMMLTrack::set_portament);
 	ClassDB::bind_method(D_METHOD("set_envelope_fps", "fps"), &SiMMLTrack::set_envelope_fps);
+	ClassDB::bind_method(D_METHOD("set_envelope_bpm", "bpm"), &SiMMLTrack::set_envelope_bpm);
 	ClassDB::bind_method(D_METHOD("set_release_sweep", "sweep"), &SiMMLTrack::set_release_sweep);
 	ClassDB::bind_method(D_METHOD("set_modulation_envelope", "is_pitch_mod", "depth", "end_depth", "delay", "term"), &SiMMLTrack::set_modulation_envelope);
-	ClassDB::bind_method(D_METHOD("set_tone_envelope", "note_on", "table", "step"), &SiMMLTrack::set_tone_envelope);
-	ClassDB::bind_method(D_METHOD("set_amplitude_envelope", "note_on", "table", "step", "offset"), &SiMMLTrack::set_amplitude_envelope, DEFVAL(false));
-	ClassDB::bind_method(D_METHOD("set_filter_envelope", "note_on", "table", "step"), &SiMMLTrack::set_filter_envelope);
-	ClassDB::bind_method(D_METHOD("set_pitch_envelope", "note_on", "table", "step"), &SiMMLTrack::set_pitch_envelope);
-	ClassDB::bind_method(D_METHOD("set_note_envelope", "note_on", "table", "step"), &SiMMLTrack::set_note_envelope);
+	ClassDB::bind_method(D_METHOD("set_tone_envelope", "note_on", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_tone_envelope, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
+	ClassDB::bind_method(D_METHOD("set_amplitude_envelope", "note_on", "table", "step", "offset", "time_mode", "time_value"), &SiMMLTrack::set_amplitude_envelope, DEFVAL(false), DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
+	ClassDB::bind_method(D_METHOD("set_filter_envelope", "note_on", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_filter_envelope, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
+	ClassDB::bind_method(D_METHOD("set_pitch_envelope", "note_on", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_pitch_envelope, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
+	ClassDB::bind_method(D_METHOD("set_note_envelope", "note_on", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_note_envelope, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
 
 	// Generic note-envelope binding layer.
-	ClassDB::bind_method(D_METHOD("set_note_envelope_binding", "note_on", "sink_id", "table", "step"), &SiMMLTrack::set_note_envelope_binding);
+	ClassDB::bind_method(D_METHOD("set_note_envelope_binding", "note_on", "sink_id", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_note_envelope_binding, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
 	ClassDB::bind_method(D_METHOD("clear_note_envelope_binding", "sink_id"), &SiMMLTrack::clear_note_envelope_binding);
 	ClassDB::bind_method(D_METHOD("clear_note_envelope_bindings"), &SiMMLTrack::clear_note_envelope_bindings);
 

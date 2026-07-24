@@ -29,6 +29,7 @@ public:
 
 	SinglyLinkedList<int>::Element *get_head() const;
 	SinglyLinkedList<int>::Element *get_tail() const;
+	int get_length() const;
 
 	//
 

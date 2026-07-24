@@ -55,6 +55,25 @@ public:
 		EVENT_BOTH = EVENT_FRAME | EVENT_STREAM,
 	};
 
+	enum EnvelopeTimeMode {
+		ENVELOPE_TIME_FREE = 0,
+		ENVELOPE_TIME_SYNCED = 1,
+	};
+
+	enum EnvelopeBeatValue {
+		ENVELOPE_BEAT_1_64 = 0,
+		ENVELOPE_BEAT_1_32 = 1,
+		ENVELOPE_BEAT_1_16 = 2,
+		ENVELOPE_BEAT_1_8 = 3,
+		ENVELOPE_BEAT_1_4 = 4,
+		ENVELOPE_BEAT_1_2 = 5,
+		ENVELOPE_BEAT_1_BEAT = 6,
+		ENVELOPE_BEAT_1_5_BEATS = 7,
+		ENVELOPE_BEAT_2_BEATS = 8,
+		ENVELOPE_BEAT_4_BEATS = 9,
+		ENVELOPE_BEAT_8_BEATS = 10,
+	};
+
 private:
 
 	static const int SWEEP_FINESS = 128;
@@ -154,11 +173,32 @@ private:
 	int _setting_counter_pitch[2] = {};
 	int _setting_counter_filter[2] = {};
 
+	struct EnvelopeClockSetting {
+		int step = 1;
+		int time_mode = ENVELOPE_TIME_FREE;
+		int time_value = ENVELOPE_BEAT_1_BEAT;
+		int table_length = 0;
+	};
+
+	struct EnvelopeRuntimeClock {
+		int counter = 0;
+		int max_counter = 0;
+		double residue = 0.0;
+	};
+
+	EnvelopeClockSetting _setting_clock_exp[2];
+	EnvelopeClockSetting _setting_clock_voice[2];
+	EnvelopeClockSetting _setting_clock_note[2];
+	EnvelopeClockSetting _setting_clock_pitch[2];
+	EnvelopeClockSetting _setting_clock_filter[2];
+
 	Vector<SinglyLinkedList<int> *> _table_envelope_mod_amp;
 	Vector<SinglyLinkedList<int> *> _table_envelope_mod_pitch;
 	int _setting_sweep_step[2] = {};
 	int _setting_sweep_end[2] = {};
 	int _envelope_interval = 0;
+	double _envelope_bpm = 120.0;
+	int _active_envelope_phase = -1;
 
 	// Envelopes.
 
@@ -169,16 +209,11 @@ private:
 	SinglyLinkedList<int>::Element *_envelope_pitch = nullptr;
 	SinglyLinkedList<int>::Element *_envelope_filter = nullptr;
 
-	int _counter_exp = 0;
-	int _max_counter_exp = 0;
-	int _counter_voice = 0;
-	int _max_counter_voice = 0;
-	int _counter_note = 0;
-	int _max_counter_note = 0;
-	int _counter_pitch = 0;
-	int _max_counter_pitch = 0;
-	int _counter_filter = 0;
-	int _max_counter_filter = 0;
+	EnvelopeRuntimeClock _runtime_clock_exp;
+	EnvelopeRuntimeClock _runtime_clock_voice;
+	EnvelopeRuntimeClock _runtime_clock_note;
+	EnvelopeRuntimeClock _runtime_clock_pitch;
+	EnvelopeRuntimeClock _runtime_clock_filter;
 
 	SinglyLinkedList<int> *_envelope_mod_amp = nullptr;
 	SinglyLinkedList<int> *_envelope_mod_pitch = nullptr;
@@ -217,8 +252,16 @@ private:
 	static NoteEnvelopeSink _resolve_note_envelope_sink(const StringName &p_sink_id);
 	NoteEnvelopeBinding *_find_note_envelope_binding(const StringName &p_sink_id);
 	void _remove_note_envelope_binding(const StringName &p_sink_id);
-	void _set_note_envelope_sink_phase(NoteEnvelopeSink p_sink, int p_phase, const Ref<SiMMLEnvelopeTable> &p_table, int p_step);
+	void _set_note_envelope_sink_phase(NoteEnvelopeSink p_sink, int p_phase, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
 	void _clear_note_envelope_sink_phase(NoteEnvelopeSink p_sink, int p_phase);
+
+	void _store_envelope_clock(EnvelopeClockSetting *p_settings, int p_phase, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode, int p_time_value);
+	int _resolve_envelope_counter(const EnvelopeClockSetting &p_setting) const;
+	int _next_envelope_counter(const EnvelopeClockSetting &p_setting, double *r_residue) const;
+	void _advance_envelope_runtime_clock(EnvelopeRuntimeClock &r_clock, const EnvelopeClockSetting &p_setting);
+	void _restart_envelope_runtime_clock(EnvelopeRuntimeClock &r_clock, const EnvelopeClockSetting &p_setting);
+	void _refresh_envelope_clock_counter(int p_phase, EnvelopeClockSetting *p_settings, int *p_counters, EnvelopeRuntimeClock &r_clock);
+	void _refresh_envelope_clock_counters(int p_phase);
 
 	SinglyLinkedList<int> *_make_modulation_table(int p_depth, int p_end_depth, int p_delay, int p_term);
 
@@ -417,20 +460,21 @@ public:
 	void set_portament(int p_frame);
 
 	void set_envelope_fps(int p_fps);
+	void set_envelope_bpm(double p_bpm);
 	void set_release_sweep(int p_sweep);
 	void set_modulation_envelope(bool p_is_pitch_mod, int p_depth, int p_end_depth, int p_delay, int p_term);
-	void set_tone_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step);
-	void set_amplitude_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, bool p_offset = false);
-	void set_filter_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step);
-	void set_pitch_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step);
-	void set_note_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step);
+	void set_tone_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
+	void set_amplitude_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, bool p_offset = false, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
+	void set_filter_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
+	void set_pitch_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
+	void set_note_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
 
 	// Generic note-envelope binding layer.
 	//
 	// Bind a compiled note-envelope table to a native sink id. p_note_on is 1
 	// for the note-on phase and 0 for the note-off phase. A null table or
 	// step == 0 clears that phase.
-	void set_note_envelope_binding(int p_note_on, const StringName &p_sink_id, const Ref<SiMMLEnvelopeTable> &p_table, int p_step);
+	void set_note_envelope_binding(int p_note_on, const StringName &p_sink_id, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
 	// Clears both phases of a single native sink (generic unbind for
 	// route removal / live-slot retarget).
 	void clear_note_envelope_binding(const StringName &p_sink_id);
