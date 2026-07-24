@@ -763,6 +763,10 @@ void SiOPMChannelFM::set_detune1(int p_value) {
 	_active_operator->set_detune1(p_value);
 }
 
+void SiOPMChannelFM::set_operator_self_feedback(int p_value) {
+	_active_operator->set_self_feedback(p_value);
+}
+
 void SiOPMChannelFM::set_operator_super_count(int p_value) {
 	_active_operator->set_super_wave(p_value, _active_operator->get_super_spread());
 }
@@ -1313,7 +1317,7 @@ void SiOPMChannelFM::_process_pcm_lfo_off(int p_length) {
 		// Update PG.
 		{
 			ope0->tick_pulse_generator();
-			int t = (ope0->get_phase() + (in_pipe->value << _input_level)) >> ope0->get_wave_fixed_bits();
+			int t = static_cast<int>(ope0->get_phase_with_modulation(in_pipe->value, _input_level) >> ope0->get_wave_fixed_bits());
 
 			if (t >= ope0->get_pcm_end_point()) {
 				if (ope0->get_pcm_loop_point() == -1) {
@@ -1339,6 +1343,7 @@ void SiOPMChannelFM::_process_pcm_lfo_off(int p_length) {
 			log_idx += ope0->get_eg_output();
 			output = _safe_log_lookup(_table, log_idx);
 
+			ope0->set_feedback_output(output);
 			ope0->get_feed_pipe()->get()->value = output;
 		}
 
@@ -1375,7 +1380,7 @@ void SiOPMChannelFM::_process_pcm_lfo_on(int p_length) {
 		// Update PG.
 		{
 			ope0->tick_pulse_generator();
-			int t = (ope0->get_phase() + (in_pipe->value<<_input_level)) >> ope0->get_wave_fixed_bits();
+			int t = static_cast<int>(ope0->get_phase_with_modulation(in_pipe->value, _input_level) >> ope0->get_wave_fixed_bits());
 
 			if (t >= ope0->get_pcm_end_point()) {
 				if (ope0->get_pcm_loop_point() == -1) {
@@ -1401,6 +1406,7 @@ void SiOPMChannelFM::_process_pcm_lfo_on(int p_length) {
 			log_idx += ope0->get_eg_output() + (_amplitude_modulation_output_level>>ope0->get_amplitude_modulation_shift());
 			output = _safe_log_lookup(_table, log_idx);
 
+			ope0->set_feedback_output(output);
 			ope0->get_feed_pipe()->get()->value = output;
 		}
 
@@ -1495,20 +1501,22 @@ void SiOPMChannelFM::_process_ring(int p_length) {
 			// Operator 0.
 			{
 				ope0->tick_pulse_generator();
-				int t = ((ope0->get_phase() + (in_pipe->value << _input_level)) & SiOPMRefTable::PHASE_FILTER) >> ope0->get_wave_fixed_bits();
+				int t = ope0->get_phase_index_with_modulation(in_pipe->value, _input_level);
 				log_idx = ope0->get_wave_value_fast(t);
 			}
 
 			// Operator 1 (w/ operator0's envelope and AMS).
 			{
 				ope1->tick_pulse_generator();
-				int t = (ope1->get_phase() & SiOPMRefTable::PHASE_FILTER) >> ope1->get_wave_fixed_bits();
+				int t = ope1->get_phase_index_with_modulation(0, 0);
 
 				log_idx += ope1->get_wave_value_fast(t);
 				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
 				output = _safe_log_lookup(_table, log_idx);
 			}
 
+			ope0->set_feedback_output(output);
+			ope1->set_feedback_output(output);
 			ope0->get_feed_pipe()->get()->value = output;
 		}
 
@@ -1548,7 +1556,7 @@ void SiOPMChannelFM::_process_sync(int p_length) {
 		{
 			// Operator 0.
 			{
-				ope0->tick_pulse_generator(in_pipe->value << _input_level);
+				ope0->tick_pulse_generator(static_cast<int>(ope0->get_phase_modulation(in_pipe->value, _input_level)));
 				if (ope0->get_phase() & SiOPMRefTable::PHASE_MAX) {
 					ope1->set_phase(ope1->get_key_on_phase_raw());
 				}
@@ -1559,13 +1567,15 @@ void SiOPMChannelFM::_process_sync(int p_length) {
 			// Operator 1 (w/ operator0's envelope and AMS).
 			{
 				ope1->tick_pulse_generator();
-				int t = (ope1->get_phase() & SiOPMRefTable::PHASE_FILTER) >> ope1->get_wave_fixed_bits();
+				int t = ope1->get_phase_index_with_modulation(0, 0);
 
 				int log_idx = ope1->get_wave_value_fast(t);
 				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
 				output = _safe_log_lookup(_table, log_idx);
 			}
 
+			ope0->set_feedback_output(output);
+			ope1->set_feedback_output(output);
 			ope0->get_feed_pipe()->get()->value = output;
 		}
 

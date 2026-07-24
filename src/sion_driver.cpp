@@ -1534,6 +1534,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_fine_multiple", "track_id", "op_index", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_op_fine_multiple, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_detune1", "track_id", "op_index", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_op_detune1, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_detune2", "track_id", "op_index", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_op_detune2, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_self_feedback", "track_id", "op_index", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_op_self_feedback, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_super_count", "track_id", "op_index", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_op_super_count, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_super_spread", "track_id", "op_index", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_op_super_spread, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_op_super_stereo_spread", "track_id", "op_index", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_op_super_stereo_spread, DEFVAL(-1), DEFVAL(-1));
@@ -2637,6 +2638,17 @@ void SiONDriver::mailbox_set_fm_op_detune2(int p_track_id, int p_op_index, int p
     u.entity_scope_id = p_entity_scope_id;
     u.slot_scope_id = p_slot_scope_id;
     u.has_fm_op_dt2 = true;
+    u.target_index = p_op_index;
+    u.fm_value = p_value;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_fm_op_self_feedback(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.entity_scope_id = p_entity_scope_id;
+    u.slot_scope_id = p_slot_scope_id;
+    u.has_fm_op_self_feedback = true;
     u.target_index = p_op_index;
     u.fm_value = p_value;
     _mb_try_push(u);
@@ -3749,6 +3761,10 @@ void SiONDriver::_drain_track_mailbox() {
                     fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
                     // Interpret fm_value as PTSS detune index (engine uses ptss_detune)
                     fm->set_detune(u.fm_value);
+                }
+                if (u.has_fm_op_self_feedback) {
+                    fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));
+                    fm->set_operator_self_feedback(u.fm_value);
                 }
                 if (u.has_fm_op_super_count) {
                     fm->set_active_operator_index(CLAMP(u.target_index, 0, 3));

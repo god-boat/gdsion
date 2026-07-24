@@ -51,6 +51,7 @@ class TranslatorUtil {
 		int detune2 = 1;
 		int phase = 1;
 		int fixed_pitch = 1;
+		int self_feedback = 1;
 	};
 
 	static String _format_mml_comment(const String &p_comment, const String &p_line_end);

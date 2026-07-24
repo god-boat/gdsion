@@ -110,7 +110,7 @@ void TranslatorUtil::_set_siopm_params_by_array(const Ref<SiOPMChannelParams> &p
 
 	// #@ (SiOPM) signature:
 	// AL[0-15], FB[0-7], FC[0-3],
-	// (WS[0-511], AR[0-63], DR[0-63], SR[0-63], RR[0-63], SL[0-15], TL[0-127], KR[0-3], KL[0-3], ML[0-15], D1[0-7], D2[], AM[0-3], PH[-1-255], FN[0-127]) x operator_count
+	// (WS[0-511], AR[0-63], DR[0-63], SR[0-63], RR[0-63], SL[0-15], TL[0-127], KR[0-3], KL[0-3], ML[0-15], D1[0-7], D2[], AM[0-3], PH[-1-255], FN[0-127], OFB[0-127]) x operator_count
 
 	p_params->algorithm           = _sanitize_param_loop(p_data[0], 0, 15, "AL");
 	p_params->feedback            = _sanitize_param_loop(p_data[1], 0, 7,  "FB");
@@ -135,6 +135,7 @@ void TranslatorUtil::_set_siopm_params_by_array(const Ref<SiOPMChannelParams> &p
 		op_params->amplitude_modulation_shift = _sanitize_param_loop(p_data[data_index++], 0, 3,    "D2");        // 13
 		op_params->initial_phase              = _sanitize_param_loop(p_data[data_index++], -1, 255, "PH");        // 14
 		op_params->fixed_pitch                = (_sanitize_param_loop(p_data[data_index++], 0, 127, "FN")) << 6;  // 15
+		op_params->self_feedback              = _sanitize_param_loop(p_data[data_index++], 0, 127, "OFB");        // 16
 	}
 }
 
@@ -379,7 +380,7 @@ void TranslatorUtil::_set_al_params_by_array(const Ref<SiOPMChannelParams> &p_pa
 }
 
 void TranslatorUtil::parse_siopm_params(const Ref<SiOPMChannelParams> &p_params, const String &p_data_string) {
-	return _set_siopm_params_by_array(p_params, _split_data_string(p_params, p_data_string, 3, 15, "#@"));
+	return _set_siopm_params_by_array(p_params, _split_data_string(p_params, p_data_string, 3, 16, "#@"));
 }
 
 void TranslatorUtil::parse_opl_params(const Ref<SiOPMChannelParams> &p_params, const String &p_data_string) {
@@ -454,7 +455,7 @@ void TranslatorUtil::parse_ks_params(const Ref<SiOPMChannelParams> &p_params, co
 }
 
 void TranslatorUtil::set_siopm_params(const Ref<SiOPMChannelParams> &p_params, Vector<int> p_data) {
-	_check_operator_count(p_params, p_data.size(), 3, 15, "#@");
+	_check_operator_count(p_params, p_data.size(), 3, 16, "#@");
 	return _set_siopm_params_by_array(p_params, p_data);
 }
 
@@ -583,7 +584,8 @@ Vector<int> TranslatorUtil::get_siopm_params(const Ref<SiOPMChannelParams> &p_pa
 			op_params->detune2,
 			op_params->amplitude_modulation_shift,
 			op_params->initial_phase,
-			op_params->fixed_pitch >> 6
+			op_params->fixed_pitch >> 6,
+			op_params->self_feedback
 		});
 	}
 
@@ -868,6 +870,7 @@ TranslatorUtil::OperatorParamsSizes TranslatorUtil::_get_operator_params_sizes(c
 		MAX_PARAM_SIZE(detune2,     op_params->detune2)
 		MAX_PARAM_SIZE(phase,       op_params->initial_phase)
 		MAX_PARAM_SIZE(fixed_pitch, op_params->fixed_pitch >> 6)
+		MAX_PARAM_SIZE(self_feedback, op_params->self_feedback)
 	}
 
 #undef MAX_PARAM_SIZE
@@ -916,7 +919,8 @@ String TranslatorUtil::get_siopm_params_as_mml(const Ref<SiOPMChannelParams> &p_
 		mml += _format_mml_digit(op_params->detune2, sizes.detune2)               + p_separator;
 		mml += _format_mml_digit(op_params->amplitude_modulation_shift)           + p_separator;
 		mml += _format_mml_digit(op_params->initial_phase, sizes.phase)           + p_separator;
-		mml += _format_mml_digit(op_params->fixed_pitch >> 6, sizes.fixed_pitch);
+		mml += _format_mml_digit(op_params->fixed_pitch >> 6, sizes.fixed_pitch)  + p_separator;
+		mml += _format_mml_digit(op_params->self_feedback, sizes.self_feedback);
 	}
 
 	// Close MML string.

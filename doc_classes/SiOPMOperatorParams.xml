@@ -36,6 +36,9 @@
 		<member name="frequency_modulation_level" type="int" setter="set_frequency_modulation_level" getter="get_frequency_modulation_level">
 			Controls the depth of frequency modulation applied to this operator. Valid range is [code]0-7[/code]. A value of [code]5[/code] is the standard FM modulation depth. Higher values increase the modulation intensity.
 		</member>
+		<member name="self_feedback" type="int" setter="set_self_feedback" getter="get_self_feedback">
+			Controls the amount of one-sample-delayed self-feedback applied to this operator. Valid range is [code]0-127[/code]. A value of [code]0[/code] disables self-feedback.
+		</member>
 		<member name="initial_phase" type="int" setter="set_initial_phase" getter="get_initial_phase">
 			Starting phase of the waveform when a note is triggered. Used to control the initial position in the wave cycle. A value of [code]-1[/code] means no phase reset occurs on key-on.
 		</member>

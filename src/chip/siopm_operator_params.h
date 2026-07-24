@@ -86,6 +86,8 @@ private:
 	int ssg_envelope_control = 0;
 	// Frequency modulation level [0,7]. 5 means standard modulation.
 	int frequency_modulation_level = 5;
+	// Self-feedback amount [0,127].
+	int self_feedback = 0;
 	bool envelope_reset_on_attack = false;
 
 	// Super wave parameters.
@@ -148,6 +150,8 @@ public:
 	void set_ssg_envelope_control(int p_value);
 	int get_frequency_modulation_level() const { return frequency_modulation_level; }
 	void set_frequency_modulation_level(int p_value) { frequency_modulation_level = p_value; }
+	int get_self_feedback() const { return self_feedback; }
+	void set_self_feedback(int p_value) { self_feedback = p_value; }
 	bool get_envelope_reset_on_attack() const { return envelope_reset_on_attack; }
 	void set_envelope_reset_on_attack(bool p_reset) { envelope_reset_on_attack = p_reset; }
 

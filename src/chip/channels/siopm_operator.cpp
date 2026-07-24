@@ -306,6 +306,15 @@ void SiOPMOperator::set_fm_level(int p_level) {
 	_fm_shift = (p_level != 0) ? (p_level + 10) : 0;
 }
 
+void SiOPMOperator::_update_self_feedback_gain() {
+	_self_feedback_gain_q15 = (_self_feedback_amount * _self_feedback_amount * 32768) / (127 * 127);
+}
+
+void SiOPMOperator::set_self_feedback(int p_value) {
+	_self_feedback_amount = p_value;
+	_update_self_feedback_gain();
+}
+
 int SiOPMOperator::get_key_fraction() const {
 	return (_pitch_index & 63);
 }
@@ -379,20 +388,24 @@ void SiOPMOperator::_update_super_phase_steps() {
 }
 
 int SiOPMOperator::get_super_output(int p_fm_input, int p_input_level, int p_am_level) {
+	int64_t phase_modulation = _get_phase_modulation(p_fm_input, p_input_level);
+
 	if (_super_count <= 1) {
-		int t = ((_phase + (p_fm_input << p_input_level)) & SiOPMRefTable::PHASE_FILTER) >> _wave_fixed_bits;
+		int t = _wrap_phase_to_wave_index(static_cast<int64_t>(_phase) + phase_modulation);
 		int log_idx = _get_wave_value_fast(t) + _eg_output + p_am_level;
 		if (log_idx < 0) {
 			log_idx = 0;
 		} else if (log_idx > SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1) {
 			log_idx = SiOPMRefTable::LOG_TABLE_SIZE * 3 - 1;
 		}
-		return _table->log_table[log_idx];
+		int output = _table->log_table[log_idx];
+		_previous_output = output;
+		return output;
 	}
 
 	int sum = 0;
 	for (int i = 0; i < _super_count; i++) {
-		int t = ((_super_phases[i] + (p_fm_input << p_input_level)) & SiOPMRefTable::PHASE_FILTER) >> _wave_fixed_bits;
+		int t = _wrap_phase_to_wave_index(static_cast<int64_t>(_super_phases[i]) + phase_modulation);
 		int log_idx = _get_wave_value_fast(t) + _eg_output + p_am_level;
 		if (log_idx < 0) {
 			log_idx = 0;
@@ -404,7 +417,9 @@ int SiOPMOperator::get_super_output(int p_fm_input, int p_input_level, int p_am_
 	// Normalize by sqrt(n) to maintain roughly consistent perceived loudness.
 	// With random phases, RMS power grows as sqrt(n), so this keeps the level
 	// stable while preserving the thickness from additional voices.
-	return (int)(sum * _super_norm_inv);
+	int output = (int)(sum * _super_norm_inv);
+	_previous_output = output;
+	return output;
 }
 
 bool SiOPMOperator::get_super_output_stereo(int p_fm_input, int p_input_level, int p_am_level, int &r_left, int &r_right) {
@@ -419,9 +434,11 @@ bool SiOPMOperator::get_super_output_stereo(int p_fm_input, int p_input_level, i
 
 	double sum_left = 0.0;
 	double sum_right = 0.0;
+	int sum_mono = 0;
+	int64_t phase_modulation = _get_phase_modulation(p_fm_input, p_input_level);
 
 	for (int i = 0; i < _super_count; i++) {
-		int t = ((_super_phases[i] + (p_fm_input << p_input_level)) & SiOPMRefTable::PHASE_FILTER) >> _wave_fixed_bits;
+		int t = _wrap_phase_to_wave_index(static_cast<int64_t>(_super_phases[i]) + phase_modulation);
 		int log_idx = _get_wave_value_fast(t) + _eg_output + p_am_level;
 		if (log_idx < 0) {
 			log_idx = 0;
@@ -434,11 +451,13 @@ bool SiOPMOperator::get_super_output_stereo(int p_fm_input, int p_input_level, i
 		int pan = _super_pan_values[i];
 		sum_left += sample * pan_table[128 - pan];
 		sum_right += sample * pan_table[pan];
+		sum_mono += sample;
 	}
 
 	// Normalize by sqrt(n) to maintain consistent perceived loudness.
 	r_left = (int)(sum_left * _super_norm_inv);
 	r_right = (int)(sum_right * _super_norm_inv);
+	_previous_output = (int)(sum_mono * _super_norm_inv);
 
 	return true; // Stereo output
 }
@@ -571,6 +590,8 @@ void SiOPMOperator::_shift_eg_state(EGState p_state) {
 }
 
 void SiOPMOperator::_reset_note_phases() {
+	_previous_output = 0;
+
 	if (_key_on_phase >= 0) {
 		_phase = _key_on_phase;
 	} else if (_key_on_phase == -1) {
@@ -779,6 +800,7 @@ void SiOPMOperator::set_operator_params(const Ref<SiOPMOperatorParams> &p_params
 
 	_fine_multiple = p_params->get_fine_multiple();
 	_fm_shift = (p_params->get_frequency_modulation_level() & 7) + 10;
+	set_self_feedback(p_params->get_self_feedback());
 	_detune1 = p_params->get_detune1() & 7;
 	_pitch_index_shift = p_params->get_detune2();
 
@@ -827,6 +849,7 @@ void SiOPMOperator::get_operator_params(const Ref<SiOPMOperatorParams> &r_params
 
 	r_params->set_initial_phase(get_key_on_phase());
 	r_params->set_frequency_modulation_level(get_fm_level());
+	r_params->set_self_feedback(get_self_feedback());
 
 	r_params->set_super_count(_super_count);
 	r_params->set_super_spread(_super_spread);
@@ -961,6 +984,7 @@ void SiOPMOperator::initialize() {
 	_in_pipe   = _sound_chip->get_zero_buffer();
 	_base_pipe = _sound_chip->get_zero_buffer();
 	_feed_pipe->get()->value = 0;
+	_previous_output = 0;
 
 	// Reset all parameters.
 	Ref<SiOPMOperatorParams> init_params = _sound_chip->get_init_operator_params();
@@ -1015,6 +1039,7 @@ void SiOPMOperator::reset() {
 	_is_voice_steal_hint = false;
 
 	_phase = 0;
+	_previous_output = 0;
 }
 
 String SiOPMOperator::_to_string() const {
@@ -1035,6 +1060,7 @@ String SiOPMOperator::_to_string() const {
 	params += "detune=(" + itos(get_detune1()) + ", " + itos(get_ptss_detune()) + "), ";
 
 	params += "amp=" + itos(get_amplitude_modulation_shift()) + ", ";
+	params += "ofb=" + itos(_self_feedback_amount) + ", ";
 	params += "phase=" + itos(get_key_on_phase()) + ", ";
 	params += "note=" + String(is_pitch_fixed() ? "yes" : "no") + ", ";
 

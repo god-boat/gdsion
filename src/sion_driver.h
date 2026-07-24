@@ -437,6 +437,7 @@ private:
 		bool has_fm_op_fmul = false;
 		bool has_fm_op_dt1 = false;
 		bool has_fm_op_dt2 = false;
+		bool has_fm_op_self_feedback = false;
 		bool has_fm_op_super_count = false;
 		bool has_fm_op_super_spread = false;
 		bool has_fm_op_super_stereo_spread = false;
@@ -981,6 +982,7 @@ public:
 	void mailbox_set_fm_op_fine_multiple(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_fm_op_detune1(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_fm_op_detune2(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_fm_op_self_feedback(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_fm_op_super_count(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_fm_op_super_spread(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_fm_op_super_stereo_spread(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);

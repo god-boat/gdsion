@@ -358,7 +358,7 @@ void SiONVoice::set_pms_guitar(int p_attack_rate, int p_decay_rate, int p_total_
 	module_type = SiONModuleType::MODULE_KS;
 	channel_num = 1;
 
-	TypedArray<int> param_args = make_typed_array_from_vector<int>({ 1, 0, 0, p_wave_shape, p_attack_rate, p_decay_rate, 0, 63, 15, p_total_level, 0, 0, 1, 0, 0, 0, 0, p_fixed_pitch });
+	TypedArray<int> param_args = make_typed_array_from_vector<int>({ 1, 0, 0, p_wave_shape, p_attack_rate, p_decay_rate, 0, 63, 15, p_total_level, 0, 0, 1, 0, 0, 0, 0, p_fixed_pitch, 0 });
 	set_params(param_args);
 	pms_tension = p_tension;
 	chip_type = SiONChipType::CHIP_PMS_GUITAR;

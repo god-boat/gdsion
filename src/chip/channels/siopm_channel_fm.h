@@ -162,6 +162,7 @@ public:
 	void set_sustain_level(int p_value);
 	void set_multiple(int p_value);
 	void set_detune1(int p_value);
+	void set_operator_self_feedback(int p_value);
 	void set_operator_super_count(int p_value);
 	void set_operator_super_spread(int p_value);
 	void set_operator_super_stereo_spread(int p_value);

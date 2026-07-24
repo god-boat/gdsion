@@ -7,15 +7,17 @@
 #ifndef SIOPM_OPERATOR_H
 #define SIOPM_OPERATOR_H
 
+#include <cstdint>
+
 #include <godot_cpp/classes/object.hpp>
 #include <godot_cpp/templates/vector.hpp>
+#include "chip/siopm_ref_table.h"
 #include "sion_enums.h"
 #include "templates/singly_linked_list.h"
 
 using namespace godot;
 
 class SiOPMOperatorParams;
-class SiOPMRefTable;
 class SiOPMSoundChip;
 class SiOPMWavePCMData;
 class SiOPMWaveTable;
@@ -137,9 +139,28 @@ private:
 	int _pitch_index_shift2 = 0;
 	// Frequency modulation left-shift. 15 for FM, fb+6 for feedback.
 	int _fm_shift = 0;
+	int _self_feedback_amount = 0;
+	int _self_feedback_gain_q15 = 0;
+	int _previous_output = 0;
 
 	void _update_pitch();
 	void _update_phase_step(int p_step);
+	void _update_self_feedback_gain();
+	_FORCE_INLINE_ int64_t _get_external_phase_modulation(int p_fm_input, int p_input_level) const {
+		return static_cast<int64_t>(p_fm_input) * (static_cast<int64_t>(1) << p_input_level);
+	}
+	_FORCE_INLINE_ int64_t _get_self_feedback_phase_modulation() const {
+		if (_self_feedback_gain_q15 == 0) {
+			return 0;
+		}
+		return (((int64_t)_previous_output * _self_feedback_gain_q15) >> 15) * (static_cast<int64_t>(1) << 15);
+	}
+	_FORCE_INLINE_ int64_t _get_phase_modulation(int p_fm_input, int p_input_level) const {
+		return _get_external_phase_modulation(p_fm_input, p_input_level) + _get_self_feedback_phase_modulation();
+	}
+	_FORCE_INLINE_ int _wrap_phase_to_wave_index(int64_t p_phase) const {
+		return static_cast<int>((static_cast<uint64_t>(p_phase) & static_cast<uint64_t>(SiOPMRefTable::PHASE_FILTER)) >> _wave_fixed_bits);
+	}
 
 	// Envelope generator.
 
@@ -309,6 +330,14 @@ public:
 	int get_phase() const { return _phase; }
 	void set_phase(int p_value) { _phase = p_value; }
 	void adjust_phase(int p_diff) { _phase += p_diff; }
+	_FORCE_INLINE_ int64_t get_phase_modulation(int p_fm_input, int p_input_level) const { return _get_phase_modulation(p_fm_input, p_input_level); }
+	_FORCE_INLINE_ int64_t get_phase_with_modulation(int p_fm_input, int p_input_level) const {
+		return static_cast<int64_t>(_phase) + _get_phase_modulation(p_fm_input, p_input_level);
+	}
+	_FORCE_INLINE_ int get_phase_index_with_modulation(int p_fm_input, int p_input_level) const {
+		return _wrap_phase_to_wave_index(get_phase_with_modulation(p_fm_input, p_input_level));
+	}
+	void set_feedback_output(int p_output) { _previous_output = p_output; }
 
 	int get_key_on_phase_raw() const { return _key_on_phase; }
 
@@ -332,6 +361,8 @@ public:
 	// Frequency modulation level. 15 is standard modulation.
 	int get_fm_level() const;
 	void set_fm_level(int p_level);
+	int get_self_feedback() const { return _self_feedback_amount; }
+	void set_self_feedback(int p_value);
 
 	// Key fraction [0-63].
 	int get_key_fraction() const;
