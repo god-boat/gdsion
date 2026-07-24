@@ -1587,6 +1587,7 @@ void SiONDriver::_bind_methods() {
 			"entity_scope_id", "slot_scope_id"),
 			&SiONDriver::mailbox_set_guitar6, DEFVAL(-1), DEFVAL(-1));
 	// Analog-Like (AL)
+	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_connection", "track_id", "connection", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_ch_al_connection, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws1", "track_id", "wave_shape", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_ch_al_ws1, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_ws2", "track_id", "wave_shape", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_ch_al_ws2, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_ch_al_balance", "track_id", "balance", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_ch_al_balance, DEFVAL(-1), DEFVAL(-1));
@@ -2979,6 +2980,16 @@ void SiONDriver::mailbox_set_guitar6(int p_track_id,
 	_mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_ch_al_connection(int p_track_id, int p_connection, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+	_TrackUpdate u;
+	u.track_id = p_track_id;
+	u.entity_scope_id = p_entity_scope_id;
+	u.slot_scope_id = p_slot_scope_id;
+	u.has_al_connection = true;
+	u.al_connection = p_connection;
+	_mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -3780,6 +3791,9 @@ void SiONDriver::_drain_track_mailbox() {
                     fm->set_envelope_reset_on_attack(u.fm_value != 0);
                 }
                 // Apply Analog-Like live params if present. These map to AL operator/channel fields.
+                if (u.has_al_connection) {
+                    fm->set_algorithm(2, true, u.al_connection);
+                }
                 if (u.has_al_ws1) {
                     fm->set_active_operator_index(0);
                     Ref<SiOPMWaveTable> wt = SiOPMRefTable::get_instance()->get_wave_table(u.al_ws1);
