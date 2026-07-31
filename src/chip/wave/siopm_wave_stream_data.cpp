@@ -172,7 +172,7 @@ bool SiOPMWaveStreamData::configure_live(int p_source_sample_rate, int p_channel
 	_seek_target.store(0, std::memory_order_relaxed);
 	_in_sample.store(0, std::memory_order_relaxed);
 	_out_sample.store(0, std::memory_order_relaxed);
-	_loop_start_sample.store(0, std::memory_order_relaxed);
+	_loop_start_sample.store(-1, std::memory_order_relaxed);
 	_loop_end_sample.store(0, std::memory_order_relaxed);
 	_looping.store(false, std::memory_order_relaxed);
 
@@ -295,7 +295,7 @@ void SiOPMWaveStreamData::set_looping(bool p_looping) {
 }
 
 void SiOPMWaveStreamData::set_loop_region(int64_t p_start_sample, int64_t p_end_sample) {
-	_loop_start_sample.store(MAX(p_start_sample, (int64_t)0), std::memory_order_relaxed);
+	_loop_start_sample.store(MAX(p_start_sample, (int64_t)-1), std::memory_order_relaxed);
 	_loop_end_sample.store(MAX(p_end_sample, (int64_t)0), std::memory_order_relaxed);
 }
 
@@ -535,8 +535,8 @@ int SiOPMWaveStreamData::_produce_frames(double *r_out, int p_max_frames) {
 	int64_t loop_start_raw = _loop_start_sample.load(std::memory_order_relaxed);
 	int64_t loop_end_raw = _loop_end_sample.load(std::memory_order_relaxed);
 	int64_t in_samp = _in_sample.load(std::memory_order_relaxed);
-	// Resolve defaults: 0 means "use trim region".
-	int64_t effective_loop_start = (looping && loop_start_raw > 0) ? loop_start_raw : in_samp;
+	// Resolve defaults: -1 means "use trim start"; sample zero is a valid loop start.
+	int64_t effective_loop_start = (looping && loop_start_raw >= 0) ? loop_start_raw : in_samp;
 	int64_t effective_loop_end = (looping && loop_end_raw > 0) ? loop_end_raw : effective_end;
 	effective_loop_start = CLAMP(effective_loop_start, (int64_t)0, effective_end);
 	effective_loop_end = CLAMP(effective_loop_end, effective_loop_start, effective_end);

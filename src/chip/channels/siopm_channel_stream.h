@@ -73,7 +73,7 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	// ---- Loop state (set via mailbox, read in buffer()) ----
 
 	bool _looping = false;          // Whether the clip should loop.
-	int64_t _loop_start_sample = 0; // Loop start in absolute source frames.
+	int64_t _loop_start_sample = -1; // Loop start in absolute source frames (-1 = in_sample).
 	int64_t _loop_end_sample = 0;   // Loop end (0 = use out_sample/EOF).
 	int64_t _loops_completed = 0;   // Number of full loops completed since note_on.
 

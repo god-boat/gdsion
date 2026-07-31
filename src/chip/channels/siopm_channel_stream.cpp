@@ -365,7 +365,7 @@ void SiOPMChannelStream::buffer(int p_length) {
 	double loop_offset = 0.0;
 	if (_looping) {
 		int64_t le = (_loop_end_sample > 0) ? _loop_end_sample : (_out_sample > 0 ? _out_sample : (_stream_data->get_total_frames()));
-		int64_t ls = (_loop_start_sample > 0) ? _loop_start_sample : _in_sample;
+		int64_t ls = (_loop_start_sample >= 0) ? _loop_start_sample : _in_sample;
 		// Convert to relative (from _in_sample).
 		effective_loop_end = le - _in_sample;
 		loop_offset = (double)(ls - _in_sample);
@@ -761,7 +761,7 @@ void SiOPMChannelStream::reset() {
 	_warp.reset();
 
 	_looping = false;
-	_loop_start_sample = 0;
+	_loop_start_sample = -1;
 	_loop_end_sample = 0;
 	_loops_completed = 0;
 	_reported_source_sample_abs.store(0, std::memory_order_relaxed);
@@ -918,7 +918,7 @@ void SiOPMChannelStream::set_stream_looping(bool p_looping) {
 }
 
 void SiOPMChannelStream::set_stream_loop_region(int64_t p_start_sample, int64_t p_end_sample) {
-	_loop_start_sample = MAX(p_start_sample, (int64_t)0);
+	_loop_start_sample = MAX(p_start_sample, (int64_t)-1);
 	_loop_end_sample = MAX(p_end_sample, (int64_t)0);
 	if (_stream_data.is_valid()) {
 		_stream_data->set_loop_region(_loop_start_sample, _loop_end_sample);

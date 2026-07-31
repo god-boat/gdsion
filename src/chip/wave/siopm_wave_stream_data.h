@@ -91,7 +91,7 @@ private:
 	// When looping is enabled, the loader wraps _decode_pos_frames back to
 	// _loop_start_sample when it reaches _loop_end_sample, producing a continuous
 	// stream of audio across loop boundaries with no seek/flush needed.
-	std::atomic<int64_t> _loop_start_sample{0};  // Defaults to _in_sample.
+	std::atomic<int64_t> _loop_start_sample{-1}; // -1 = use _in_sample.
 	std::atomic<int64_t> _loop_end_sample{0};    // 0 = use _out_sample or EOF.
 	std::atomic<bool> _looping{false};
 
