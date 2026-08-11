@@ -1499,8 +1499,9 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_pitch_envelope", "note_on", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_pitch_envelope, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
 	ClassDB::bind_method(D_METHOD("set_note_envelope", "note_on", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_note_envelope, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
 
-	// Generic note-envelope binding layer.
-	ClassDB::bind_method(D_METHOD("set_note_envelope_binding", "note_on", "sink_id", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_note_envelope_binding, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
+	// Generic note-envelope binding layer. No DEFVALs: the authored device graph
+	// owns the complete clock tuple and must pass it on every full stamp.
+	ClassDB::bind_method(D_METHOD("set_note_envelope_binding", "note_on", "sink_id", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_note_envelope_binding);
 	ClassDB::bind_method(D_METHOD("clear_note_envelope_binding", "sink_id"), &SiMMLTrack::clear_note_envelope_binding);
 	ClassDB::bind_method(D_METHOD("clear_note_envelope_bindings"), &SiMMLTrack::clear_note_envelope_bindings);
 

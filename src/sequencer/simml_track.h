@@ -474,7 +474,12 @@ public:
 	// Bind a compiled note-envelope table to a native sink id. p_note_on is 1
 	// for the note-on phase and 0 for the note-off phase. A null table or
 	// step == 0 clears that phase.
-	void set_note_envelope_binding(int p_note_on, const StringName &p_sink_id, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
+	//
+	// The clock arguments are deliberately required here, unlike the legacy
+	// specialized setters above. The authored device graph owns the complete
+	// (step, time_mode, time_value) tuple, so defaulting them would let a caller
+	// that omits the tuple silently reset a synced binding to free-run at one beat.
+	void set_note_envelope_binding(int p_note_on, const StringName &p_sink_id, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode, int p_time_value);
 	// Clears both phases of a single native sink (generic unbind for
 	// route removal / live-slot retarget).
 	void clear_note_envelope_binding(const StringName &p_sink_id);
