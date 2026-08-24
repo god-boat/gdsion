@@ -42,7 +42,7 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	bool _playing = false;
 	bool _reached_end = false;
 	std::atomic<int64_t> _reported_source_sample_abs{0}; // Main-thread readable cursor in absolute source frames.
-	std::atomic<double> _reported_clip_time_steps{0.0}; // Main-thread readable clip-time cursor in steps.
+	std::atomic<double> _reported_clip_time_beats{0.0}; // Main-thread readable clip-time cursor in beats.
 
 	// ---- Clip params (set via mailbox, read in buffer()) ----
 
@@ -61,10 +61,10 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	// using the actual driver sample rate and evaluates the envelope
 	// sample-accurately, independent of source-domain playback progress.
 	double _clip_envelope = 1.0;             // Current clip envelope multiplier (0.0-1.0).
-	double _clip_time_steps = 0.0;           // Current clip-time position relative to placement start.
-	double _clip_fade_in_steps = 0.0;        // Fade-in duration in clip-time steps.
-	double _clip_fade_out_start_steps = 0.0; // Fade-out start boundary in clip-time steps.
-	double _clip_end_steps = 0.0;            // Placement end boundary in clip-time steps.
+	double _clip_time_beats = 0.0;           // Current clip-time position relative to placement start.
+	double _clip_fade_in_beats = 0.0;        // Fade-in duration in clip-time beats.
+	double _clip_fade_out_start_beats = 0.0; // Fade-out start boundary in clip-time beats.
+	double _clip_end_beats = 0.0;            // Placement end boundary in clip-time beats.
 	int64_t _in_sample = 0;         // Start trim in source frames.
 	int64_t _out_sample = 0;        // End trim (0 = EOF).
 	int _warp_mode = 0;             // 0 = OFF, 1 = REPITCH, 2 = BEATS, 3 = TONES, 4 = TEXTURE, 5 = COMPLEX.
@@ -97,8 +97,8 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	// Compute technical envelope multiplier (loop crossfade, one-shot end declick).
 	// User clip fades (fade-in/fade-out) are handled by _clip_envelope from the scheduler.
 	double _compute_technical_envelope(double p_source_frame) const;
-	double _get_clip_steps_per_output_sample() const;
-	double _evaluate_clip_envelope(double p_clip_time_steps) const;
+	double _get_clip_beats_per_output_sample() const;
+	double _evaluate_clip_envelope(double p_clip_time_beats) const;
 
 	// Shared note_on implementation: resets playback state and starts from p_start_sample.
 	void _start_playback_at(int64_t p_start_sample);
@@ -164,9 +164,9 @@ public:
 	int get_stream_fade_out() const { return _fade_out_frames; }
 
 	// Scheduler-driven clip envelope state. The channel advances clip-time
-	// per output sample from p_clip_time_steps and evaluates fades against
+	// per output sample from p_clip_time_beats and evaluates fades against
 	// the supplied clip-time boundaries.
-	void set_stream_clip_envelope(double p_clip_time_steps, double p_fade_in_steps, double p_fade_out_start_steps, double p_clip_end_steps);
+	void set_stream_clip_envelope(double p_clip_time_beats, double p_fade_in_beats, double p_fade_out_start_beats, double p_clip_end_beats);
 	double get_stream_clip_envelope() const { return _clip_envelope; }
 
 	void set_stream_in_sample(int64_t p_sample);
@@ -199,7 +199,7 @@ public:
 
 	int64_t get_loops_completed() const { return _loops_completed; }
 	virtual int64_t get_reported_source_sample() const override { return _reported_source_sample_abs.load(std::memory_order_relaxed); }
-	virtual double get_reported_clip_time_steps() const override { return _reported_clip_time_steps.load(std::memory_order_relaxed); }
+	virtual double get_reported_clip_time_beats() const override { return _reported_clip_time_beats.load(std::memory_order_relaxed); }
 
 	// Seek to an absolute source-frame position. Resets playback cursor and
 	// triggers a ring buffer refill from the new position.

@@ -629,10 +629,10 @@ private:
 		int64_t stream_loop_start_sample = 0;
 		int64_t stream_loop_end_sample = 0;
 		bool has_stream_clip_envelope = false;
-		double stream_clip_time_steps = 0.0;
-		double stream_clip_fade_in_steps = 0.0;
-		double stream_clip_fade_out_start_steps = 0.0;
-		double stream_clip_end_steps = 0.0;
+		double stream_clip_time_beats = 0.0;
+		double stream_clip_fade_in_beats = 0.0;
+		double stream_clip_fade_out_start_beats = 0.0;
+		double stream_clip_end_beats = 0.0;
 
 		// Track effects (applied to per-track SiEffectStream, not per-voice channels)
 		enum FxOp {
@@ -857,7 +857,7 @@ public:
 
 	void set_beat_callback_interval(double p_length_16th = 1);
 	// Note: Original code takes a callback. Here you need to connect to the `timer_interval` signal.
-	void set_timer_interval(double p_length = 1);
+	void set_timer_interval_beats(double p_length_beats = 0.0625);
 
 	// Output capture API (for export/resampling).
 	bool begin_output_capture(int p_max_seconds = 0, bool p_post_master = true);
@@ -1056,7 +1056,7 @@ public:
 	void mailbox_stream_seek(int p_track_id, int64_t p_position_sample, uint64_t p_track_instance_id = 0);
 	void mailbox_stream_set_looping(int p_track_id, bool p_looping);
 	void mailbox_stream_set_loop_region(int p_track_id, int64_t p_start_sample, int64_t p_end_sample);
-	void mailbox_stream_set_clip_envelope(int p_track_id, double p_clip_time_steps, double p_fade_in_steps, double p_fade_out_start_steps, double p_clip_end_steps);
+	void mailbox_stream_set_clip_envelope(int p_track_id, double p_clip_time_beats, double p_fade_in_beats, double p_fade_out_start_beats, double p_clip_end_beats);
 	// Note control (thread-safe alternatives to direct track method calls)
 	// p_track_instance_id: If non-zero, targets specific track by Godot object ID (for pooled tracks)
 	void mailbox_key_on(int p_track_id, int p_note, int p_tick_length = 0, int p_key_velocity_16 = -1, int p_release_velocity_16 = -1, uint64_t p_track_instance_id = 0);

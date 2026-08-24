@@ -217,7 +217,7 @@ public:
 	virtual bool is_note_on() const { return _is_note_on; }
 	virtual bool is_idling() const { return _is_idling; }
 	virtual int64_t get_reported_source_sample() const { return -1; }
-	virtual double get_reported_clip_time_steps() const { return -1.0; }
+	virtual double get_reported_clip_time_beats() const { return -1.0; }
 
 	virtual bool is_filter_active() const { return _filter_on; }
 	virtual int get_filter_type() const { return _filter_type; }

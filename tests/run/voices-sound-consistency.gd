@@ -12,7 +12,7 @@ var name: String = "Sound Consistency"
 const DATA_OUTPUT_PATH := "./run/voices-sound-consistency/data"
 const GRAPHS_OUTPUT_PATH := "./run/voices-sound-consistency/graphs"
 
-const SAMPLE_LENGTH := 2 # In 1/16th of a beat.
+const SAMPLE_LENGTH_BEATS := 0.125
 const SAMPLE_RUNS := 1 # Disabling multiple runs for now.
 const INT16_MAX := 32767
 
@@ -27,7 +27,7 @@ var _sample_runs: Array[PackedInt32Array] = []
 
 func run(scene_tree: SceneTree) -> void:
 	var driver := SiONDriver.create()
-	driver.set_timer_interval(SAMPLE_LENGTH)
+	driver.set_timer_interval_beats(SAMPLE_LENGTH_BEATS)
 	scene_tree.root.add_child(driver)
 
 	await scene_tree.process_frame

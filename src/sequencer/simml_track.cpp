@@ -168,11 +168,11 @@ int64_t SiMMLTrack::get_reported_source_sample() const {
 	return _channel->get_reported_source_sample();
 }
 
-double SiMMLTrack::get_reported_clip_time_steps() const {
+double SiMMLTrack::get_reported_clip_time_beats() const {
 	if (_channel == nullptr) {
 		return -1.0;
 	}
-	return _channel->get_reported_clip_time_steps();
+	return _channel->get_reported_clip_time_beats();
 }
 
 void SiMMLTrack::set_master_volume(int p_value) {
@@ -1474,7 +1474,7 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_track_type_id"), &SiMMLTrack::get_track_type_id);
 	ClassDB::bind_method(D_METHOD("get_channel"), &SiMMLTrack::get_channel);
 	ClassDB::bind_method(D_METHOD("get_reported_source_sample"), &SiMMLTrack::get_reported_source_sample);
-	ClassDB::bind_method(D_METHOD("get_reported_clip_time_steps"), &SiMMLTrack::get_reported_clip_time_steps);
+	ClassDB::bind_method(D_METHOD("get_reported_clip_time_beats"), &SiMMLTrack::get_reported_clip_time_beats);
 	ClassDB::bind_method(D_METHOD("get_program_number"), &SiMMLTrack::get_program_number);
 	
 	// Scope tokens for exact-target mailbox dispatch.

@@ -1258,12 +1258,12 @@ void SiONDriver::_timer_callback() {
 	_emit_signal_thread_safe(timer_interval);
 }
 
-void SiONDriver::set_timer_interval(double p_length) {
-	ERR_FAIL_COND_MSG(p_length < 0, "SiONDriver: Timer interval value cannot be less than zero.");
+void SiONDriver::set_timer_interval_beats(double p_length_beats) {
+	ERR_FAIL_COND_MSG(p_length_beats < 0, "SiONDriver: Timer interval value cannot be less than zero.");
 
-	_timer_interval_event->set_length(_convert_event_length(p_length));
+	_timer_interval_event->set_length(_convert_event_length(p_length_beats * 16.0));
 
-	if (p_length > 0) {
+	if (p_length_beats > 0) {
 		sequencer->set_timer_callback(Callable(this, "_timer_callback"));
 	} else {
 		sequencer->set_timer_callback(Callable());
@@ -1607,7 +1607,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_stream_seek", "track_id", "position_sample", "track_instance_id"), &SiONDriver::mailbox_stream_seek, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_looping", "track_id", "looping"), &SiONDriver::mailbox_stream_set_looping);
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_loop_region", "track_id", "start_sample", "end_sample"), &SiONDriver::mailbox_stream_set_loop_region);
-	ClassDB::bind_method(D_METHOD("mailbox_stream_set_clip_envelope", "track_id", "clip_time_steps", "fade_in_steps", "fade_out_start_steps", "clip_end_steps"), &SiONDriver::mailbox_stream_set_clip_envelope);
+	ClassDB::bind_method(D_METHOD("mailbox_stream_set_clip_envelope", "track_id", "clip_time_beats", "fade_in_beats", "fade_out_start_beats", "clip_end_beats"), &SiONDriver::mailbox_stream_set_clip_envelope);
 	// Note control (thread-safe) - track_instance_id targets specific track by Godot object ID
 	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "key_velocity_16", "release_velocity_16", "track_instance_id"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(-1), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_key_on", "track_id", "note", "tick_length", "start_sample", "track_instance_id"), &SiONDriver::mailbox_stream_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(0));
@@ -1655,7 +1655,7 @@ void SiONDriver::_bind_methods() {
 	// Events.
 
 	ClassDB::bind_method(D_METHOD("set_beat_callback_interval", "length_16th"), &SiONDriver::set_beat_callback_interval);
-	ClassDB::bind_method(D_METHOD("set_timer_interval", "length_16th"), &SiONDriver::set_timer_interval);
+	ClassDB::bind_method(D_METHOD("set_timer_interval_beats", "length_beats"), &SiONDriver::set_timer_interval_beats);
 
 	// Output capture (for export/resampling).
 	ClassDB::bind_method(D_METHOD("begin_output_capture", "max_seconds", "post_master"), &SiONDriver::begin_output_capture, DEFVAL(0), DEFVAL(true));
@@ -3158,14 +3158,14 @@ void SiONDriver::mailbox_stream_set_loop_region(int p_track_id, int64_t p_start_
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_stream_set_clip_envelope(int p_track_id, double p_clip_time_steps, double p_fade_in_steps, double p_fade_out_start_steps, double p_clip_end_steps) {
+void SiONDriver::mailbox_stream_set_clip_envelope(int p_track_id, double p_clip_time_beats, double p_fade_in_beats, double p_fade_out_start_beats, double p_clip_end_beats) {
 	_TrackUpdate u;
 	u.track_id = p_track_id;
 	u.has_stream_clip_envelope = true;
-	u.stream_clip_time_steps = p_clip_time_steps;
-	u.stream_clip_fade_in_steps = p_fade_in_steps;
-	u.stream_clip_fade_out_start_steps = p_fade_out_start_steps;
-	u.stream_clip_end_steps = p_clip_end_steps;
+	u.stream_clip_time_beats = p_clip_time_beats;
+	u.stream_clip_fade_in_beats = p_fade_in_beats;
+	u.stream_clip_fade_out_start_beats = p_fade_out_start_beats;
+	u.stream_clip_end_beats = p_clip_end_beats;
 	_mb_try_push(u);
 }
 
@@ -3880,10 +3880,10 @@ void SiONDriver::_drain_track_mailbox() {
                 }
                 if (u.has_stream_clip_envelope) {
                     stream_ch->set_stream_clip_envelope(
-                        u.stream_clip_time_steps,
-                        u.stream_clip_fade_in_steps,
-                        u.stream_clip_fade_out_start_steps,
-                        u.stream_clip_end_steps
+                        u.stream_clip_time_beats,
+                        u.stream_clip_fade_in_beats,
+                        u.stream_clip_fade_out_start_beats,
+                        u.stream_clip_end_beats
                     );
                 }
             }
