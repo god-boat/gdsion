@@ -13,7 +13,7 @@
 using namespace godot;
 
 bool BeatsPerMinute::update(double p_bpm, int p_sample_rate) {
-	double bpm = CLAMP(p_bpm, 1, 511);
+	double bpm = p_bpm;
 
 	if (bpm == _bpm && p_sample_rate == _sample_rate) {
 		return false;

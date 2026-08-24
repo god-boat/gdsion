@@ -362,9 +362,8 @@ double SiONDriver::get_bpm() const {
 void SiONDriver::set_bpm(double p_value) {
 	// Scholars debate whether BPM even has the upper limit. At some point it definitely turns into tone for most people,
 	// with no discernible beat in earshot. But having no limit at all for the API feels strange. Besides, we don't have
-	// infinitely scalable performance. So as a compromise you can set the BPM to up to 4000 beats per minute.
+	// infinitely scalable performance. So as a compromise you can set the BPM to up to ???? beats per minute.
 	// You're welcome!
-	ERR_FAIL_COND_MSG(p_value < 1 || p_value > 4000, "SiONDriver: BPM must be between 1 and 4000 (inclusive).");
 
 	sequencer->set_effective_bpm(p_value);
 }
