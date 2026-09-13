@@ -9,6 +9,8 @@
 #include "sion_stream_playback.h"
 #include "utils/denormals.h"
 #include <algorithm>
+#include <chrono>
+#include <thread>
 
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/engine.hpp>
@@ -382,6 +384,41 @@ double SiONDriver::get_streaming_position() const {
 
 int64_t SiONDriver::get_rendered_frame_count() const {
 	return (int64_t)_rendered_frame_count.load(std::memory_order_relaxed);
+}
+
+void SiONDriver::_publish_frame_clock_anchor() {
+	const int64_t host_time_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+			std::chrono::steady_clock::now().time_since_epoch())
+			.count();
+	_frame_clock_sequence.fetch_add(1); // Odd: write in progress.
+	_frame_clock_anchor_frame.store((int64_t)_rendered_frame_count.load(std::memory_order_relaxed));
+	_frame_clock_anchor_host_time_ns.store(host_time_ns);
+	_frame_clock_sequence.fetch_add(1); // Even: anchor consistent.
+}
+
+bool SiONDriver::get_frame_clock(PoolyFrameClockSnapshot &r_snapshot) const {
+	// The render thread holds the sequence odd for two stores, so a few retries
+	// are plenty; give up rather than spin if it keeps moving.
+	for (int attempt = 0; attempt < 8; ++attempt) {
+		const uint32_t sequence = _frame_clock_sequence.load();
+		if (sequence == 0) {
+			return false; // Nothing rendered yet.
+		}
+		if (sequence & 1u) {
+			std::this_thread::yield();
+			continue;
+		}
+		const int64_t frame = _frame_clock_anchor_frame.load();
+		const int64_t host_time_ns = _frame_clock_anchor_host_time_ns.load();
+		if (_frame_clock_sequence.load() != sequence) {
+			continue;
+		}
+		r_snapshot.frame_position = frame;
+		r_snapshot.host_time_ns = host_time_ns;
+		r_snapshot.sample_rate = (int)_sample_rate;
+		return true;
+	}
+	return false;
 }
 
 void SiONDriver::set_start_position(double p_value) {
@@ -1438,6 +1475,10 @@ int64_t SiONDriver::get_render_client_handle() {
 	return reinterpret_cast<int64_t>(static_cast<PoolyRenderClient *>(this));
 }
 
+int64_t SiONDriver::get_timing_client_handle() {
+	return reinterpret_cast<int64_t>(static_cast<PoolyTimingClient *>(this));
+}
+
 void SiONDriver::stream_without_output(bool p_reset_effector) {
 	stop();
 	_prepare_process(nullptr, p_reset_effector);
@@ -1694,6 +1735,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("stream_without_output", "reset_effector"), &SiONDriver::stream_without_output, DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("is_godot_output_enabled"), &SiONDriver::is_godot_output_enabled);
 	ClassDB::bind_method(D_METHOD("get_render_client_handle"), &SiONDriver::get_render_client_handle);
+	ClassDB::bind_method(D_METHOD("get_timing_client_handle"), &SiONDriver::get_timing_client_handle);
 	ClassDB::bind_method(D_METHOD("play", "data", "reset_effector"), &SiONDriver::play, DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("stop"), &SiONDriver::stop);
 	ClassDB::bind_method(D_METHOD("reset"), &SiONDriver::reset);
@@ -1994,6 +2036,8 @@ int SiONDriver::render_interleaved(float *p_output, int p_frames, int p_channels
 	if (p_frames <= 0 || p_channels < 1) {
 		return 0;
 	}
+
+	_publish_frame_clock_anchor();
 
 	// FTZ/DAZ are per-thread CPU state, so they have to be armed on whichever thread
 	// is doing the rendering -- the audio callback thread live, or the caller's thread

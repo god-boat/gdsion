@@ -27,6 +27,7 @@
 #include <godot_cpp/classes/audio_frame.hpp>
 
 #include "audio_render_client.h"
+#include "pooly_timing_client.h"
 #include "sion_voice.h"
 #include "chip/wave/siopm_wave_sampler_data.h"
 #include "events/sion_event.h"
@@ -64,7 +65,7 @@ class SiONOfflineRenderer;
 // SiONDriver class provides the driver of SiON's digital signal processor emulator. All SiON's basic operations are
 // provided as driver's properties, methods, and signals. Only one instance must exist at a time.
 // TODO: Mostly implemented, aside from MIDI support, audio stream sampling, and background sound. Refer to FIXMEs and TODOs.
-class SiONDriver : public Node, public PoolyRenderClient {
+class SiONDriver : public Node, public PoolyRenderClient, public PoolyTimingClient {
 	GDCLASS(SiONDriver, Node)
 
 	friend class SiONOfflineRenderer;
@@ -208,6 +209,13 @@ private:
 	int _residual_buffer_frame_count = 0;  // Number of frames currently in residual buffer
 	int _residual_frame_offset = 0;        // Current read position in frames (not samples)
 	std::atomic<uint64_t> _rendered_frame_count{0};
+	// PoolyTimingClient anchor: the rendered frame count and steady_clock time at
+	// the start of the latest render call. The render thread is the only writer;
+	// readers retry while _frame_clock_sequence is odd or changes under them.
+	std::atomic<uint32_t> _frame_clock_sequence{0};
+	std::atomic<int64_t> _frame_clock_anchor_frame{0};
+	std::atomic<int64_t> _frame_clock_anchor_host_time_ns{0};
+	void _publish_frame_clock_anchor();
 
 	// --- Professional audio metering infrastructure ---
 public:
@@ -934,6 +942,13 @@ public:
 	// the GDExtension boundary. Both extensions compile the same audio_render_client.h,
 	// so the interface ABI (and the multiple-inheritance pointer offset) match.
 	int64_t get_render_client_handle();
+
+	// PoolyTimingClient implementation. Safe from any thread.
+	bool get_frame_clock(PoolyFrameClockSnapshot &r_snapshot) const override;
+
+	// Returns this driver as a raw PoolyTimingClient* encoded as an int64 for the
+	// sibling pooly_midi_io extension. Same ABI contract as get_render_client_handle().
+	int64_t get_timing_client_handle();
 
 	/* Pull-model helper – fills a buffer of AudioFrame with freshly generated audio.
 	   Returns the number of frames written (always p_frames on success).
