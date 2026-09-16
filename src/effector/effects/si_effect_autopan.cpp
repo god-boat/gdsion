@@ -7,88 +7,35 @@
 #include "si_effect_autopan.h"
 
 void SiEffectAutopan::set_params(double p_frequency, double p_stereo_width) {
-	_lfo_step = (int)((_get_sampling_rate() / 256.0) / (p_frequency * 0.5));
-	if (_lfo_step <= 4) {
-		_lfo_step = 4;
-	}
-
-	double width = p_stereo_width;
-	if (width == 0) {
-		width = 1;
-		_stereo = true;
-	}
-	width *= 0.01227184630308513; // PI / 256
-
-	// Volume table.
-	for (int i = -128; i < 128; i++) {
-		const double value = Math::sin(1.5707963267948965 + i * width);
-
-		_p_left->get()->value = value;
-		_p_left->next();
-		_p_right->get()->value = value;
-		_p_right->next();
-	}
-
-	// The right buffer is shifted by half the size.
-	for (int i = 0; i < BUFFER_SIZE >> 1; i++) {
-		_p_right->next();
-	}
+	const double step = 2.0 * M_PI * p_frequency / _get_sampling_rate();
+	const double offset = M_PI * p_stereo_width;
+	_step_cos = Math::cos(step);
+	_step_sin = Math::sin(step);
+	_offset_cos = Math::cos(offset);
+	_offset_sin = Math::sin(offset);
 }
 
 int SiEffectAutopan::prepare_process() {
-	return _stereo ? 2 : 1;
-}
-
-void SiEffectAutopan::_process_lfo_mono(Vector<double> *r_buffer, int p_start_index, int p_length) {
-	for (int i = p_start_index; i < (p_start_index + p_length); i += 2) {
-		double value = (*r_buffer)[i];
-
-		r_buffer->write[i] = value * _p_left->get()->value;
-		r_buffer->write[i + 1] = value * _p_right->get()->value;
-	}
-
-	_p_left->next();
-	_p_right->next();
-}
-
-void SiEffectAutopan::_process_lfo_stereo(Vector<double> *r_buffer, int p_start_index, int p_length) {
-	for (int i = p_start_index; i < (p_start_index + p_length); i += 2) {
-		double value_left = (*r_buffer)[i];
-		double value_right = (*r_buffer)[i + 1];
-
-		r_buffer->write[i] = value_left * _p_left->get()->value - value_right * _p_right->get()->value;
-		r_buffer->write[i + 1] = value_left * _p_right->get()->value + value_right * _p_left->get()->value;
-	}
-
-	_p_left->next();
-	_p_right->next();
+	return 2;
 }
 
 int SiEffectAutopan::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
-	int start_index = p_start_index << 1;
-	int length = p_length << 1;
+	const int end_index = (p_start_index + p_length) << 1;
+	double lfo_cos = _lfo_cos;
+	double lfo_sin = _lfo_sin;
+	for (int i = p_start_index << 1; i < end_index; i += 2) {
+		const double left_gain = 0.5 * (1.0 + lfo_cos);
+		const double right_gain = 0.5 * (1.0 + lfo_cos * _offset_cos - lfo_sin * _offset_sin);
+		r_buffer->write[i] = (*r_buffer)[i] * left_gain;
+		r_buffer->write[i + 1] = (*r_buffer)[i + 1] * right_gain;
 
-	int step = _lfo_residue_step;
-	int max = start_index + length;
-	int i = start_index;
-	while (i < (max - step)) {
-		if (_stereo) {
-			_process_lfo_stereo(r_buffer, i, step);
-		} else {
-			_process_lfo_mono(r_buffer, i, step);
-		}
-
-		i += step;
-		step = _lfo_step << 1;
+		const double next_cos = lfo_cos * _step_cos - lfo_sin * _step_sin;
+		lfo_sin = lfo_sin * _step_cos + lfo_cos * _step_sin;
+		lfo_cos = next_cos;
 	}
-
-	if (_stereo) {
-		_process_lfo_stereo(r_buffer, i, max - i);
-	} else {
-		_process_lfo_mono(r_buffer, i, max - i);
-	}
-
-	_lfo_residue_step = step - (max - i);
+	const double amplitude = Math::sqrt(lfo_cos * lfo_cos + lfo_sin * lfo_sin);
+	_lfo_cos = lfo_cos / amplitude;
+	_lfo_sin = lfo_sin / amplitude;
 
 	return 2;
 }
@@ -101,7 +48,8 @@ void SiEffectAutopan::set_by_mml(Vector<double> p_args) {
 }
 
 void SiEffectAutopan::reset() {
-	_lfo_residue_step = 0;
+	_lfo_cos = 1;
+	_lfo_sin = 0;
 	set_params();
 }
 
@@ -111,8 +59,5 @@ void SiEffectAutopan::_bind_methods() {
 
 SiEffectAutopan::SiEffectAutopan(double p_frequency, double p_stereo_width) :
 		SiEffectBase() {
-	_p_left = memnew(SinglyLinkedList<double>(BUFFER_SIZE, 0.0, true));
-	_p_right = memnew(SinglyLinkedList<double>(BUFFER_SIZE, 0.0, true));
-
 	set_params(p_frequency, p_stereo_width);
 }

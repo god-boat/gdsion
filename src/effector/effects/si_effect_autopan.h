@@ -8,21 +8,16 @@
 #define SI_EFFECT_AUTOPAN_H
 
 #include "effector/si_effect_base.h"
-#include "templates/singly_linked_list.h"
 
 class SiEffectAutopan : public SiEffectBase {
 	GDCLASS(SiEffectAutopan, SiEffectBase)
 
-	static const int BUFFER_SIZE = 256;
-
-	bool _stereo = false;
-	int _lfo_step = 0;
-	int _lfo_residue_step = 0;
-	SinglyLinkedList<double> *_p_left;
-	SinglyLinkedList<double> *_p_right;
-
-	void _process_lfo_mono(Vector<double> *r_buffer, int p_start_index, int p_length);
-	void _process_lfo_stereo(Vector<double> *r_buffer, int p_start_index, int p_length);
+	double _lfo_cos = 1;
+	double _lfo_sin = 0;
+	double _step_cos = 1;
+	double _step_sin = 0;
+	double _offset_cos = -1;
+	double _offset_sin = 0;
 
 protected:
 	static void _bind_methods();

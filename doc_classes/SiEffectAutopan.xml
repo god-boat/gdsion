@@ -4,6 +4,7 @@
 		Automatic panning effect.
 	</brief_description>
 	<description>
+		Applies a sine LFO to each input channel independently, preserving the stereo input. The stereo width controls the phase difference between the left and right LFOs. A width of 0 modulates both channels together like tremolo; a width of 1 places their LFOs 180 degrees apart.
 	</description>
 	<tutorials>
 	</tutorials>
@@ -13,7 +14,7 @@
 			<param index="0" name="frequency" type="float" default="1" />
 			<param index="1" name="stereo_width" type="float" default="1" />
 			<description>
-				Sets effect parameters.
+				Sets the LFO frequency in hertz and its stereo phase offset. A [param stereo_width] of 1 is a 180 degree offset.
 			</description>
 		</method>
 	</methods>
