@@ -9,10 +9,14 @@
 #include <godot_cpp/classes/canvas_item.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/control.hpp>
+#include <godot_cpp/classes/graph_frame.hpp>
+#include <godot_cpp/classes/h_box_container.hpp>
 #include <godot_cpp/classes/line_edit.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/range.hpp>
+#include <godot_cpp/classes/style_box.hpp>
 #include <godot_cpp/classes/text_edit.hpp>
+#include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/error_macros.hpp>
 #include <godot_cpp/variant/rect2.hpp>
@@ -104,6 +108,35 @@ Control *TouchTargetResolver::_enter_subtree(CanvasItem *p_item, const Vector2 &
 	return _find_control_at(p_item, p_position, p_item->get_global_transform_with_canvas());
 }
 
+// GraphFrame deliberately leaves its body hollow so nodes and the GraphEdit canvas
+// behind it remain targetable. Control::has_point() is not bound to GDExtension, so
+// mirror Godot 4.7's GraphFrame::has_point() using its public geometry and theme API.
+bool TouchTargetResolver::_control_contains_point(Control *p_control, const Vector2 &p_local_position) const {
+	// Runs for every visited Control; see the cast note in _find_control_at().
+	GraphFrame *frame = dynamic_cast<GraphFrame *>(p_control);
+	if (frame == nullptr) {
+		return Rect2(Vector2(), p_control->get_size()).has_point(p_local_position);
+	}
+
+	const Vector2 frame_size = frame->get_size();
+	const Ref<Texture2D> resizer = frame->get_theme_icon("resizer", "GraphFrame");
+	const Vector2 resizer_size = resizer->get_size();
+	if (Rect2(frame_size - resizer_size, resizer_size).has_point(p_local_position)) {
+		return true;
+	}
+
+	HBoxContainer *titlebar = frame->get_titlebar_hbox();
+	const Ref<StyleBox> titlebar_style = frame->get_theme_stylebox("titlebar", "GraphFrame");
+	const double titlebar_height = titlebar->get_combined_minimum_size().y + titlebar_style->get_minimum_size().y;
+	if (Rect2(0, 0, frame_size.x, titlebar_height).has_point(p_local_position)) {
+		return true;
+	}
+
+	const Rect2 frame_rect(Vector2(), frame_size);
+	const Rect2 no_drag_rect = frame_rect.grow(-frame->get_drag_margin());
+	return frame_rect.has_point(p_local_position) && !no_drag_rect.has_point(p_local_position);
+}
+
 Control *TouchTargetResolver::_find_control_at(CanvasItem *p_item, const Vector2 &p_position, const Transform2D &p_global_transform) const {
 	last_visit_count++;
 
@@ -119,21 +152,26 @@ Control *TouchTargetResolver::_find_control_at(CanvasItem *p_item, const Vector2
 	}
 
 	Vector2 local_position = p_global_transform.affine_inverse().xform(p_position);
-	Control *control = Object::cast_to<Control>(p_item);
+	// dynamic_cast, not Object::cast_to, on this hot path. Every pointer the recursion holds
+	// is godot-cpp's cached instance binding (get_child() and cast_to both return it), and
+	// that binding is built as the object's most-derived registered class. cast_to ends in
+	// this same dynamic_cast, after a StringName copy and two or three interface calls per
+	// cast -- measured at 10-21% of per-visit cost for the GraphFrame cast alone. Only valid
+	// on pointers godot-cpp handed back, never on a wrapper constructed locally.
+	Control *control = dynamic_cast<Control *>(p_item);
 	// Control::has_point() is deliberately NOT bound to ClassDB -- only the _has_point
-	// virtual is -- so an extension cannot call it, and cannot reach a C++ override such
-	// as TextureButton's click mask at all. This rect test is what Control::has_point()
-	// itself falls back to when nothing overrides it, which is every Control in this app.
-	// tools/touch_target scans for controls that would break that assumption and its
-	// parity sweep fails if the picks ever diverge.
-	bool contains_position = control != nullptr && Rect2(Vector2(), control->get_size()).has_point(local_position);
+	// virtual is -- so an extension cannot call it. The helper mirrors the GraphFrame
+	// override needed by Pooly's graph surface and otherwise uses Control's rect default.
+	// tools/touch_target scans for any still-unmodelled override and the parity sweep
+	// fails if one changes classification.
+	bool contains_position = control != nullptr && _control_contains_point(control, local_position);
 	bool inspect_children = control == nullptr || !control->is_clipping_contents() || contains_position;
 
 	if (inspect_children) {
 		// Internal children are skipped on purpose; see the note above
 		// _find_control_in_children(). These defaults are the divergence, not a slip.
 		for (int child_index = p_item->get_child_count() - 1; child_index >= 0; child_index--) {
-			CanvasItem *child = Object::cast_to<CanvasItem>(p_item->get_child(child_index));
+			CanvasItem *child = dynamic_cast<CanvasItem *>(p_item->get_child(child_index));
 			if (child == nullptr || child->is_set_as_top_level()) {
 				continue;
 			}

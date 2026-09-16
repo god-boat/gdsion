@@ -44,6 +44,7 @@ private:
 	// transform has been invalidated by an ancestor moving.
 	Control *_find_control_at(CanvasItem *p_item, const Vector2 &p_position, const Transform2D &p_global_transform) const;
 	Control *_find_control_in_children(Node *p_parent, const Vector2 &p_position) const;
+	bool _control_contains_point(Control *p_control, const Vector2 &p_local_position) const;
 	// Seeds a subtree walk: establishes visibility up the chain and the starting transform.
 	Control *_enter_subtree(CanvasItem *p_item, const Vector2 &p_position) const;
 	Dictionary _make_result(Classification p_classification, Control *p_isolating = nullptr) const;
