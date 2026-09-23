@@ -9,6 +9,8 @@
 #include "chip/siopm_stream.h"
 #include "templates/singly_linked_list.h"
 
+using sion::dsp::one_pole_coeff;
+
 static constexpr double TWO_PI = 6.283185307179586;
 static constexpr double PI = 3.141592653589793;
 static constexpr double HALF_PI = 1.5707963267948966;
@@ -586,9 +588,9 @@ void SiOPMChannelMonolith::set_monolith_params(
 	// LP split: cutoff sweeps 45-180 Hz based on lens amount.
 	double lens_n = (double)_lens / 127.0;
 	double lens_cutoff_hz = 45.0 + lens_n * 135.0;
-	_lens_lp_coeff = 1.0 - std::exp(-TWO_PI * lens_cutoff_hz / _sample_rate);
+	_lens_lp_coeff = one_pole_coeff(lens_cutoff_hz, _sample_rate);
 	// HP on generated harmonics: ~200 Hz to remove mud.
-	_lens_harm_hp_coeff = 1.0 - std::exp(-TWO_PI * 200.0 / _sample_rate);
+	_lens_harm_hp_coeff = one_pole_coeff(200.0, _sample_rate);
 }
 
 // ---------------------------------------------------------------------------
@@ -741,7 +743,7 @@ void SiOPMChannelMonolith::note_on() {
 	// Reset motion filter / drive-tone state for clean transients.
 	_motion_filter_ic1 = 0.0;
 	_motion_filter_ic2 = 0.0;
-	_drive_tone_lp_z1 = 0.0;
+	_drive_tone_lp = {};
 
 	// Glide: keep previous pitch if legato, otherwise snap.
 	if (_is_note_on && _glide_time > 0) {
@@ -900,8 +902,7 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 		// the main layer. Negative motion = darker/thicker low-mids into the
 		// drive, positive = brighter/more teeth. The clean sub is untouched.
 		if (_motion_target_param == MOTION_DRIVE_TONE && motion_n > 0.001) {
-			_drive_tone_lp_z1 += _drive_tone_lp_coeff * (main_mix - _drive_tone_lp_z1);
-			double low = _drive_tone_lp_z1;
+			double low = _drive_tone_lp.lowpass(_drive_tone_lp_coeff, main_mix);
 			double high = main_mix - low;
 			double g_low = CLAMP(1.0 - motion_mod, 0.0, 2.0);
 			double g_high = CLAMP(1.0 + motion_mod, 0.0, 2.0);
@@ -955,16 +956,14 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 		// half-wave rectification + saturation, then high-passes the
 		// harmonics to avoid adding mud before mixing back.
 		if (lens_n > 0.01) {
-			_lens_lp_z1 += _lens_lp_coeff * (output - _lens_lp_z1);
-			double lp = _lens_lp_z1;
+			double lp = _lens_lp.lowpass(_lens_lp_coeff, output);
 
 			// Generate upper harmonics from low content.
 			double harm = lp * lp * (lp > 0.0 ? 1.0 : -1.0);
 			harm = fast_tanh(harm * 3.0);
 
 			// HP the generated harmonics to remove mud (~200 Hz).
-			double harm_hp = harm - _lens_harm_hp_z1;
-			_lens_harm_hp_z1 += _lens_harm_hp_coeff * harm_hp;
+			double harm_hp = _lens_harm_hp.highpass(_lens_harm_hp_coeff, harm);
 
 			output += harm_hp * lens_n * 0.4;
 		}
@@ -1068,17 +1067,17 @@ void SiOPMChannelMonolith::initialize(SiOPMChannelBase *p_prev, int p_buffer_ind
 
 	_motion_filter_ic1 = 0.0;
 	_motion_filter_ic2 = 0.0;
-	_drive_tone_lp_z1 = 0.0;
-	_drive_tone_lp_coeff = 1.0 - std::exp(-TWO_PI * 700.0 / _sample_rate);
+	_drive_tone_lp = {};
+	_drive_tone_lp_coeff = one_pole_coeff(700.0, _sample_rate);
 
 	_main_level = 0.7;
 	_drive_input_trim = 1.0;
 	_drive_output_makeup = 1.0;
 
-	_lens_lp_z1 = 0.0;
-	_lens_harm_hp_z1 = 0.0;
-	_lens_lp_coeff = 1.0 - std::exp(-TWO_PI * 120.0 / _sample_rate);
-	_lens_harm_hp_coeff = 1.0 - std::exp(-TWO_PI * 200.0 / _sample_rate);
+	_lens_lp = {};
+	_lens_harm_hp = {};
+	_lens_lp_coeff = one_pole_coeff(120.0, _sample_rate);
+	_lens_harm_hp_coeff = one_pole_coeff(200.0, _sample_rate);
 
 	_process_function = Callable(this, "_process_monolith");
 }
@@ -1100,10 +1099,10 @@ void SiOPMChannelMonolith::reset() {
 
 	_motion_filter_ic1 = 0.0;
 	_motion_filter_ic2 = 0.0;
-	_drive_tone_lp_z1 = 0.0;
+	_drive_tone_lp = {};
 
-	_lens_lp_z1 = 0.0;
-	_lens_harm_hp_z1 = 0.0;
+	_lens_lp = {};
+	_lens_harm_hp = {};
 	_has_previous_note = false;
 
 	SiOPMChannelBase::reset();

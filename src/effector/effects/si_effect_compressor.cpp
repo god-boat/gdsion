@@ -41,7 +41,7 @@ int SiEffectCompressor::prepare_process() {
 	return 2;
 }
 
-int SiEffectCompressor::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiEffectCompressor::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	double sample_rate = _get_sampling_rate();
 	if (sample_rate <= 0.0) {
 		return p_channels;

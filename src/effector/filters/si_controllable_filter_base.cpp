@@ -71,7 +71,7 @@ int SiControllableFilterBase::prepare_process() {
 	return 2;
 }
 
-int SiControllableFilterBase::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiControllableFilterBase::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 

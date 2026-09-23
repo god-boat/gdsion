@@ -208,7 +208,7 @@ void SiFilterVowel::_process_lfo(Vector<double> *r_buffer, int p_start_index, in
 	}
 }
 
-int SiFilterVowel::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiFilterVowel::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int length = p_length;
 	for (int i = p_start_index; i < (p_start_index + p_length); ) {
 		int step = _update_event(length);

@@ -19,7 +19,7 @@ int SiEffectAutopan::prepare_process() {
 	return 2;
 }
 
-int SiEffectAutopan::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiEffectAutopan::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	const int end_index = (p_start_index + p_length) << 1;
 	double lfo_cos = _lfo_cos;
 	double lfo_sin = _lfo_sin;

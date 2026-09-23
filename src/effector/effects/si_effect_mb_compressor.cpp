@@ -360,7 +360,7 @@ int SiEffectMultibandCompressor::prepare_process() {
 	return 2;
 }
 
-int SiEffectMultibandCompressor::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiEffectMultibandCompressor::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	if (p_length <= 0) {
 		return p_channels;
 	}

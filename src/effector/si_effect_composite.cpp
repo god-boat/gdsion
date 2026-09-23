@@ -39,7 +39,7 @@ int SiEffectComposite::prepare_process() {
 	return 2;
 }
 
-int SiEffectComposite::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiEffectComposite::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	for (int i = 1; i < SLOTS_MAX; i++) {
 		if (_slots[i].effects.is_empty()) {
 			continue;
@@ -66,7 +66,7 @@ int SiEffectComposite::process(int p_channels, Vector<double> *r_buffer, int p_s
 
 		int channel_num = p_channels;
 		for (Ref<SiEffectBase> effect : _slots[i].effects) {
-			channel_num = effect->process(channel_num, &_slots[i].buffer, p_start_index, p_length);
+			channel_num = effect->process(p_context, channel_num, &_slots[i].buffer, p_start_index, p_length);
 		}
 
 		for (int j = p_start_index; j < (p_start_index + p_length); j++) {
@@ -77,7 +77,7 @@ int SiEffectComposite::process(int p_channels, Vector<double> *r_buffer, int p_s
 	int out_channels = p_channels;
 	if (!_slots[0].effects.is_empty()) {
 		for (Ref<SiEffectBase> effect : _slots[0].effects) {
-			out_channels = effect->process(out_channels, r_buffer, p_start_index, p_length);
+			out_channels = effect->process(p_context, out_channels, r_buffer, p_start_index, p_length);
 		}
 
 		if (_slots[0].mix_level != 1) {

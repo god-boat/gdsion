@@ -8,6 +8,8 @@
 #define SI_EFFECT_BLOOM_REVERB_H
 
 #include <godot_cpp/templates/vector.hpp>
+#include "dsp/fractional_delay.h"
+#include "dsp/one_pole.h"
 #include "effector/si_effect_base.h"
 
 using namespace godot;
@@ -56,35 +58,6 @@ private:
 		double freeze = 0.0;
 	};
 
-	struct FractionalDelay {
-		Vector<double> buffer;
-		int write_index = 0;
-
-		void resize_samples(int p_length);
-		void reset();
-		void write(double p_sample);
-		double read_samples(double p_delay_samples) const;
-	};
-
-	struct OnePoleLowPass {
-		double alpha = 0.0;
-		double z = 0.0;
-
-		void set_cutoff(double p_hz, double p_sample_rate);
-		double process(double p_input);
-		void reset();
-	};
-
-	struct OnePoleHighPass {
-		double alpha = 0.0;
-		double x1 = 0.0;
-		double y1 = 0.0;
-
-		void set_cutoff(double p_hz, double p_sample_rate);
-		double process(double p_input);
-		void reset();
-	};
-
 	struct BloomEnvelope {
 		double fast_attack_coeff = 1.0;
 		double fast_release_coeff = 1.0;
@@ -107,25 +80,24 @@ private:
 	};
 
 	struct AllpassStage {
-		FractionalDelay delay;
+		sion::dsp::FractionalDelay delay;
 
 		double process(double p_input, double p_delay_samples, double p_feedback);
-		void reset();
 	};
 
 	struct TankLine {
-		FractionalDelay delay;
-		OnePoleHighPass hp;
-		OnePoleLowPass lp;
+		sion::dsp::FractionalDelay delay;
+		sion::dsp::OnePole hp;
+		sion::dsp::OnePole lp;
 		Lfo mod;
 	};
 
 	struct AirSide {
-		FractionalDelay delays[AIR_DELAY_COUNT];
+		sion::dsp::FractionalDelay delays[AIR_DELAY_COUNT];
 		Lfo mods[AIR_DELAY_COUNT];
 		AllpassStage diffuser_a;
 		AllpassStage diffuser_b;
-		OnePoleHighPass hp;
+		sion::dsp::OnePole hp;
 
 		void reset();
 	};
@@ -143,14 +115,14 @@ private:
 		double drive = 1.0;
 		double size_scale = 1.0;
 		double decay_seconds = 1.0;
-		double high_damp_hz = 7000.0;
-		double low_cut_hz = 150.0;
-		double feedback_low_cut_hz = 100.0;
-		double high_cut_hz = 11000.0;
+		double input_hp_coeff = 0.0;
+		double feedback_hp_coeff = 0.0;
+		double damping_lp_coeff = 0.0;
+		double wet_lp_coeff = 0.0;
 		double mod_depth_samples = 0.0;
 		double width_gain = 1.0;
 		double air_gain = 0.0;
-		double air_hp_hz = 6500.0;
+		double air_hp_coeff = 0.0;
 		double wet_makeup_gain = 1.0;
 		double duck = 0.0;
 		double duck_attack_coeff = 1.0;
@@ -172,10 +144,10 @@ private:
 	BloomParams _target_params;
 	BloomParams _block_steps;
 
-	FractionalDelay _predelay_left;
-	FractionalDelay _predelay_right;
-	FractionalDelay _early_left;
-	FractionalDelay _early_right;
+	sion::dsp::FractionalDelay _predelay_left;
+	sion::dsp::FractionalDelay _predelay_right;
+	sion::dsp::FractionalDelay _early_left;
+	sion::dsp::FractionalDelay _early_right;
 
 	AllpassStage _diffusers_left[INPUT_DIFFUSER_COUNT];
 	AllpassStage _diffusers_right[INPUT_DIFFUSER_COUNT];
@@ -183,15 +155,15 @@ private:
 	AirSide _air_left;
 	AirSide _air_right;
 
-	OnePoleHighPass _input_hp_left;
-	OnePoleHighPass _input_hp_right;
-	OnePoleLowPass _wet_lp_left;
-	OnePoleLowPass _wet_lp_right;
+	sion::dsp::OnePole _input_hp_left;
+	sion::dsp::OnePole _input_hp_right;
+	sion::dsp::OnePole _wet_lp_left;
+	sion::dsp::OnePole _wet_lp_right;
 	BloomEnvelope _bloom_envelope_left;
 	BloomEnvelope _bloom_envelope_right;
 
 	double _duck_env = 0.0;
-	int _cached_sample_rate = 0;
+	double _cached_sample_rate = 0.0;
 
 	void _ensure_delay_buffers();
 	void _reset_signal_state();
@@ -202,7 +174,7 @@ private:
 	double _process_air_side(
 			AirSide &r_side,
 			double p_input,
-			double p_hp_hz,
+			double p_hp_coeff,
 			const double *p_delay_samples,
 			const double *p_rates,
 			double p_mod_depth_samples
@@ -218,7 +190,7 @@ protected:
 
 public:
 	virtual int prepare_process() override;
-	virtual int process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
+	virtual int process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
 
 	virtual void set_by_mml(Vector<double> p_args) override;
 	virtual bool set_arg(int p_arg_index, double p_value) override;

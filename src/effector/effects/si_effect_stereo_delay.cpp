@@ -66,7 +66,7 @@ void SiEffectStereoDelay::_process_channel(Vector<double> *r_buffer, int p_buffe
 	r_buffer->write[p_buffer_index] = (*r_buffer)[p_buffer_index] * _dry_gain + value * _wet_gain;
 }
 
-int SiEffectStereoDelay::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiEffectStereoDelay::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 

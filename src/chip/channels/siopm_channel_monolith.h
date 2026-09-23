@@ -2,6 +2,7 @@
 #define SIOPM_CHANNEL_MONOLITH_H
 
 #include "chip/channels/siopm_channel_base.h"
+#include "dsp/one_pole.h"
 #include <cstdint>
 
 using namespace godot;
@@ -165,7 +166,7 @@ private:
 	double _motion_filter_ic2 = 0.0;
 
 	// Motion drive-tone: one-pole tilt EQ on the pre-drive main layer.
-	double _drive_tone_lp_z1 = 0.0;
+	sion::dsp::OnePole _drive_tone_lp;
 	double _drive_tone_lp_coeff = 0.0;
 
 	// Gain staging (precomputed in set_monolith_params).
@@ -175,8 +176,8 @@ private:
 
 	// Lens filter state (one-pole LP to isolate low content, one-pole HP
 	// on the generated harmonics to remove mud).
-	double _lens_lp_z1 = 0.0;
-	double _lens_harm_hp_z1 = 0.0;
+	sion::dsp::OnePole _lens_lp;
+	sion::dsp::OnePole _lens_harm_hp;
 	double _lens_lp_coeff = 0.0;
 	double _lens_harm_hp_coeff = 0.0;
 

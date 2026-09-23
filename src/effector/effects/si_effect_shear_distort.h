@@ -7,6 +7,7 @@
 #ifndef SI_EFFECT_SHEAR_DISTORT_H
 #define SI_EFFECT_SHEAR_DISTORT_H
 
+#include "dsp/one_pole.h"
 #include "effector/si_effect_base.h"
 
 // Stereo "shear" distortion.
@@ -48,27 +49,6 @@ private:
 	static const double DC_BLOCK_HZ;
 	static const double SHEAR_LFO_RATE_1;
 	static const double SHEAR_LFO_RATE_2;
-
-	struct OnePoleLPF {
-		double z = 0.0;
-		double coeff = 0.0;
-
-		void set_cutoff(double p_hz, double p_sample_rate);
-		double process(double p_input);
-		void clear();
-		void flush_denormals();
-	};
-
-	struct DcBlocker {
-		double r = 0.9993;
-		double x1 = 0.0;
-		double y1 = 0.0;
-
-		void set_cutoff(double p_hz, double p_sample_rate);
-		double process(double p_input);
-		void clear();
-		void flush_denormals();
-	};
 
 	// First-order allpass section of a two-path polyphase halfband filter.
 	struct AllpassSection {
@@ -122,10 +102,10 @@ private:
 	};
 
 	struct ChannelState {
-		OnePoleLPF body_lpf;
-		OnePoleLPF tilt_pre_lpf;
-		OnePoleLPF tilt_post_lpf;
-		DcBlocker dc;
+		sion::dsp::OnePole body_lpf;
+		sion::dsp::OnePole tilt_pre_lpf;
+		sion::dsp::OnePole tilt_post_lpf;
+		sion::dsp::OnePole dc;
 		ToneSVF tone_svf;
 		HalfbandStage up_steep;
 		HalfbandStage up_light;
@@ -157,6 +137,9 @@ private:
 	SmoothedParam _sm_tone_g;
 	SmoothedParam _sm_mix;
 	double _smooth_coeff = 0.005;
+	double _body_coeff = 0.0;
+	double _tilt_coeff = 0.0;
+	double _dc_coeff = 0.0;
 
 	ChannelState _left;
 	ChannelState _right;
@@ -188,7 +171,7 @@ public:
 			double p_shear = 0.15, double p_mix = 1.0);
 
 	virtual int prepare_process() override;
-	virtual int process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
+	virtual int process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
 	virtual void set_by_mml(Vector<double> p_args) override;
 	virtual bool set_arg(int p_arg_index, double p_value) override;
 	virtual void reset() override;

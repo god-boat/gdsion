@@ -6,6 +6,8 @@
 
 #include "si_effect_shear_distort.h"
 
+using sion::dsp::one_pole_coeff;
+
 const double SiEffectShearDistort::BODY_CROSSOVER_HZ = 200.0;
 const double SiEffectShearDistort::TILT_PIVOT_HZ = 700.0;
 const double SiEffectShearDistort::DC_BLOCK_HZ = 5.0;
@@ -21,54 +23,6 @@ static const double HALFBAND_STEEP_A[4] = { 0.07711507983241622, 0.4820706250610
 static const double HALFBAND_STEEP_B[4] = { 0.2659685265210946, 0.6651041532634957, 0.8841015085506159, 0.9820054141886075 };
 static const double HALFBAND_LIGHT_A[2] = { 0.07986642623635751, 0.5453536510711322 };
 static const double HALFBAND_LIGHT_B[2] = { 0.28382934487410993, 0.8344118914807379 };
-
-// --- OnePoleLPF -----------------------------------------------------------------
-
-void SiEffectShearDistort::OnePoleLPF::set_cutoff(double p_hz, double p_sample_rate) {
-	coeff = ::exp(-2.0 * M_PI * p_hz / p_sample_rate);
-}
-
-double SiEffectShearDistort::OnePoleLPF::process(double p_input) {
-	z = p_input + (z - p_input) * coeff;
-	return z;
-}
-
-void SiEffectShearDistort::OnePoleLPF::clear() {
-	z = 0.0;
-}
-
-void SiEffectShearDistort::OnePoleLPF::flush_denormals() {
-	if (Math::abs(z) < 1e-15) {
-		z = 0.0;
-	}
-}
-
-// --- DcBlocker ------------------------------------------------------------------
-
-void SiEffectShearDistort::DcBlocker::set_cutoff(double p_hz, double p_sample_rate) {
-	r = CLAMP(1.0 - 2.0 * M_PI * p_hz / p_sample_rate, 0.9, 0.99999);
-}
-
-double SiEffectShearDistort::DcBlocker::process(double p_input) {
-	double y = p_input - x1 + r * y1;
-	x1 = p_input;
-	y1 = y;
-	return y;
-}
-
-void SiEffectShearDistort::DcBlocker::clear() {
-	x1 = 0.0;
-	y1 = 0.0;
-}
-
-void SiEffectShearDistort::DcBlocker::flush_denormals() {
-	if (Math::abs(x1) < 1e-15) {
-		x1 = 0.0;
-	}
-	if (Math::abs(y1) < 1e-15) {
-		y1 = 0.0;
-	}
-}
 
 // --- AllpassSection ---------------------------------------------------------------
 
@@ -178,10 +132,10 @@ void SiEffectShearDistort::ChannelState::setup() {
 }
 
 void SiEffectShearDistort::ChannelState::clear() {
-	body_lpf.clear();
-	tilt_pre_lpf.clear();
-	tilt_post_lpf.clear();
-	dc.clear();
+	body_lpf = {};
+	tilt_pre_lpf = {};
+	tilt_post_lpf = {};
+	dc = {};
 	tone_svf.clear();
 	up_steep.clear();
 	up_light.clear();
@@ -190,10 +144,6 @@ void SiEffectShearDistort::ChannelState::clear() {
 }
 
 void SiEffectShearDistort::ChannelState::flush_denormals() {
-	body_lpf.flush_denormals();
-	tilt_pre_lpf.flush_denormals();
-	tilt_post_lpf.flush_denormals();
-	dc.flush_denormals();
 	tone_svf.flush_denormals();
 	up_steep.flush_denormals();
 	up_light.flush_denormals();
@@ -317,16 +267,9 @@ void SiEffectShearDistort::_update_derived() {
 void SiEffectShearDistort::_update_filters() {
 	double sr = _get_sampling_rate();
 
-	_left.body_lpf.set_cutoff(BODY_CROSSOVER_HZ, sr);
-	_right.body_lpf.set_cutoff(BODY_CROSSOVER_HZ, sr);
-
-	_left.tilt_pre_lpf.set_cutoff(TILT_PIVOT_HZ, sr);
-	_right.tilt_pre_lpf.set_cutoff(TILT_PIVOT_HZ, sr);
-	_left.tilt_post_lpf.set_cutoff(TILT_PIVOT_HZ, sr);
-	_right.tilt_post_lpf.set_cutoff(TILT_PIVOT_HZ, sr);
-
-	_left.dc.set_cutoff(DC_BLOCK_HZ, sr);
-	_right.dc.set_cutoff(DC_BLOCK_HZ, sr);
+	_body_coeff = one_pole_coeff(BODY_CROSSOVER_HZ, sr);
+	_tilt_coeff = one_pole_coeff(TILT_PIVOT_HZ, sr);
+	_dc_coeff = one_pole_coeff(DC_BLOCK_HZ, sr);
 
 	// Tone 0..1 -> post lowpass 550 Hz .. fully open (exponential sweep).
 	double tone_hz = MIN(550.0 * Math::pow(40.0, _p_tone), sr * 0.45);
@@ -383,13 +326,13 @@ double SiEffectShearDistort::_process_channel(ChannelState &p_ch, double p_input
 		double p_tilt_pre, double p_tilt_post, double p_tone_g) {
 	// Body crossover: the one-pole split is exactly complementary, so
 	// low + high reconstructs the input with no coloration.
-	double low = p_ch.body_lpf.process(p_input);
+	double low = p_ch.body_lpf.lowpass(_body_coeff, p_input);
 	double high = p_input - low;
 	double into = high + low * (1.0 - p_body);
 	double kept_low = low * p_body;
 
 	// Pre-emphasis tilt into the shaper.
-	double tilt_low = p_ch.tilt_pre_lpf.process(into);
+	double tilt_low = p_ch.tilt_pre_lpf.lowpass(_tilt_coeff, into);
 	into = tilt_low + (into - tilt_low) * p_tilt_pre;
 
 	// 4x oversampled waveshaping.
@@ -411,11 +354,11 @@ double SiEffectShearDistort::_process_channel(ChannelState &p_ch, double p_input
 	dist *= p_makeup;
 
 	// Remove the offset introduced by bias and asymmetric curves.
-	dist = p_ch.dc.process(dist);
+	dist = p_ch.dc.highpass(_dc_coeff, dist);
 
 	// De-emphasis tilt, then the tone lowpass (distorted band only, so the
 	// protected lows stay full even at dark tone settings).
-	double post_low = p_ch.tilt_post_lpf.process(dist);
+	double post_low = p_ch.tilt_post_lpf.lowpass(_tilt_coeff, dist);
 	dist = post_low + (dist - post_low) * p_tilt_post;
 	dist = p_ch.tone_svf.process_lowpass(dist, p_tone_g);
 
@@ -425,7 +368,7 @@ double SiEffectShearDistort::_process_channel(ChannelState &p_ch, double p_input
 	return dist + low_out;
 }
 
-int SiEffectShearDistort::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiEffectShearDistort::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 

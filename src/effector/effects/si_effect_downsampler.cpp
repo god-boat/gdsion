@@ -57,7 +57,7 @@ void SiEffectDownsampler::_process_stereo(Vector<double> *r_buffer, int p_start_
 	}
 }
 
-int SiEffectDownsampler::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiEffectDownsampler::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 

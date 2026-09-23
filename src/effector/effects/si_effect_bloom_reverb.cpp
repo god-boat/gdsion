@@ -8,6 +8,8 @@
 
 #include <cmath>
 
+using sion::dsp::one_pole_coeff;
+
 namespace {
 const double TANK_BASE_DELAY_MS[4] = { 29.7, 37.1, 41.9, 53.3 };
 const double TANK_BASE_MOD_RATES[4] = { 0.07, 0.11, 0.17, 0.23 };
@@ -24,84 +26,6 @@ const double AIR_MOD_RATES[2] = { 0.09, 0.14 };
 const double AIR_MOD_DEPTH_SCALE[2] = { 0.35, 0.5 };
 const double AIR_PHASE_LEFT[2] = { 0.15, 0.63 };
 const double AIR_PHASE_RIGHT[2] = { 0.42, 0.88 };
-}
-
-void SiEffectBloomReverb::FractionalDelay::resize_samples(int p_length) {
-	int clamped = MAX(p_length, 2);
-	buffer.resize(clamped);
-	buffer.fill(0.0);
-	write_index = 0;
-}
-
-void SiEffectBloomReverb::FractionalDelay::reset() {
-	if (!buffer.is_empty()) {
-		buffer.fill(0.0);
-	}
-	write_index = 0;
-}
-
-void SiEffectBloomReverb::FractionalDelay::write(double p_sample) {
-	if (buffer.is_empty()) {
-		return;
-	}
-	buffer.write[write_index] = p_sample;
-	write_index++;
-	if (write_index >= buffer.size()) {
-		write_index = 0;
-	}
-}
-
-double SiEffectBloomReverb::FractionalDelay::read_samples(double p_delay_samples) const {
-	if (buffer.size() < 2) {
-		return 0.0;
-	}
-	double delay = CLAMP(p_delay_samples, 1.0, (double)(buffer.size() - 2));
-	double read_pos = (double)write_index - delay;
-	const double size = (double)buffer.size();
-	while (read_pos < 0.0) {
-		read_pos += size;
-	}
-	while (read_pos >= size) {
-		read_pos -= size;
-	}
-	int index_a = (int)read_pos;
-	int index_b = index_a + 1;
-	if (index_b >= buffer.size()) {
-		index_b = 0;
-	}
-	double frac = read_pos - (double)index_a;
-	return buffer[index_a] + (buffer[index_b] - buffer[index_a]) * frac;
-}
-
-void SiEffectBloomReverb::OnePoleLowPass::set_cutoff(double p_hz, double p_sample_rate) {
-	double clamped = CLAMP(p_hz, 10.0, p_sample_rate * 0.45);
-	alpha = Math::exp(-2.0 * M_PI * clamped / p_sample_rate);
-}
-
-double SiEffectBloomReverb::OnePoleLowPass::process(double p_input) {
-	z = (1.0 - alpha) * p_input + alpha * z;
-	return z;
-}
-
-void SiEffectBloomReverb::OnePoleLowPass::reset() {
-	z = 0.0;
-}
-
-void SiEffectBloomReverb::OnePoleHighPass::set_cutoff(double p_hz, double p_sample_rate) {
-	double clamped = CLAMP(p_hz, 10.0, p_sample_rate * 0.45);
-	alpha = Math::exp(-2.0 * M_PI * clamped / p_sample_rate);
-}
-
-double SiEffectBloomReverb::OnePoleHighPass::process(double p_input) {
-	double output = alpha * (y1 + p_input - x1);
-	x1 = p_input;
-	y1 = output;
-	return output;
-}
-
-void SiEffectBloomReverb::OnePoleHighPass::reset() {
-	x1 = 0.0;
-	y1 = 0.0;
 }
 
 void SiEffectBloomReverb::BloomEnvelope::set_attack_ms(double p_ms, double p_sample_rate) {
@@ -146,23 +70,19 @@ void SiEffectBloomReverb::Lfo::reset(double p_phase_offset) {
 }
 
 double SiEffectBloomReverb::AllpassStage::process(double p_input, double p_delay_samples, double p_feedback) {
-	double delayed = delay.read_samples(p_delay_samples);
+	double delayed = delay.read(p_delay_samples);
 	double output = delayed - p_feedback * p_input;
 	delay.write(p_input + p_feedback * output);
 	return output;
 }
 
-void SiEffectBloomReverb::AllpassStage::reset() {
-	delay.reset();
-}
-
 void SiEffectBloomReverb::AirSide::reset() {
 	for (int i = 0; i < AIR_DELAY_COUNT; i++) {
-		delays[i].reset();
+		delays[i].clear();
 	}
-	diffuser_a.reset();
-	diffuser_b.reset();
-	hp.reset();
+	diffuser_a.delay.clear();
+	diffuser_b.delay.clear();
+	hp = {};
 }
 
 double SiEffectBloomReverb::_clamp01(double p_value) {
@@ -185,60 +105,59 @@ void SiEffectBloomReverb::_copy_params(BloomParams &r_dst, const BloomParams &p_
 }
 
 void SiEffectBloomReverb::_ensure_delay_buffers() {
-	int sample_rate = MAX((int)Math::round(_get_sampling_rate()), 1);
+	const double sample_rate = _get_sampling_rate();
 	if (_cached_sample_rate == sample_rate) {
 		return;
 	}
 	_cached_sample_rate = sample_rate;
 
-	_predelay_left.resize_samples((int)Math::ceil(sample_rate * 0.30) + 4);
-	_predelay_right.resize_samples((int)Math::ceil(sample_rate * 0.30) + 4);
-	_early_left.resize_samples((int)Math::ceil(sample_rate * 0.09) + 4);
-	_early_right.resize_samples((int)Math::ceil(sample_rate * 0.09) + 4);
+	_predelay_left.prepare(sample_rate * 0.30);
+	_predelay_right.prepare(sample_rate * 0.30);
+	_early_left.prepare(sample_rate * 0.09);
+	_early_right.prepare(sample_rate * 0.09);
 
 	for (int i = 0; i < INPUT_DIFFUSER_COUNT; i++) {
-		_diffusers_left[i].delay.resize_samples((int)Math::ceil(sample_rate * 0.03) + 4);
-		_diffusers_right[i].delay.resize_samples((int)Math::ceil(sample_rate * 0.03) + 4);
+		_diffusers_left[i].delay.prepare(sample_rate * 0.03);
+		_diffusers_right[i].delay.prepare(sample_rate * 0.03);
 	}
 	for (int i = 0; i < TANK_LINE_COUNT; i++) {
-		_tank[i].delay.resize_samples((int)Math::ceil(sample_rate * 0.18) + 8);
-		_tank[i].mod.reset(TANK_PHASE_OFFSETS[i]);
+		_tank[i].delay.prepare(sample_rate * 0.18);
 	}
 	for (int i = 0; i < AIR_DELAY_COUNT; i++) {
-		_air_left.delays[i].resize_samples((int)Math::ceil(sample_rate * 0.04) + 4);
-		_air_right.delays[i].resize_samples((int)Math::ceil(sample_rate * 0.04) + 4);
-		_air_left.mods[i].reset(AIR_PHASE_LEFT[i]);
-		_air_right.mods[i].reset(AIR_PHASE_RIGHT[i]);
+		_air_left.delays[i].prepare(sample_rate * 0.04);
+		_air_right.delays[i].prepare(sample_rate * 0.04);
 	}
-	_air_left.diffuser_a.delay.resize_samples((int)Math::ceil(sample_rate * 0.015) + 4);
-	_air_left.diffuser_b.delay.resize_samples((int)Math::ceil(sample_rate * 0.015) + 4);
-	_air_right.diffuser_a.delay.resize_samples((int)Math::ceil(sample_rate * 0.015) + 4);
-	_air_right.diffuser_b.delay.resize_samples((int)Math::ceil(sample_rate * 0.015) + 4);
-
-	_reset_signal_state();
+	_air_left.diffuser_a.delay.prepare(sample_rate * 0.015);
+	_air_left.diffuser_b.delay.prepare(sample_rate * 0.015);
+	_air_right.diffuser_a.delay.prepare(sample_rate * 0.015);
+	_air_right.diffuser_b.delay.prepare(sample_rate * 0.015);
 }
 
 void SiEffectBloomReverb::_reset_signal_state() {
-	_predelay_left.reset();
-	_predelay_right.reset();
-	_early_left.reset();
-	_early_right.reset();
+	_predelay_left.clear();
+	_predelay_right.clear();
+	_early_left.clear();
+	_early_right.clear();
 	for (int i = 0; i < INPUT_DIFFUSER_COUNT; i++) {
-		_diffusers_left[i].reset();
-		_diffusers_right[i].reset();
+		_diffusers_left[i].delay.clear();
+		_diffusers_right[i].delay.clear();
 	}
 	for (int i = 0; i < TANK_LINE_COUNT; i++) {
-		_tank[i].delay.reset();
-		_tank[i].hp.reset();
-		_tank[i].lp.reset();
+		_tank[i].delay.clear();
+		_tank[i].hp = {};
+		_tank[i].lp = {};
 		_tank[i].mod.reset(TANK_PHASE_OFFSETS[i]);
+	}
+	for (int i = 0; i < AIR_DELAY_COUNT; i++) {
+		_air_left.mods[i].reset(AIR_PHASE_LEFT[i]);
+		_air_right.mods[i].reset(AIR_PHASE_RIGHT[i]);
 	}
 	_air_left.reset();
 	_air_right.reset();
-	_input_hp_left.reset();
-	_input_hp_right.reset();
-	_wet_lp_left.reset();
-	_wet_lp_right.reset();
+	_input_hp_left = {};
+	_input_hp_right = {};
+	_wet_lp_left = {};
+	_wet_lp_right = {};
 	_bloom_envelope_left.reset();
 	_bloom_envelope_right.reset();
 	_duck_env = 0.0;
@@ -257,10 +176,11 @@ void SiEffectBloomReverb::_derive_params(const BloomParams &p_params, DerivedPar
 	double freeze = _clamp01(p_params.freeze);
 	double bloom_curve = Math::pow(bloom, 0.7);
 	double bloom_depth = bloom * bloom;
+	double sample_rate = _get_sampling_rate();
 
 	r_out.size_scale = Math::lerp(0.55, 2.75, Math::pow(size, 1.7));
 	r_out.decay_seconds = _exp_lerp(0.35, 18.0, decay);
-	r_out.predelay_samples = MAX(0.0, p_params.predelay_ms) * _get_samples_per_ms();
+	r_out.predelay_samples = MAX(1.0, p_params.predelay_ms * _get_samples_per_ms());
 	r_out.bloom_attack_ms = Math::lerp(8.0, 520.0, bloom_depth);
 	r_out.direct_late_amount = Math::lerp(1.0, 0.05, bloom_curve);
 	r_out.bloom_amount = Math::lerp(0.0, 3.25, bloom_depth);
@@ -268,15 +188,16 @@ void SiEffectBloomReverb::_derive_params(const BloomParams &p_params, DerivedPar
 	r_out.early_gain = Math::lerp(0.9, 0.03, bloom_curve);
 	r_out.late_gain = Math::lerp(0.8, 2.2, bloom_depth);
 	r_out.drive = Math::lerp(1.0, 1.05, bloom);
-	r_out.high_damp_hz = MIN(_exp_lerp(1800.0, 14000.0, tone), MAX(p_params.high_cut_hz, 2500.0));
-	r_out.low_cut_hz = CLAMP(p_params.low_cut_hz, 20.0, 800.0);
-	r_out.feedback_low_cut_hz = CLAMP(r_out.low_cut_hz * 0.65, 40.0, 420.0);
-	r_out.high_cut_hz = CLAMP(p_params.high_cut_hz, 1000.0, 20000.0);
+	double low_cut_hz = CLAMP(p_params.low_cut_hz, 20.0, 800.0);
+	r_out.input_hp_coeff = one_pole_coeff(low_cut_hz, sample_rate);
+	r_out.feedback_hp_coeff = one_pole_coeff(CLAMP(low_cut_hz * 0.65, 40.0, 420.0), sample_rate);
+	r_out.damping_lp_coeff = one_pole_coeff(MIN(_exp_lerp(1800.0, 14000.0, tone), MAX(p_params.high_cut_hz, 2500.0)), sample_rate);
+	r_out.wet_lp_coeff = one_pole_coeff(CLAMP(p_params.high_cut_hz, 1000.0, 20000.0), sample_rate);
 	double motion_depth_ms = Math::lerp(0.0, 8.0, Math::pow(motion, 1.5)) + Math::lerp(0.0, 9.0, bloom_depth);
 	r_out.mod_depth_samples = (_get_sampling_rate() * motion_depth_ms) / 1000.0;
 	r_out.width_gain = Math::lerp(0.3, 1.35, width) * Math::lerp(0.85, 1.65, bloom_curve);
 	r_out.air_gain = Math::pow(air, 1.4) * 0.35 + bloom_depth * 0.22;
-	r_out.air_hp_hz = _exp_lerp(1800.0, 6500.0, 1.0 - air);
+	r_out.air_hp_coeff = one_pole_coeff(_exp_lerp(1800.0, 6500.0, 1.0 - air), sample_rate);
 	r_out.wet_makeup_gain = 1.8;
 	r_out.duck = duck;
 	r_out.freeze = freeze;
@@ -400,16 +321,15 @@ void SiEffectBloomReverb::_set_arg_value(int p_arg_index, double p_value, bool p
 double SiEffectBloomReverb::_process_air_side(
 		AirSide &r_side,
 		double p_input,
-		double p_hp_hz,
+		double p_hp_coeff,
 		const double *p_delay_samples,
 		const double *p_rates,
 		double p_mod_depth_samples) {
-	r_side.hp.set_cutoff(p_hp_hz, _get_sampling_rate());
-	double band = r_side.hp.process(p_input);
+	double band = r_side.hp.highpass(p_hp_coeff, p_input);
 	double stage_a = band;
 	for (int i = 0; i < AIR_DELAY_COUNT; i++) {
 		double mod = r_side.mods[i].process(p_rates[i], p_mod_depth_samples * AIR_MOD_DEPTH_SCALE[i], _get_sampling_rate());
-		double delayed = r_side.delays[i].read_samples(p_delay_samples[i] + mod);
+		double delayed = r_side.delays[i].read(p_delay_samples[i] + mod);
 		r_side.delays[i].write(stage_a + delayed * 0.18);
 		stage_a = delayed + stage_a * 0.35;
 	}
@@ -424,8 +344,7 @@ int SiEffectBloomReverb::prepare_process() {
 	return 2;
 }
 
-int SiEffectBloomReverb::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
-	_ensure_delay_buffers();
+int SiEffectBloomReverb::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	if (p_length <= 0) {
 		return 2;
 	}
@@ -441,17 +360,8 @@ int SiEffectBloomReverb::process(int p_channels, Vector<double> *r_buffer, int p
 		DerivedParams params;
 		_derive_params(_current_params, params);
 
-		_input_hp_left.set_cutoff(params.low_cut_hz, _get_sampling_rate());
-		_input_hp_right.set_cutoff(params.low_cut_hz, _get_sampling_rate());
-		_wet_lp_left.set_cutoff(params.high_cut_hz, _get_sampling_rate());
-		_wet_lp_right.set_cutoff(params.high_cut_hz, _get_sampling_rate());
 		_bloom_envelope_left.set_attack_ms(params.bloom_attack_ms, _get_sampling_rate());
 		_bloom_envelope_right.set_attack_ms(params.bloom_attack_ms, _get_sampling_rate());
-
-		for (int line = 0; line < TANK_LINE_COUNT; line++) {
-			_tank[line].hp.set_cutoff(params.feedback_low_cut_hz, _get_sampling_rate());
-			_tank[line].lp.set_cutoff(params.high_damp_hz, _get_sampling_rate());
-		}
 
 		for (int sample = 0; sample < segment_length; sample++) {
 			int frame_index = processed + sample;
@@ -459,19 +369,19 @@ int SiEffectBloomReverb::process(int p_channels, Vector<double> *r_buffer, int p
 			double dry_l = (*r_buffer)[buffer_index];
 			double dry_r = stereo ? (*r_buffer)[buffer_index + 1] : dry_l;
 
-			double conditioned_l = _input_hp_left.process(dry_l);
-			double conditioned_r = _input_hp_right.process(dry_r);
+			double conditioned_l = _input_hp_left.highpass(params.input_hp_coeff, dry_l);
+			double conditioned_r = _input_hp_right.highpass(params.input_hp_coeff, dry_r);
 
-			double predelayed_l = _predelay_left.read_samples(params.predelay_samples);
-			double predelayed_r = _predelay_right.read_samples(params.predelay_samples);
+			double predelayed_l = _predelay_left.read(params.predelay_samples);
+			double predelayed_r = _predelay_right.read(params.predelay_samples);
 			_predelay_left.write(conditioned_l);
 			_predelay_right.write(conditioned_r);
 
 			double early_l = 0.0;
 			double early_r = 0.0;
 			for (int tap = 0; tap < EARLY_TAP_COUNT; tap++) {
-				early_l += _early_left.read_samples(params.early_tap_left_samples[tap]) * EARLY_GAINS[tap];
-				early_r += _early_right.read_samples(params.early_tap_right_samples[tap]) * EARLY_GAINS[tap];
+				early_l += _early_left.read(params.early_tap_left_samples[tap]) * EARLY_GAINS[tap];
+				early_r += _early_right.read(params.early_tap_right_samples[tap]) * EARLY_GAINS[tap];
 			}
 			_early_left.write(predelayed_l);
 			_early_right.write(predelayed_r);
@@ -503,9 +413,9 @@ int SiEffectBloomReverb::process(int p_channels, Vector<double> *r_buffer, int p
 						params.tank_mod_rates[line],
 						params.mod_depth_samples * TANK_MOD_DEPTH_SCALE[line],
 						_get_sampling_rate());
-				tank_reads[line] = _tank[line].delay.read_samples(params.tank_delay_samples[line] + mod);
-				double filtered = _tank[line].hp.process(tank_reads[line]);
-				tank_filtered[line] = _tank[line].lp.process(filtered);
+				tank_reads[line] = _tank[line].delay.read(params.tank_delay_samples[line] + mod);
+				double filtered = _tank[line].hp.highpass(params.feedback_hp_coeff, tank_reads[line]);
+				tank_filtered[line] = _tank[line].lp.lowpass(params.damping_lp_coeff, filtered);
 			}
 
 			double mix0 = (tank_filtered[0] + tank_filtered[1] + tank_filtered[2] + tank_filtered[3]) * 0.5;
@@ -539,8 +449,8 @@ int SiEffectBloomReverb::process(int p_channels, Vector<double> *r_buffer, int p
 					0.35 * tank_filtered[2] +
 					0.60 * tank_filtered[3];
 
-			double air_l = _process_air_side(_air_left, wet_l, params.air_hp_hz, params.air_delay_left_samples, params.air_mod_rates, params.mod_depth_samples);
-			double air_r = _process_air_side(_air_right, wet_r, params.air_hp_hz, params.air_delay_right_samples, params.air_mod_rates, params.mod_depth_samples);
+			double air_l = _process_air_side(_air_left, wet_l, params.air_hp_coeff, params.air_delay_left_samples, params.air_mod_rates, params.mod_depth_samples);
+			double air_r = _process_air_side(_air_right, wet_r, params.air_hp_coeff, params.air_delay_right_samples, params.air_mod_rates, params.mod_depth_samples);
 			wet_l += air_l * params.air_gain;
 			wet_r += air_r * params.air_gain;
 
@@ -549,8 +459,8 @@ int SiEffectBloomReverb::process(int p_channels, Vector<double> *r_buffer, int p
 			wet_l = mid + side;
 			wet_r = mid - side;
 
-			double wet_total_l = _wet_lp_left.process((wet_l + early_l) * params.wet_makeup_gain);
-			double wet_total_r = _wet_lp_right.process((wet_r + early_r) * params.wet_makeup_gain);
+			double wet_total_l = _wet_lp_left.lowpass(params.wet_lp_coeff, (wet_l + early_l) * params.wet_makeup_gain);
+			double wet_total_r = _wet_lp_right.lowpass(params.wet_lp_coeff, (wet_r + early_r) * params.wet_makeup_gain);
 
 			double detector = MAX(Math::abs(dry_l), Math::abs(dry_r));
 			double duck_coeff = detector > _duck_env ? params.duck_attack_coeff : params.duck_release_coeff;

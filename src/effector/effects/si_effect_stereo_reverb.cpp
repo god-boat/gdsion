@@ -45,7 +45,7 @@ void SiEffectStereoReverb::_process_channel(Vector<double> *r_buffer, int p_buff
 	r_buffer->write[p_buffer_index] = (*r_buffer)[p_buffer_index] * _dry_gain + wet_value * _wet_gain;
 }
 
-int SiEffectStereoReverb::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiEffectStereoReverb::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 

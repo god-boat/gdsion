@@ -66,7 +66,7 @@ void SiEffectEqualizer::_process_stereo(Vector<double> *r_buffer, int p_start_in
 	}
 }
 
-int SiEffectEqualizer::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiEffectEqualizer::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 

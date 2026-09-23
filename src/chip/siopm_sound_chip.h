@@ -11,6 +11,7 @@
 #include <godot_cpp/templates/list.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include "chip/siopm_operator_params.h"
+#include "dsp/process_context.h"
 #include "templates/singly_linked_list.h"
 
 using namespace godot;
@@ -33,6 +34,7 @@ class SiOPMSoundChip : public Object {
 
 	int _buffer_length = 0;
 	int _bitrate = 0;
+	sion::dsp::ProcessContext _process_context;
 
 	// Expected to be of PIPE_SIZE size.
 	Vector<SinglyLinkedList<int> *> _pipe_buffers;
@@ -61,6 +63,7 @@ public:
 	int get_bitrate() const { return _bitrate; }
 	double get_bpm() const;
 	void set_sequencer(SiMMLSequencer *p_sequencer);
+	const sion::dsp::ProcessContext &get_process_context() const { return _process_context; }
 
 	SinglyLinkedList<int> *get_pipe(int p_pipe_num, int p_index = 0);
 

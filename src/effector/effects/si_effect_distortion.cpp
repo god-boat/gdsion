@@ -36,7 +36,7 @@ int SiEffectDistortion::prepare_process() {
 	return 1;
 }
 
-int SiEffectDistortion::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiEffectDistortion::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 

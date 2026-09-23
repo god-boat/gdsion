@@ -156,6 +156,7 @@ int SiEffectStream::prepare_process() {
 }
 
 int SiEffectStream::process(int p_start_idx, int p_length, bool p_write_in_stream) {
+	const sion::dsp::ProcessContext &context = _sound_chip->get_process_context();
 	Vector<double> *buffer = _stream->get_buffer_ptr();
 	int channel_count = _stream->get_channel_count();
 
@@ -163,7 +164,7 @@ int SiEffectStream::process(int p_start_idx, int p_length, bool p_write_in_strea
 		if (i < _bypassed.size() && _bypassed[i]) {
 			continue;
 		}
-		channel_count = _chain[i]->process(channel_count, buffer, p_start_idx, p_length);
+		channel_count = _chain[i]->process(context, channel_count, buffer, p_start_idx, p_length);
 	}
 
 	// Only write to output if not muted

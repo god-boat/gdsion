@@ -11,6 +11,7 @@
 #include <godot_cpp/templates/vector.hpp>
 #include <cmath>
 #include "chip/siopm_ref_table.h"
+#include "dsp/process_context.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -60,6 +61,8 @@ protected:
 	_FORCE_INLINE_ double _get_angular_frequency(double p_frequency) const { return (2.0 * M_PI * p_frequency) / _sampling_rate; }
 
 public:
+	using ProcessContext = sion::dsp::ProcessContext;
+
 	bool is_free() const { return _is_free; }
 	void set_free(bool p_free) { _is_free = p_free; }
 	void refresh_sampling_rate() { _refresh_sampling_rate_cache(); }
@@ -72,7 +75,7 @@ public:
 	// is always in stereo. The order in the buffer is the same as wave format ([L0,R0,L1,R1,L2,R2 ... ]).
 	// Start index and length must be adjusted internally to account for the stereo nature of the buffer.
 	// Returns the output channel count.
-	virtual int process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) { return p_channels; }
+	virtual int process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) { return p_channels; }
 
 	virtual void set_by_mml(Vector<double> p_args) {}
 	// Sparse single-arg update. Returns true if the effect handled it, false to

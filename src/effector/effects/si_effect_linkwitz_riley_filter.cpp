@@ -16,7 +16,7 @@ int SiEffectLinkwitzRileyFilter::prepare_process() {
 	return 2;
 }
 
-int SiEffectLinkwitzRileyFilter::process(int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+int SiEffectLinkwitzRileyFilter::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int length = p_length << 1;
 	double *buffer = r_buffer->ptrw() + (p_start_index << 1);
 	const bool output_low = _output_mode == 0;

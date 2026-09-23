@@ -9,6 +9,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include "chip/channels/siopm_channel_manager.h"
 #include "chip/siopm_operator_params.h"
+#include "chip/siopm_ref_table.h"
 #include "chip/siopm_stream.h"
 #include "sequencer/simml_sequencer.h"
 
@@ -36,6 +37,9 @@ SinglyLinkedList<int> *SiOPMSoundChip::get_pipe(int p_pipe_num, int p_index) {
 }
 
 void SiOPMSoundChip::begin_process() {
+	_process_context.sample_rate = SiOPMRefTable::get_instance()->sampling_rate;
+	_process_context.block_length = _buffer_length;
+	_process_context.bpm = get_bpm();
 	output_stream->clear();
 }
 
