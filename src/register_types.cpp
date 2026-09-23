@@ -37,7 +37,6 @@
 #include "chip/wave/siopm_wave_sampler_table.h"
 #include "chip/wave/siopm_wave_stream_data.h"
 #include "chip/wave/siopm_wave_table.h"
-#include "effector/components/si_effect_line_delay.h"
 #include "effector/effects/si_effect_autopan.h"
 #include "effector/effects/si_effect_compressor.h"
 #include "effector/effects/si_effect_distortion.h"
@@ -57,16 +56,6 @@
 #include "effector/filters/si_controllable_filter_base.h"
 #include "effector/filters/si_controllable_filter_high_pass.h"
 #include "effector/filters/si_controllable_filter_low_pass.h"
-#include "effector/filters/si_filter_all_pass.h"
-#include "effector/filters/si_filter_band_pass.h"
-#include "effector/filters/si_filter_base.h"
-#include "effector/filters/si_filter_biquad_allpass.h"
-#include "effector/filters/si_filter_high_boost.h"
-#include "effector/filters/si_filter_high_pass.h"
-#include "effector/filters/si_filter_low_boost.h"
-#include "effector/filters/si_filter_low_pass.h"
-#include "effector/filters/si_filter_notch.h"
-#include "effector/filters/si_filter_peak.h"
 #include "effector/filters/si_filter_vowel.h"
 #include "effector/si_effect_base.h"
 #include "effector/si_effect_composite.h"
@@ -141,7 +130,6 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 
 		ClassDB::register_abstract_class<SiEffectBase>();
 		ClassDB::register_abstract_class<SiControllableFilterBase>();
-		ClassDB::register_abstract_class<SiFilterBase>();
 
 		ClassDB::register_class<SiControllableFilterHighPass>();
 		ClassDB::register_class<SiControllableFilterLowPass>();
@@ -162,14 +150,6 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 		ClassDB::register_class<SiEffectLinkwitzRileyFilter>();
 		ClassDB::register_class<SiEffectGraphicEqualizer8>();
 		ClassDB::register_class<SiEffectShearDistort>();
-		ClassDB::register_class<SiFilterAllPass>();
-		ClassDB::register_class<SiFilterBandPass>();
-		ClassDB::register_class<SiFilterHighBoost>();
-		ClassDB::register_class<SiFilterHighPass>();
-		ClassDB::register_class<SiFilterLowBoost>();
-		ClassDB::register_class<SiFilterLowPass>();
-		ClassDB::register_class<SiFilterNotch>();
-		ClassDB::register_class<SiFilterPeak>();
 		ClassDB::register_class<SiFilterVowel>();
 
 		// Events.

@@ -6,6 +6,8 @@
 
 #include "si_effect_graphic_equalizer_8.h"
 
+using sion::dsp::BiquadCoeffs;
+
 const double SiEffectGraphicEqualizer8::DENORMAL_THRESHOLD = 1e-15;
 
 const double SiEffectGraphicEqualizer8::DEFAULT_FREQS[NUM_BANDS] = {
@@ -25,7 +27,7 @@ void SiEffectGraphicEqualizer8::_recompute_band(int p_band) {
 	if (!b.enabled) {
 		new_target = BiquadCoeffs{ 1.0, 0.0, 0.0, 0.0, 0.0 };
 	} else {
-		new_target = compute_biquad_coefficients(b.type, b.freq_hz, b.q, b.gain_db, _get_sampling_rate());
+		new_target = sion::dsp::compute_biquad_coefficients(b.type, b.freq_hz, b.q, b.gain_db, _get_sampling_rate());
 	}
 	if (!_initialized) {
 		b.target = new_target;
@@ -76,18 +78,6 @@ void SiEffectGraphicEqualizer8::_snap_all() {
 	_output_gain_step = 0.0;
 }
 
-double SiEffectGraphicEqualizer8::_process_biquad(BandChannelState *p_state, const BiquadCoeffs &p_coeffs, double p_input) const {
-	double output = p_coeffs.b0 * p_input + p_coeffs.b1 * p_state->in1 + p_coeffs.b2 * p_state->in2
-			- p_coeffs.a1 * p_state->out1 - p_coeffs.a2 * p_state->out2;
-
-	p_state->in2 = p_state->in1;
-	p_state->in1 = p_input;
-	p_state->out2 = p_state->out1;
-	p_state->out1 = output;
-
-	return output;
-}
-
 // --- Public API ---
 
 void SiEffectGraphicEqualizer8::set_band_params(int p_band, int p_type, bool p_enabled, double p_freq_hz, double p_gain_db, double p_q) {
@@ -115,8 +105,8 @@ void SiEffectGraphicEqualizer8::set_output_gain_db(double p_gain_db) {
 
 int SiEffectGraphicEqualizer8::prepare_process() {
 	for (int i = 0; i < NUM_BANDS; i++) {
-		_bands[i].left.clear();
-		_bands[i].right.clear();
+		_bands[i].left = {};
+		_bands[i].right = {};
 	}
 	return 2;
 }
@@ -161,8 +151,8 @@ int SiEffectGraphicEqualizer8::process(int p_channels, Vector<double> *r_buffer,
 				continue;
 			}
 
-			left = _process_biquad(&band.left, band.current, left);
-			right = _process_biquad(&band.right, band.current, right);
+			left = band.left.tick(band.current, left);
+			right = band.right.tick(band.current, right);
 
 			if (band.dirty) {
 				band.current.b0 += band.step.b0;
@@ -191,8 +181,8 @@ int SiEffectGraphicEqualizer8::process(int p_channels, Vector<double> *r_buffer,
 			band.dirty = false;
 			band.step = BiquadCoeffs{ 0, 0, 0, 0, 0 };
 		}
-		band.left.flush_denormals();
-		band.right.flush_denormals();
+		_flush_denormals(band.left);
+		_flush_denormals(band.right);
 	}
 
 	if (_output_gain_dirty) {

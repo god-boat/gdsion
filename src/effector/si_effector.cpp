@@ -26,14 +26,6 @@
 #include "effector/effects/si_effect_wave_shaper.h"
 #include "effector/filters/si_controllable_filter_high_pass.h"
 #include "effector/filters/si_controllable_filter_low_pass.h"
-#include "effector/filters/si_filter_all_pass.h"
-#include "effector/filters/si_filter_band_pass.h"
-#include "effector/filters/si_filter_high_boost.h"
-#include "effector/filters/si_filter_high_pass.h"
-#include "effector/filters/si_filter_low_boost.h"
-#include "effector/filters/si_filter_low_pass.h"
-#include "effector/filters/si_filter_notch.h"
-#include "effector/filters/si_filter_peak.h"
 #include "effector/filters/si_filter_vowel.h"
 #include "effector/effects/si_effect_mb_compressor.h"
 #include "effector/effects/si_effect_linkwitz_riley_filter.h"
@@ -119,15 +111,7 @@ Ref<SiEffectBase> SiEffector::get_effect_instance(const String &p_name) {
 	CREATE_EFFECT(SiEffectStereoReverb, "reverb");
 	CREATE_EFFECT(SiEffectWaveShaper, "waveShaper");
 
-	// MML-only filter commands (not app device kinds): left as MML tokens.
-	CREATE_EFFECT(SiFilterAllPass, "af");
-	CREATE_EFFECT(SiFilterBandPass, "bf");
-	CREATE_EFFECT(SiFilterHighBoost, "hb");
-	CREATE_EFFECT(SiFilterHighPass, "hf");
-	CREATE_EFFECT(SiFilterLowBoost, "lb");
-	CREATE_EFFECT(SiFilterLowPass, "lf");
-	CREATE_EFFECT(SiFilterNotch, "nf");
-	CREATE_EFFECT(SiFilterPeak, "pf");
+	// MML-only filter command (not an app device kind): left as an MML token.
 	CREATE_EFFECT(SiFilterVowel, "vowel");
 
 	CREATE_EFFECT(SiControllableFilterHighPass, "highPassFilter");
@@ -376,15 +360,7 @@ SiEffector::SiEffector(SiOPMSoundChip *p_chip) {
 	register_effect<SiEffectStereoReverb>("reverb");
 	register_effect<SiEffectWaveShaper>("waveShaper");
 
-	// MML-only filter commands (not app device kinds): left as MML tokens.
-	register_effect<SiFilterAllPass>("af");
-	register_effect<SiFilterBandPass>("bf");
-	register_effect<SiFilterHighBoost>("hb");
-	register_effect<SiFilterHighPass>("hf");
-	register_effect<SiFilterLowBoost>("lb");
-	register_effect<SiFilterLowPass>("lf");
-	register_effect<SiFilterNotch>("nf");
-	register_effect<SiFilterPeak>("pf");
+	// MML-only filter command (not an app device kind): left as an MML token.
 	register_effect<SiFilterVowel>("vowel");
 
 	register_effect<SiControllableFilterHighPass>("highPassFilter");

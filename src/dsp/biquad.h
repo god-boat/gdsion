@@ -4,11 +4,14 @@
 /* Provided under MIT                              */
 /***************************************************/
 
-#ifndef BIQUAD_COEFFICIENTS_H
-#define BIQUAD_COEFFICIENTS_H
+#ifndef SION_DSP_BIQUAD_H
+#define SION_DSP_BIQUAD_H
 
 #include <cmath>
 #include <godot_cpp/core/defs.hpp>
+#include <godot_cpp/core/math_defs.hpp>
+
+namespace sion::dsp {
 
 enum BiquadFilterType {
 	BIQUAD_PEAK = 0,
@@ -42,10 +45,10 @@ static inline BiquadCoeffs compute_biquad_coefficients(int p_type, double p_freq
 	BiquadCoeffs c;
 
 	double nyquist = p_sample_rate * 0.5;
-	double freq = CLAMP(p_freq_hz, 10.0, nyquist * 0.99);
-	double q = MAX(p_q, 0.01);
+	double freq = godot::CLAMP(p_freq_hz, 10.0, nyquist * 0.99);
+	double q = godot::MAX(p_q, 0.01);
 
-	double omega = 2.0 * M_PI * freq / p_sample_rate;
+	double omega = 2.0 * Math_PI * freq / p_sample_rate;
 	double sin_w = ::sin(omega);
 	double cos_w = ::cos(omega);
 	double alpha = sin_w / (2.0 * q);
@@ -150,4 +153,25 @@ static inline BiquadCoeffs compute_biquad_coefficients(int p_type, double p_freq
 	return c;
 }
 
-#endif // BIQUAD_COEFFICIENTS_H
+// Direct Form I history for one channel of one biquad. Channels and stages
+// that share a response share one BiquadCoeffs.
+struct BiquadState {
+	double x1 = 0.0, x2 = 0.0;
+	double y1 = 0.0, y2 = 0.0;
+
+	inline double tick(const BiquadCoeffs &p_coeffs, double p_input) {
+		double output = p_coeffs.b0 * p_input + p_coeffs.b1 * x1 + p_coeffs.b2 * x2
+				- p_coeffs.a1 * y1 - p_coeffs.a2 * y2;
+
+		x2 = x1;
+		x1 = p_input;
+		y2 = y1;
+		y1 = output;
+
+		return output;
+	}
+};
+
+} // namespace sion::dsp
+
+#endif // SION_DSP_BIQUAD_H

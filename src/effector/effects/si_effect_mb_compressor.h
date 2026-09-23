@@ -1,8 +1,8 @@
 #ifndef SI_EFFECT_MB_COMPRESSOR_H
 #define SI_EFFECT_MB_COMPRESSOR_H
 
+#include "dsp/linkwitz_riley.h"
 #include "effector/si_effect_base.h"
-#include "si_effect_linkwitz_riley_filter.h"
 
 #include <godot_cpp/templates/vector.hpp>
 #include <atomic>
@@ -222,10 +222,14 @@ class SiEffectMultibandCompressor : public SiEffectBase {
 
 	// One Linkwitz-Riley splitter per crossover point, plus a compensator that
 	// runs the low band through the same allpass the mid/high split imposes on
-	// everything above it, so the three bands sum flat at unity.
-	Ref<SiEffectLinkwitzRileyFilter> _lm_filter;
-	Ref<SiEffectLinkwitzRileyFilter> _mh_filter;
-	Ref<SiEffectLinkwitzRileyFilter> _low_compensation_filter;
+	// everything above it, so the three bands sum flat at unity. The compensator
+	// shares the mid/high coefficients. Each splitter holds one state per
+	// channel.
+	sion::dsp::LinkwitzRiley4Coeffs _lm_coeffs;
+	sion::dsp::LinkwitzRiley4Coeffs _mh_coeffs;
+	sion::dsp::LinkwitzRiley4 _lm_filter[2];
+	sion::dsp::LinkwitzRiley4 _mh_filter[2];
+	sion::dsp::LinkwitzRiley4 _low_compensation_filter[2];
 
 	BandCompressor _low_compressor;
 	BandCompressor _mid_compressor;
@@ -254,9 +258,9 @@ class SiEffectMultibandCompressor : public SiEffectBase {
 	Vector<double> _scratch_buffer;
 
 	void _reset_dsp_state();
-	void _retune_filters(double p_lm_frequency, double p_mh_frequency);
 	void _snapshot_bands(const BlockSettings &p_block, BandSettings r_bands[BAND_COUNT]) const;
 
+	static void _split(int p_channels, const sion::dsp::LinkwitzRiley4Coeffs &p_coeffs, sion::dsp::LinkwitzRiley4 *r_filter, const double *p_input, double *p_low, double *p_high, int p_length);
 	void _process_multiband(int p_channels, double *p_audio, int p_length, double p_sample_rate, const BandSettings *p_bands);
 	void _process_low_band(int p_channels, double *p_audio, int p_length, double p_sample_rate, const BandSettings &p_low);
 	void _process_high_band(int p_channels, double *p_audio, int p_length, double p_sample_rate, const BandSettings &p_high);
