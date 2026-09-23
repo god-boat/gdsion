@@ -18,14 +18,32 @@
 #include "sequencer/simml_voice.h"
 
 namespace {
-static constexpr double KS_SUB_SAMPLE_SILENCE = 1.0;
-static constexpr double KS_EXCITER_SCALE = 2048.0;
+static constexpr double KS_EXCITER_SCALE = 8192.0;
+// Silence thresholds are in delay-line units. They scale with the exciter so
+// idle detection and voice-steal latency stay where they were at the original
+// 2048 scale; the extra headroom only buys loop resolution.
+static constexpr double KS_THRESHOLD_SCALE = KS_EXCITER_SCALE / 2048.0;
+static constexpr double KS_SUB_SAMPLE_SILENCE = 1.0 * KS_THRESHOLD_SCALE;
 static constexpr int KS_COMB_BUFFER_SIZE = 256;
 static constexpr double KS_PITCH_MOD_UNITS_PER_OCTAVE = 7680.0;
 static constexpr double KS_BEND_RANGE = 320.0;
 static constexpr int KS_REFERENCE_PITCH_INDEX = 60 << 6;
 static constexpr double KS_PITCH_INDEX_TO_MOD_UNITS = 10.0;
-static constexpr double KS_VOICE_STEAL_RESTART_THRESHOLD = 32.0;
+static constexpr double KS_VOICE_STEAL_RESTART_THRESHOLD = 32.0 * KS_THRESHOLD_SCALE;
+static constexpr double KS_RANDOMNESS_MAX = 2.0;
+static constexpr double KS_TENSION_ENV_ATTACK_MS = 0.75;
+static constexpr double KS_TENSION_ENV_RELEASE_MS = 18.0;
+static constexpr double KS_TENSION_ENV_STRING_WEIGHT = 0.35;
+static constexpr double KS_TENSION_ENV_DRIVE_KNEE = KS_EXCITER_SCALE * 0.35 + 1.0;
+static constexpr double KS_TENSION_MOD_DEPTH = 180.0;
+
+static inline double _ks_time_ms_to_lerp_rate(double p_ms, double p_sample_rate) {
+	double sample_count = p_ms * 0.001 * p_sample_rate;
+	if (sample_count < 1.0) {
+		sample_count = 1.0;
+	}
+	return 1.0 - exp(-1.0 / sample_count);
+}
 }
 
 // =============================================================================
@@ -93,7 +111,11 @@ void SiOPMChannelKS::_fill_excitation(int *p_buffer, int p_length, double p_freq
 	}
 
 	double sample_rate = _table ? (double)_table->sampling_rate : 44100.0;
-	int excite_samples = (int)(p_length * CLAMP(_exciter_length, 0.05, 1.0));
+	double random_amount = CLAMP(_exciter_randomness, 0.0, KS_RANDOMNESS_MAX);
+	double randomized_color = CLAMP(_exciter_color + _exciter_random_color_offset, 0.0, 1.0);
+	double randomized_shape = CLAMP(_exciter_shape + _exciter_random_shape_offset, 0.0, 1.0);
+	double randomized_drive = CLAMP(_exciter_drive + _exciter_random_drive_offset, 0.0, 1.0);
+	int excite_samples = (int)(p_length * CLAMP(_exciter_length * _exciter_random_length_scale, 0.05, 1.0));
 	if (excite_samples < 2) {
 		excite_samples = 2;
 	}
@@ -101,18 +123,17 @@ void SiOPMChannelKS::_fill_excitation(int *p_buffer, int p_length, double p_freq
 		excite_samples = p_length;
 	}
 
-	double color_lpf = 0.1 + _exciter_color * 0.89;
-	double drive_gain = 1.0 + _exciter_drive * 4.0;
-	double shape_env_power = 0.5 + _exciter_shape * 3.5;
+	double color_lpf = 0.1 + randomized_color * 0.89;
+	double drive_gain = 1.0 + randomized_drive * 4.5;
+	double shape_env_power = 0.35 + randomized_shape * 4.25;
 	double reference_frequency = _get_reference_exciter_frequency(sample_rate);
 	double exciter_frequency = reference_frequency + (p_frequency - reference_frequency) * _exciter_pitch_follow;
+	exciter_frequency *= _exciter_random_frequency_scale;
 	if (exciter_frequency < 1.0) {
 		exciter_frequency = 1.0;
 	}
 
 	double lpf_state = 0.0;
-
-	_exciter_rng_state = 12345 + (uint32_t)(_exciter_randomness * 99999.0);
 
 	for (int i = 0; i < p_length; i++) {
 		double env = 0.0;
@@ -130,7 +151,7 @@ void SiOPMChannelKS::_fill_excitation(int *p_buffer, int p_length, double p_freq
 
 			case EXCITER_PULSE: {
 				double phase = fmod((double)i * exciter_frequency / sample_rate, 1.0);
-				double duty = 0.1 + _exciter_shape * 0.4;
+				double duty = 0.08 + randomized_shape * 0.5;
 				raw = (phase < duty) ? 1.0 : -1.0;
 			} break;
 
@@ -142,8 +163,8 @@ void SiOPMChannelKS::_fill_excitation(int *p_buffer, int p_length, double p_freq
 
 			case EXCITER_FM: {
 				double phase = (double)i * exciter_frequency / sample_rate;
-				double mod_ratio = 1.0 + _exciter_color * 7.0;
-				double mod_index = 2.0 + _exciter_drive * 8.0;
+				double mod_ratio = 1.0 + randomized_color * 7.0;
+				double mod_index = 2.0 + randomized_drive * 8.5;
 				raw = sin(2.0 * Math_PI * phase + mod_index * sin(2.0 * Math_PI * phase * mod_ratio));
 			} break;
 
@@ -151,16 +172,15 @@ void SiOPMChannelKS::_fill_excitation(int *p_buffer, int p_length, double p_freq
 				double phase = (double)i * exciter_frequency / sample_rate;
 				double saw = fmod(phase, 1.0) * 2.0 - 1.0;
 				double sq = (fmod(phase, 1.0) < 0.5) ? 1.0 : -1.0;
-				raw = saw * (1.0 - _exciter_color) + sq * _exciter_color;
+				raw = saw * (1.0 - randomized_color) + sq * randomized_color;
 			} break;
 
 			case EXCITER_BURST: {
 				double burst_env = (i < excite_samples) ? pow(1.0 - (double)i / excite_samples, 2.0) : 0.0;
 				raw = _exciter_rand_bipolar() * burst_env;
-				double burst_color = 0.3 + _exciter_color * 0.6;
+				double burst_color = 0.25 + randomized_color * 0.7;
 				lpf_state += (raw - lpf_state) * burst_color;
 				raw = lpf_state;
-				lpf_state = 0.0;
 			} break;
 
 			case EXCITER_IMPULSE: {
@@ -179,14 +199,17 @@ void SiOPMChannelKS::_fill_excitation(int *p_buffer, int p_length, double p_freq
 		}
 
 		double randomized = raw;
-		if (_exciter_randomness > 0.0) {
-			randomized += _exciter_rand_bipolar() * _exciter_randomness * 0.3;
+		if (random_amount > 0.0) {
+			double random_crossfade = CLAMP((random_amount - 0.35) * 0.3, 0.0, 0.6);
+			double random_signal = _exciter_rand_bipolar();
+			randomized = randomized * (1.0 - random_crossfade) + random_signal * random_crossfade;
+			randomized += _exciter_rand_bipolar() * random_amount * (0.25 + env * 0.35);
 		}
 
 		double driven = randomized * drive_gain;
-		if (_exciter_drive > 0.5) {
+		if (randomized_drive > 0.5) {
 			double soft_clip = tanh(driven * 1.5);
-			driven = driven * (1.0 - _exciter_drive) + soft_clip * _exciter_drive;
+			driven = driven * (1.0 - randomized_drive) + soft_clip * randomized_drive;
 		}
 
 		double sample = driven * env * KS_EXCITER_SCALE;
@@ -503,8 +526,8 @@ void SiOPMChannelKS::_update_pitch_modifiers(double &r_wave_length_mod) {
 	}
 
 	if (_tension_mod != 0.0) {
-		double env_decay = (_decay < 0.99) ? (1.0 - _decay) * 20.0 : 0.0;
-		mod += _tension_mod * env_decay * 30.0;
+		double tension_curve = _tension_env * (2.0 - _tension_env);
+		mod += _tension_mod * tension_curve * KS_TENSION_MOD_DEPTH;
 	}
 
 	if (_is_gliding && _pitch_glide > 0.0) {
@@ -564,7 +587,8 @@ void SiOPMChannelKS::set_body_width(double p_value) {
 // normalized values the typed setters expect. Keeping the conversion here (the
 // same place the DSP "physics" live) mirrors how the other physical-model
 // channels expose a single set_*_params() entry point and avoids duplicating
-// the scaling at every call site.
+// the scaling at every call site. Most KS params use 0-100 nominal ranges;
+// randomness intentionally over-ranges to let the exciter vary more strongly.
 
 void SiOPMChannelKS::set_ks_extended_params(
 		int p_exciter_type, int p_exciter_color, int p_exciter_length,
@@ -803,6 +827,7 @@ void SiOPMChannelKS::_execute_note_on_immediate() {
 	_pick_bend_phase = 0.0;
 	_drift_phase = 0.0;
 	_drift_lfo = 0.0;
+	_tension_env = 0.0;
 
 	double target_pitch = _get_effective_pitch_index((double)_ks_pitch_index);
 	if (_pitch_glide > 0.0 && was_voice_active && _previous_pitch_index != (double)_ks_pitch_index) {
@@ -830,6 +855,31 @@ void SiOPMChannelKS::_execute_note_on_immediate() {
 	}
 	for (int i = 0; i < BODY_RESONATOR_COUNT; i++) {
 		_body_resonators[i].reset();
+	}
+	_ks_delay_buffer_index = 0.0;
+
+	if (_exciter_randomness > 0.0) {
+		// Stir the running xorshift state instead of reseeding from an engine RNG:
+		// the state already carries across notes, so every note still varies, but
+		// renders stay deterministic and nothing is allocated on the audio thread.
+		_exciter_note_seed_counter += 0x9e3779b9u;
+		_exciter_rng_state ^= _exciter_note_seed_counter ^ (uint32_t)(_ks_pitch_index << 8) ^ (uint32_t)(_previous_pitch_index);
+		if (_exciter_rng_state == 0) {
+			_exciter_rng_state = 0x6d2b79f5u;
+		}
+
+		double note_random_amount = CLAMP(_exciter_randomness * 0.5, 0.0, 1.0);
+		_exciter_random_color_offset = _exciter_rand_bipolar() * 0.35 * note_random_amount;
+		_exciter_random_shape_offset = _exciter_rand_bipolar() * 0.4 * note_random_amount;
+		_exciter_random_drive_offset = _exciter_rand_bipolar() * 0.35 * note_random_amount;
+		_exciter_random_length_scale = 1.0 + _exciter_rand_bipolar() * 0.8 * note_random_amount;
+		_exciter_random_frequency_scale = 1.0 + _exciter_rand_bipolar() * 0.35 * note_random_amount;
+	} else {
+		_exciter_random_color_offset = 0.0;
+		_exciter_random_shape_offset = 0.0;
+		_exciter_random_drive_offset = 0.0;
+		_exciter_random_length_scale = 1.0;
+		_exciter_random_frequency_scale = 1.0;
 	}
 
 	const int delay_buffer_size = _ks_delay_buffer.size();
@@ -977,6 +1027,9 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 		return;
 	}
 	int *delay_buffer = _ks_delay_buffer.ptrw();
+	double sample_rate = _table ? (double)_table->sampling_rate : 44100.0;
+	double tension_env_attack = _ks_time_ms_to_lerp_rate(KS_TENSION_ENV_ATTACK_MS, sample_rate);
+	double tension_env_release = _ks_time_ms_to_lerp_rate(KS_TENSION_ENV_RELEASE_MS, sample_rate);
 
 	double pitch_idx = _get_effective_pitch_index((double)(_ks_pitch_index + detune + _pitch_modulation_output_level));
 	double wave_length_max = _get_pitch_wave_length(pitch_idx);
@@ -992,6 +1045,8 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 		} else if (_declick_level > _declick_target) {
 			_declick_level = MAX(_declick_level - DECLICK_INCREMENT, 0.0);
 		}
+
+		double exciter_input = (double)target->value * _declick_level;
 
 		// Update LFO.
 		_lfo_timer -= _lfo_timer_step;
@@ -1052,6 +1107,21 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 
 		// Read from delay buffer.
 		double delayed_sample = (double)delay_buffer[buffer_index];
+		if (_tension_mod != 0.0) {
+			double tension_drive = Math::abs(exciter_input);
+			double string_tension_drive = Math::abs(delayed_sample) * KS_TENSION_ENV_STRING_WEIGHT;
+			if (string_tension_drive > tension_drive) {
+				tension_drive = string_tension_drive;
+			}
+			// Let tension modulation follow both the live exciter burst and the
+			// seeded string energy so internally excited notes still bend audibly.
+			// x / (x + k) saturates like 1 - exp(-x / k) with the same slope at
+			// silence, without a transcendental per sample. Target and rate are
+			// both within [0, 1], so the envelope cannot leave [0, 1].
+			double tension_env_target = tension_drive / (tension_drive + KS_TENSION_ENV_DRIVE_KNEE);
+			double tension_env_rate = (tension_env_target > _tension_env) ? tension_env_attack : tension_env_release;
+			_tension_env += (tension_env_target - _tension_env) * tension_env_rate;
+		}
 
 		// Apply inharmonicity (allpass in loop).
 		delayed_sample = _apply_inharmonicity(delayed_sample);
@@ -1064,7 +1134,6 @@ void SiOPMChannelKS::_apply_karplus_strong(SinglyLinkedList<int>::Element *p_buf
 		if (_freeze_factor > 0.0) {
 			decay_factor = 0.9999;
 		}
-		double exciter_input = (double)target->value * _declick_level;
 		_output = filtered * decay_factor + exciter_input;
 
 		if (Math::abs(_output) < KS_SUB_SAMPLE_SILENCE) {
@@ -1175,7 +1244,13 @@ void SiOPMChannelKS::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	_exciter_drive = 0.0;
 	_exciter_pitch_follow = 1.0;
 	_exciter_randomness = 0.0;
+	_exciter_random_color_offset = 0.0;
+	_exciter_random_length_scale = 1.0;
+	_exciter_random_shape_offset = 0.0;
+	_exciter_random_drive_offset = 0.0;
+	_exciter_random_frequency_scale = 1.0;
 	_exciter_rng_state = 12345;
+	_exciter_note_seed_counter = 0x9e3779b9u;
 
 	// Loop filter defaults.
 	_loop_filter_mode = LOOP_DARK;
@@ -1229,6 +1304,7 @@ void SiOPMChannelKS::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	_pick_bend_phase = 0.0;
 	_drift_phase = 0.0;
 	_drift_lfo = 0.0;
+	_tension_env = 0.0;
 	_glide_current = 0.0;
 	_glide_target = 0.0;
 	_glide_rate = 0.0;
@@ -1296,6 +1372,14 @@ void SiOPMChannelKS::reset() {
 	_declick_level = 0.0;
 	_declick_target = 0.0;
 	_has_deferred_note_on = false;
+	_tension_env = 0.0;
+	_exciter_random_color_offset = 0.0;
+	_exciter_random_length_scale = 1.0;
+	_exciter_random_shape_offset = 0.0;
+	_exciter_random_drive_offset = 0.0;
+	_exciter_random_frequency_scale = 1.0;
+	_exciter_rng_state = 12345;
+	_exciter_note_seed_counter = 0x9e3779b9u;
 
 	SiOPMChannelFM::reset();
 }

@@ -105,7 +105,13 @@ private:
 	double _exciter_drive = 0.0;
 	double _exciter_pitch_follow = 1.0;
 	double _exciter_randomness = 0.0;
+	double _exciter_random_color_offset = 0.0;
+	double _exciter_random_length_scale = 1.0;
+	double _exciter_random_shape_offset = 0.0;
+	double _exciter_random_drive_offset = 0.0;
+	double _exciter_random_frequency_scale = 1.0;
 	uint32_t _exciter_rng_state = 12345;
+	uint32_t _exciter_note_seed_counter = 0x9e3779b9u;
 
 	// --- Loop filter section ---
 	LoopFilterMode _loop_filter_mode = LOOP_DARK;
@@ -171,6 +177,7 @@ private:
 	double _pick_bend_phase = 0.0;
 	double _drift_phase = 0.0;
 	double _drift_lfo = 0.0;
+	double _tension_env = 0.0;
 	double _glide_current = 0.0;
 	double _glide_target = 0.0;
 	double _glide_rate = 0.0;
@@ -231,8 +238,9 @@ public:
 	virtual void set_fixed_pitch(int p_value) override;
 
 	// Aggregate setter for the extended resonator params. Takes the raw nominal
-	// ranges stored by the voice/mailbox (unipolar 0-100, bipolar 0-100 centered
-	// at 50) and performs the normalization internally, so call sites don't.
+	// ranges stored by the voice/mailbox (mostly unipolar 0-100 and bipolar
+	// 0-100 centered at 50; randomness intentionally supports overrange) and
+	// performs the normalization internally, so call sites don't.
 	void set_ks_extended_params(
 			int p_exciter_type, int p_exciter_color, int p_exciter_length,
 			int p_exciter_shape, int p_exciter_drive, int p_exciter_pitch_follow, int p_exciter_randomness,
@@ -257,7 +265,7 @@ public:
 	double get_exciter_drive() const { return _exciter_drive; }
 	void set_exciter_pitch_follow(double p_value) { _exciter_pitch_follow = CLAMP(p_value, 0.0, 1.0); }
 	double get_exciter_pitch_follow() const { return _exciter_pitch_follow; }
-	void set_exciter_randomness(double p_value) { _exciter_randomness = CLAMP(p_value, 0.0, 1.0); }
+	void set_exciter_randomness(double p_value) { _exciter_randomness = CLAMP(p_value, 0.0, 2.0); }
 	double get_exciter_randomness() const { return _exciter_randomness; }
 
 	// Loop filter.
