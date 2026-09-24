@@ -8,6 +8,7 @@
 
 #include <cmath>
 
+using sion::dsp::LfoShape;
 using sion::dsp::one_pole_coeff;
 
 namespace {
@@ -53,20 +54,6 @@ double SiEffectBloomReverb::BloomEnvelope::process(double p_input) {
 void SiEffectBloomReverb::BloomEnvelope::reset() {
 	fast_env = 0.0;
 	slow_env = 0.0;
-}
-
-double SiEffectBloomReverb::Lfo::process(double p_rate_hz, double p_depth_samples, double p_sample_rate) {
-	phase += p_rate_hz / p_sample_rate;
-	if (phase >= 1.0) {
-		phase -= Math::floor(phase);
-	}
-	double radians = 2.0 * M_PI * (phase + phase_offset);
-	return Math::sin(radians) * p_depth_samples;
-}
-
-void SiEffectBloomReverb::Lfo::reset(double p_phase_offset) {
-	phase = 0.0;
-	phase_offset = p_phase_offset;
 }
 
 double SiEffectBloomReverb::AllpassStage::process(double p_input, double p_delay_samples, double p_feedback) {
@@ -323,12 +310,11 @@ double SiEffectBloomReverb::_process_air_side(
 		double p_input,
 		double p_hp_coeff,
 		const double *p_delay_samples,
-		const double *p_rates,
 		double p_mod_depth_samples) {
 	double band = r_side.hp.highpass(p_hp_coeff, p_input);
 	double stage_a = band;
 	for (int i = 0; i < AIR_DELAY_COUNT; i++) {
-		double mod = r_side.mods[i].process(p_rates[i], p_mod_depth_samples * AIR_MOD_DEPTH_SCALE[i], _get_sampling_rate());
+		double mod = r_side.mods[i].tick<LfoShape::SINE>() * p_mod_depth_samples * AIR_MOD_DEPTH_SCALE[i];
 		double delayed = r_side.delays[i].read(p_delay_samples[i] + mod);
 		r_side.delays[i].write(stage_a + delayed * 0.18);
 		stage_a = delayed + stage_a * 0.35;
@@ -359,6 +345,13 @@ int SiEffectBloomReverb::process(const ProcessContext &p_context, int p_channels
 		int segment_length = MIN(PARAM_UPDATE_INTERVAL, p_length - processed);
 		DerivedParams params;
 		_derive_params(_current_params, params);
+		for (int line = 0; line < TANK_LINE_COUNT; line++) {
+			_tank[line].mod.set_hz(params.tank_mod_rates[line], _get_sampling_rate());
+		}
+		for (int i = 0; i < AIR_DELAY_COUNT; i++) {
+			_air_left.mods[i].set_hz(params.air_mod_rates[i], _get_sampling_rate());
+			_air_right.mods[i].set_hz(params.air_mod_rates[i], _get_sampling_rate());
+		}
 
 		_bloom_envelope_left.set_attack_ms(params.bloom_attack_ms, _get_sampling_rate());
 		_bloom_envelope_right.set_attack_ms(params.bloom_attack_ms, _get_sampling_rate());
@@ -409,10 +402,7 @@ int SiEffectBloomReverb::process(const ProcessContext &p_context, int p_channels
 			double tank_reads[TANK_LINE_COUNT] = {};
 			double tank_filtered[TANK_LINE_COUNT] = {};
 			for (int line = 0; line < TANK_LINE_COUNT; line++) {
-				double mod = _tank[line].mod.process(
-						params.tank_mod_rates[line],
-						params.mod_depth_samples * TANK_MOD_DEPTH_SCALE[line],
-						_get_sampling_rate());
+				double mod = _tank[line].mod.tick<LfoShape::SINE>() * params.mod_depth_samples * TANK_MOD_DEPTH_SCALE[line];
 				tank_reads[line] = _tank[line].delay.read(params.tank_delay_samples[line] + mod);
 				double filtered = _tank[line].hp.highpass(params.feedback_hp_coeff, tank_reads[line]);
 				tank_filtered[line] = _tank[line].lp.lowpass(params.damping_lp_coeff, filtered);
@@ -449,8 +439,8 @@ int SiEffectBloomReverb::process(const ProcessContext &p_context, int p_channels
 					0.35 * tank_filtered[2] +
 					0.60 * tank_filtered[3];
 
-			double air_l = _process_air_side(_air_left, wet_l, params.air_hp_coeff, params.air_delay_left_samples, params.air_mod_rates, params.mod_depth_samples);
-			double air_r = _process_air_side(_air_right, wet_r, params.air_hp_coeff, params.air_delay_right_samples, params.air_mod_rates, params.mod_depth_samples);
+			double air_l = _process_air_side(_air_left, wet_l, params.air_hp_coeff, params.air_delay_left_samples, params.mod_depth_samples);
+			double air_r = _process_air_side(_air_right, wet_r, params.air_hp_coeff, params.air_delay_right_samples, params.mod_depth_samples);
 			wet_l += air_l * params.air_gain;
 			wet_r += air_r * params.air_gain;
 

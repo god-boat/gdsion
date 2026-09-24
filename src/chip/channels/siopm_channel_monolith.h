@@ -2,6 +2,7 @@
 #define SIOPM_CHANNEL_MONOLITH_H
 
 #include "chip/channels/siopm_channel_base.h"
+#include "dsp/lfo.h"
 #include "dsp/one_pole.h"
 #include <cstdint>
 
@@ -114,10 +115,7 @@ private:
 	double _pitch_env_level = 0.0;
 	double _pitch_env_decay_coeff = 0.9995;
 
-	// Motion LFO.
-	uint32_t _motion_phase = 0;
-	uint32_t _motion_phase_inc = 0;
-	double _motion_value = 0.0;
+	sion::dsp::Lfo _motion_lfo;
 
 	// Glide.
 	double _glide_current_pitch = 0.0;
@@ -154,8 +152,7 @@ private:
 	// Mass-derived thickness parameters (precomputed in set_monolith_params).
 	double _mass_detune_pitch = 0.0;
 	double _mass_osc2_level = 0.5;
-	double _mass_drift_inc = 0.0;
-	double _mass_drift_phase = 0.0;
+	sion::dsp::Lfo _mass_drift_lfo;
 	double _mass_drift_depth = 0.0;
 	double _mass_drift_value = 0.0;
 	double _mass_drive_compensation = 1.0;

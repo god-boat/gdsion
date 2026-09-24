@@ -9,6 +9,7 @@
 
 #include <godot_cpp/templates/vector.hpp>
 #include "chip/channels/siopm_channel_fm.h"
+#include "dsp/lfo.h"
 #include "templates/singly_linked_list.h"
 
 using namespace godot;
@@ -175,8 +176,7 @@ private:
 
 	double _pitch_drop_phase = 0.0;
 	double _pick_bend_phase = 0.0;
-	double _drift_phase = 0.0;
-	double _drift_lfo = 0.0;
+	sion::dsp::Lfo _drift_lfo;
 	double _tension_env = 0.0;
 	double _glide_current = 0.0;
 	double _glide_target = 0.0;

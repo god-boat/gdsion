@@ -6,6 +6,7 @@
 
 #include "si_effect_shear_distort.h"
 
+using sion::dsp::LfoShape;
 using sion::dsp::one_pole_coeff;
 
 const double SiEffectShearDistort::BODY_CROSSOVER_HZ = 200.0;
@@ -376,9 +377,11 @@ int SiEffectShearDistort::process(const ProcessContext &p_context, int p_channel
 		return p_channels;
 	}
 
-	// Compute shear LFO once per block (rate ≈ 0.03 Hz, negligible intra-block change).
-	double shear_lfo1 = Math::sin(_shear_phase * Math_TAU);
-	double shear_lfo2 = Math::sin(_shear_phase2 * Math_TAU);
+	// The shear LFOs tick once per block (rate ≈ 0.03 Hz, negligible intra-block change).
+	_shear_lfo1.increment = SHEAR_LFO_RATE_1 * p_length / p_context.sample_rate;
+	_shear_lfo2.increment = SHEAR_LFO_RATE_2 * p_length / p_context.sample_rate;
+	double shear_lfo1 = _shear_lfo1.tick<LfoShape::SINE>();
+	double shear_lfo2 = _shear_lfo2.tick<LfoShape::SINE>();
 	double shear_mod = (shear_lfo1 + shear_lfo2 * 0.3) * _p_shear;
 
 	double drive_skew_l = 1.0 + shear_mod * 0.12;
@@ -417,17 +420,6 @@ int SiEffectShearDistort::process(const ProcessContext &p_context, int p_channel
 
 		r_buffer->write[i] = dry_l + (wet_l - dry_l) * mix;
 		r_buffer->write[i + 1] = dry_r + (wet_r - dry_r) * mix;
-	}
-
-	// Advance shear LFO phases.
-	double inv_sr = 1.0 / _get_sampling_rate();
-	_shear_phase += SHEAR_LFO_RATE_1 * inv_sr * (double)p_length;
-	while (_shear_phase >= 1.0) {
-		_shear_phase -= 1.0;
-	}
-	_shear_phase2 += SHEAR_LFO_RATE_2 * inv_sr * (double)p_length;
-	while (_shear_phase2 >= 1.0) {
-		_shear_phase2 -= 1.0;
 	}
 
 	// Flush denormals.
@@ -488,8 +480,8 @@ void SiEffectShearDistort::reset() {
 	_p_shear = 0.15;
 	_p_mix = 1.0;
 
-	_shear_phase = 0.0;
-	_shear_phase2 = 0.0;
+	_shear_lfo1.reset();
+	_shear_lfo2.reset();
 
 	_left.clear();
 	_right.clear();

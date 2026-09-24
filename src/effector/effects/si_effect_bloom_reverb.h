@@ -9,6 +9,7 @@
 
 #include <godot_cpp/templates/vector.hpp>
 #include "dsp/fractional_delay.h"
+#include "dsp/lfo.h"
 #include "dsp/one_pole.h"
 #include "effector/si_effect_base.h"
 
@@ -71,14 +72,6 @@ private:
 		void reset();
 	};
 
-	struct Lfo {
-		double phase = 0.0;
-		double phase_offset = 0.0;
-
-		double process(double p_rate_hz, double p_depth_samples, double p_sample_rate);
-		void reset(double p_phase_offset = 0.0);
-	};
-
 	struct AllpassStage {
 		sion::dsp::FractionalDelay delay;
 
@@ -89,12 +82,12 @@ private:
 		sion::dsp::FractionalDelay delay;
 		sion::dsp::OnePole hp;
 		sion::dsp::OnePole lp;
-		Lfo mod;
+		sion::dsp::Lfo mod;
 	};
 
 	struct AirSide {
 		sion::dsp::FractionalDelay delays[AIR_DELAY_COUNT];
-		Lfo mods[AIR_DELAY_COUNT];
+		sion::dsp::Lfo mods[AIR_DELAY_COUNT];
 		AllpassStage diffuser_a;
 		AllpassStage diffuser_b;
 		sion::dsp::OnePole hp;
@@ -176,7 +169,6 @@ private:
 			double p_input,
 			double p_hp_coeff,
 			const double *p_delay_samples,
-			const double *p_rates,
 			double p_mod_depth_samples
 	);
 

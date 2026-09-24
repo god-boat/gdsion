@@ -6,113 +6,43 @@
 
 #include "si_effect_stereo_chorus.h"
 
+using sion::dsp::FractionalDelay;
+using sion::dsp::LfoShape;
+
 void SiEffectStereoChorus::set_params(double p_delay_time, double p_feedback, double p_frequency, double p_depth, double p_wet, bool p_invert_phase) {
 	ERR_FAIL_COND_MSG(p_delay_time == 0, "SiEffectStereoChorus: Delay cannot be zero.");
-	ERR_FAIL_COND_MSG(p_frequency == 0, "SiEffectStereoChorus: Frequency cannot be zero.");
-	ERR_FAIL_COND_MSG(p_depth == 0, "SiEffectStereoChorus: Depth cannot be zero.");
 
-	double sampling_rate = _get_sampling_rate();
+	_center_delay = MIN(p_delay_time * _get_samples_per_ms(), (double)(MAX_DELAY_SAMPLES / 2));
+	_depth = MIN(p_depth, _center_delay - 4);
+	_feedback = CLAMP(p_feedback, -0.9990234375, 0.9990234375);
+	_lfo.set_hz(p_frequency, _get_sampling_rate());
+	_phase_invert = p_invert_phase ? -1.0 : 1.0;
 
-	int offset = (int)(p_delay_time * _get_samples_per_ms());
-	if (offset > DELAY_BUFFER_FILTER) {
-		offset = DELAY_BUFFER_FILTER;
-	}
-
-	_pointer_write = (_pointer_read + offset) & DELAY_BUFFER_FILTER;
-	_depth = MIN(p_depth, offset - 4);
-
-	_feedback = p_feedback;
-	if (_feedback >= 1) {
-		_feedback = 0.9990234375;
-	} else if (_feedback <= -1) {
-		_feedback = -0.9990234375;
-	}
-
-	int table_size = (int)(_depth * 6.283185307179586);
-	int max_modulation_rate = (int)(sampling_rate * 0.25);
-	if ((table_size * p_frequency) > max_modulation_rate) {
-		table_size = (int)(max_modulation_rate / p_frequency);
-	}
-	table_size = MAX(1, table_size);
-	_phase_table.resize_zeroed(table_size);
-
-	if (_lfo_phase >= _phase_table.size()) {
-		_lfo_phase = 0;
-	}
-
-	double depth_step = 6.283185307179586 / table_size;
-	double depth_value = 0;
-	for (int i = 0; i < table_size; i++) {
-		_phase_table.write[i] = (int)(Math::sin(depth_value) * _depth + 0.5);
-		depth_value += depth_step;
-	}
-
-	_lfo_step = (int)(sampling_rate / (table_size * p_frequency));
-	if (_lfo_step < 4) {
-		_lfo_step = 4;
-	}
-	_lfo_residue_step = _lfo_step << 1;
-
-	_wet = p_wet;
-	_phase_invert = (p_invert_phase ? -1 : 1);
-
-	_calculate_constant_power_gains(_wet, _dry_gain, _wet_gain);
+	_calculate_constant_power_gains(p_wet, _dry_gain, _wet_gain);
 }
 
 int SiEffectStereoChorus::prepare_process() {
-	_lfo_phase = 0;
-	_lfo_residue_step = 0;
-	_pointer_read = 0;
-
-	_delay_buffer_left.fill(0);
-	_delay_buffer_right.fill(0);
+	_delay_left.clear();
+	_delay_right.clear();
+	_lfo.reset();
 
 	return 2;
 }
 
-void SiEffectStereoChorus::_process_channel(Vector<double> *r_buffer, int p_buffer_index, Vector<double> *r_delay_buffer, int p_delay) {
-	int delay_index = (_pointer_read + p_delay) & DELAY_BUFFER_FILTER;
-	double value = (*r_delay_buffer)[delay_index];
-	double next_value = (*r_buffer)[p_buffer_index] - value * _feedback;
-
-	r_delay_buffer->write[_pointer_write] = next_value;
-	r_buffer->write[p_buffer_index] = (*r_buffer)[p_buffer_index] * _dry_gain + value * _wet_gain;
-}
-
-void SiEffectStereoChorus::_process_lfo(Vector<double> *r_buffer, int p_start_index, int p_length) {
-	int delay_left = _phase_table[_lfo_phase];
-	int delay_right = _phase_table[_lfo_phase] * _phase_invert;
-
-	for (int i = p_start_index; i < (p_start_index + p_length); i += 2) {
-		_process_channel(r_buffer, i, &_delay_buffer_left, delay_left);
-		_process_channel(r_buffer, i + 1, &_delay_buffer_right, delay_right);
-
-		_pointer_write = (_pointer_write + 1) & DELAY_BUFFER_FILTER;
-		_pointer_read  = (_pointer_read  + 1) & DELAY_BUFFER_FILTER;
-	}
+double SiEffectStereoChorus::_process_channel(FractionalDelay &r_delay, double p_input, double p_delay_samples) {
+	double delayed = r_delay.read(p_delay_samples);
+	r_delay.write(p_input - delayed * _feedback);
+	return p_input * _dry_gain + delayed * _wet_gain;
 }
 
 int SiEffectStereoChorus::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
-	int start_index = p_start_index << 1;
-	int length = p_length << 1;
-
-	int step = _lfo_residue_step;
-	int max = start_index + length;
-	int i = start_index;
-	while (i < (max - step)) {
-		_process_lfo(r_buffer, i, step);
-
-		_lfo_phase++;
-		if (_lfo_phase >= _phase_table.size()) {
-			_lfo_phase = 0;
-		}
-
-		i += step;
-		step = _lfo_step << 1;
+	double *buffer = r_buffer->ptrw();
+	const int end = (p_start_index + p_length) << 1;
+	for (int i = p_start_index << 1; i < end; i += 2) {
+		double swing = _depth * _lfo.tick<LfoShape::SINE>();
+		buffer[i] = _process_channel(_delay_left, buffer[i], _center_delay - swing);
+		buffer[i + 1] = _process_channel(_delay_right, buffer[i + 1], _center_delay - swing * _phase_invert);
 	}
-
-	_process_lfo(r_buffer, i, max - i);
-	_lfo_residue_step = step - (max - i);
 
 	return p_channels;
 }
@@ -138,8 +68,8 @@ void SiEffectStereoChorus::_bind_methods() {
 
 SiEffectStereoChorus::SiEffectStereoChorus(double p_delay_time, double p_feedback, double p_frequency, double p_depth, double p_wet, bool p_invert_phase) :
 		SiEffectBase() {
-	_delay_buffer_left.resize_zeroed(1 << DELAY_BUFFER_BITS);
-	_delay_buffer_right.resize_zeroed(1 << DELAY_BUFFER_BITS);
+	_delay_left.prepare(MAX_DELAY_SAMPLES);
+	_delay_right.prepare(MAX_DELAY_SAMPLES);
 
 	set_params(p_delay_time, p_feedback, p_frequency, p_depth, p_wet, p_invert_phase);
 }

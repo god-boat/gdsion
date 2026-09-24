@@ -9,6 +9,7 @@
 #include "chip/siopm_stream.h"
 #include "templates/singly_linked_list.h"
 
+using sion::dsp::LfoShape;
 using sion::dsp::one_pole_coeff;
 
 static constexpr double TWO_PI = 6.283185307179586;
@@ -550,7 +551,7 @@ void SiOPMChannelMonolith::set_monolith_params(
 
 	// Motion LFO rate: 0 = ~0.1 Hz, 127 = ~20 Hz.
 	double motion_freq = 0.1 * std::pow(200.0, (double)_motion_rate / 127.0);
-	_motion_phase_inc = _freq_to_phase_inc(motion_freq);
+	_motion_lfo.set_hz(motion_freq, _sample_rate);
 
 	// Pitch-drop envelope decay: shorter pitch_drop = faster decay.
 	if (_pitch_drop > 0) {
@@ -568,7 +569,7 @@ void SiOPMChannelMonolith::set_monolith_params(
 	_mass_osc2_level = 0.5 + mass_n * 0.5;
 	// Slow phase drift on osc2 for analog-like movement.
 	double drift_hz = 0.05 + mass_n * 0.3;
-	_mass_drift_inc = drift_hz / _sample_rate;
+	_mass_drift_lfo.set_hz(drift_hz, _sample_rate);
 	// Drift depth scales with mass (0 = none, 1 = full bass-safe movement).
 	_mass_drift_depth = mass_n;
 	// Drive compensation: reduce input level as mass adds energy.
@@ -815,19 +816,12 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 		_update_amp_envelope();
 
 		// Motion LFO.
-		_motion_phase += _motion_phase_inc;
-		double motion_mod = 0.0;
-		if (_motion_target_param != MOTION_OFF && motion_n > 0.001) {
-			motion_mod = std::sin((double)_motion_phase * PHASE_TO_RAD) * motion_n;
-		}
+		double motion_lfo = _motion_lfo.tick<LfoShape::SINE>();
+		double motion_mod = (_motion_target_param != MOTION_OFF && motion_n > 0.001) ? motion_lfo * motion_n : 0.0;
 
 		// Mass drift: slow bipolar movement source for the main layer (never the
 		// sub). Computed before phase increments so it can wobble osc2 detune/phase.
-		_mass_drift_phase += _mass_drift_inc;
-		if (_mass_drift_phase >= 1.0) {
-			_mass_drift_phase -= 1.0;
-		}
-		_mass_drift_value = std::sin(_mass_drift_phase * TWO_PI) * _mass_drift_depth;
+		_mass_drift_value = _mass_drift_lfo.tick<LfoShape::SINE>() * _mass_drift_depth;
 
 		// Update phase increments (glide + pitch-drop + mass drift happen here).
 		_update_phase_increments(motion_mod);
@@ -1040,9 +1034,7 @@ void SiOPMChannelMonolith::initialize(SiOPMChannelBase *p_prev, int p_buffer_ind
 	_osc1_dt = 0.0;
 	_osc2_dt = 0.0;
 	_pitch_env_level = 0.0;
-	_motion_phase = 0;
-	_motion_phase_inc = 0;
-	_motion_value = 0.0;
+	_motion_lfo = {};
 	_glide_current_pitch = 0.0;
 	_target_pitch_f = 0.0;
 	_glide_coeff = 1.0;
@@ -1059,8 +1051,7 @@ void SiOPMChannelMonolith::initialize(SiOPMChannelBase *p_prev, int p_buffer_ind
 
 	_mass_detune_pitch = 0.0;
 	_mass_osc2_level = 0.5;
-	_mass_drift_inc = 0.0;
-	_mass_drift_phase = 0.0;
+	_mass_drift_lfo = {};
 	_mass_drift_depth = 0.0;
 	_mass_drift_value = 0.0;
 	_mass_drive_compensation = 1.0;
@@ -1089,8 +1080,8 @@ void SiOPMChannelMonolith::reset() {
 	_osc2_phase = 0;
 	_noise_state = 0x12345678;
 	_pitch_env_level = 0.0;
-	_motion_phase = 0;
-	_mass_drift_phase = 0.0;
+	_motion_lfo.reset();
+	_mass_drift_lfo.reset();
 	_mass_drift_value = 0.0;
 
 	_reset_amp_envelope();

@@ -4,7 +4,7 @@
 		Automatic panning effect.
 	</brief_description>
 	<description>
-		Applies a sine LFO to each input channel independently, preserving the stereo input. The stereo width controls the phase difference between the left and right LFOs. A width of 0 modulates both channels together like tremolo; a width of 1 places their LFOs 180 degrees apart.
+		Applies an LFO to each input channel independently, preserving the stereo input. The stereo width controls the phase difference between the left and right LFOs. A width of 0 modulates both channels together like tremolo; a width of 1 places their LFOs 180 degrees apart. The LFO runs free: it restarts only when the effect is reset. A tempo-synced rate follows tempo changes at the next block.
 	</description>
 	<tutorials>
 	</tutorials>
@@ -13,8 +13,14 @@
 			<return type="void" />
 			<param index="0" name="frequency" type="float" default="1" />
 			<param index="1" name="stereo_width" type="float" default="1" />
+			<param index="2" name="rate_mode" type="int" default="0" />
+			<param index="3" name="sync_division" type="int" default="2" />
+			<param index="4" name="shape" type="int" default="0" />
+			<param index="5" name="time" type="float" default="1000" />
 			<description>
-				Sets the LFO frequency in hertz and its stereo phase offset. A [param stereo_width] of 1 is a 180 degree offset.
+				Sets the LFO rate, its stereo phase offset and its shape. A [param stereo_width] of 1 is a 180 degree offset.
+				[param rate_mode] picks the rate: 0 for [param frequency] in hertz, 1 for a period of [param time] milliseconds, 2 for a [param sync_division] at the song tempo, 3 for a dotted one and 4 for a triplet one. [param sync_division] runs from a whole note (0) to a 1/32 note (5).
+				[param shape] is sine (0), triangle (1), saw up (2), saw down (3), square (4), noise (5) or sample and hold (6).
 			</description>
 		</method>
 	</methods>

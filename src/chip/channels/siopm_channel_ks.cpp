@@ -520,9 +520,8 @@ void SiOPMChannelKS::_update_pitch_modifiers(double &r_wave_length_mod) {
 	}
 
 	if (_pitch_drift > 0.0) {
-		_drift_phase += 0.0003 + _pitch_drift * 0.002;
-		_drift_lfo = sin(_drift_phase * 2.0 * Math_PI) * _pitch_drift * 15.0;
-		mod += _drift_lfo;
+		_drift_lfo.increment = 0.0003 + _pitch_drift * 0.002;
+		mod += _drift_lfo.tick<sion::dsp::LfoShape::SINE>() * _pitch_drift * 15.0;
 	}
 
 	if (_tension_mod != 0.0) {
@@ -825,8 +824,7 @@ void SiOPMChannelKS::_execute_note_on_immediate() {
 
 	_pitch_drop_phase = 0.0;
 	_pick_bend_phase = 0.0;
-	_drift_phase = 0.0;
-	_drift_lfo = 0.0;
+	_drift_lfo.reset();
 	_tension_env = 0.0;
 
 	double target_pitch = _get_effective_pitch_index((double)_ks_pitch_index);
@@ -1302,8 +1300,7 @@ void SiOPMChannelKS::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	_pitch_glide = 0.0;
 	_pitch_drop_phase = 0.0;
 	_pick_bend_phase = 0.0;
-	_drift_phase = 0.0;
-	_drift_lfo = 0.0;
+	_drift_lfo.reset();
 	_tension_env = 0.0;
 	_glide_current = 0.0;
 	_glide_target = 0.0;

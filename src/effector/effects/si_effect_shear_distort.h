@@ -7,6 +7,7 @@
 #ifndef SI_EFFECT_SHEAR_DISTORT_H
 #define SI_EFFECT_SHEAR_DISTORT_H
 
+#include "dsp/lfo.h"
 #include "dsp/one_pole.h"
 #include "effector/si_effect_base.h"
 
@@ -144,8 +145,8 @@ private:
 	ChannelState _left;
 	ChannelState _right;
 
-	double _shear_phase = 0.0;
-	double _shear_phase2 = 0.0;
+	sion::dsp::Lfo _shear_lfo1;
+	sion::dsp::Lfo _shear_lfo2;
 
 	void _update_derived();
 	void _update_filters();

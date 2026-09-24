@@ -9,6 +9,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include "chip/siopm_sound_chip.h"
 #include "chip/siopm_stream.h"
+#include "dsp/lfo.h"
 #include <cstring>
 #include <cmath>
 
@@ -30,10 +31,7 @@ static double _beat_division_to_ms(int p_division, double p_bpm) {
 	if (p_bpm <= 0) {
 		p_bpm = 120.0; // Default BPM
 	}
-	double quarter_note_ms = 60000.0 / p_bpm;
-	double multipliers[6] = { 4.0, 2.0, 1.0, 0.5, 0.25, 0.125 };
-	int idx = CLAMP(p_division, 0, 5);
-	return quarter_note_ms * multipliers[idx];
+	return sion::dsp::beat_division_beats(CLAMP(p_division, 0, sion::dsp::BEAT_DIVISION_COUNT - 1)) * 60000.0 / p_bpm;
 }
 
 // Convert milliseconds to LFO timer step.

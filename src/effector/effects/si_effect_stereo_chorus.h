@@ -7,36 +7,28 @@
 #ifndef SI_EFFECT_STEREO_CHORUS_H
 #define SI_EFFECT_STEREO_CHORUS_H
 
-#include <godot_cpp/templates/vector.hpp>
+#include "dsp/fractional_delay.h"
+#include "dsp/lfo.h"
 #include "effector/si_effect_base.h"
-
-using namespace godot;
 
 class SiEffectStereoChorus : public SiEffectBase {
 	GDCLASS(SiEffectStereoChorus, SiEffectBase)
 
-	static const int DELAY_BUFFER_BITS = 12;
-	static const int DELAY_BUFFER_FILTER = (1 << DELAY_BUFFER_BITS) - 1;
+	// The center delay is at most half of this, so the swing around it fits.
+	static const int MAX_DELAY_SAMPLES = 4095;
 
-	Vector<double> _delay_buffer_left;
-	Vector<double> _delay_buffer_right;
+	sion::dsp::FractionalDelay _delay_left;
+	sion::dsp::FractionalDelay _delay_right;
+	sion::dsp::Lfo _lfo;
 
-	int _pointer_read = 0;
-	int _pointer_write = 0;
-	double _feedback = 0;
+	double _center_delay = 0;
 	double _depth = 0;
-	double _wet = 0;
+	double _feedback = 0;
 	double _dry_gain = 1.0;
 	double _wet_gain = 0.0;
+	double _phase_invert = -1.0;
 
-	int _lfo_phase = 0;
-	int _lfo_step = 0;
-	int _lfo_residue_step = 0;
-	int _phase_invert = 0;
-	Vector<int> _phase_table;
-
-	void _process_channel(Vector<double> *r_buffer, int p_buffer_index, Vector<double> *r_delay_buffer, int p_delay);
-	void _process_lfo(Vector<double> *r_buffer, int p_start_index, int p_length);
+	double _process_channel(sion::dsp::FractionalDelay &r_delay, double p_input, double p_delay_samples);
 
 protected:
 	static void _bind_methods();
