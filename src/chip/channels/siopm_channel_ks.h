@@ -125,7 +125,6 @@ private:
 	double _loop_ap_z1 = 0.0;
 	double _loop_lpf_z1 = 0.0;
 	double _loop_shelf_coef = 0.0;
-	double _loop_shelf_z1 = 0.0;
 	double _loop_notch_freq = 0.5;
 	double _loop_notch_z1 = 0.0;
 	double _loop_notch_z2 = 0.0;

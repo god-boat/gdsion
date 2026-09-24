@@ -297,6 +297,13 @@ void SiOPMChannelKS::_configure_loop_filter() {
 	}
 }
 
+// Every mode must stay passive (|H| <= 1 at every frequency). The string loop
+// applies this response once per period, so any band with gain above unity
+// grows without bound -- near Nyquist or fs/4 that runaway is inaudible, but it
+// saturates the int delay line and the channel never idles again. Brightening
+// therefore crossfades the loss LPF toward its own input (at most unity), and the
+// band/notch taps are normalized so each mix is a convex blend of unity-bounded
+// filters.
 double SiOPMChannelKS::_apply_loop_filter_sample(double p_input) {
 	_loop_lpf_z1 += (p_input - _loop_lpf_z1) * _decay_lpf;
 	double out = _loop_lpf_z1;
@@ -306,23 +313,21 @@ double SiOPMChannelKS::_apply_loop_filter_sample(double p_input) {
 			break;
 
 		case LOOP_BRIGHT: {
-			double high = p_input - _loop_shelf_z1;
-			_loop_shelf_z1 = p_input;
-			out += high * _loop_shelf_coef;
+			out += (p_input - out) * _loop_shelf_coef;
 		} break;
 
 		case LOOP_BAND: {
-			double bp = p_input - _loop_notch_z2;
+			double bp = (p_input - _loop_notch_z2) * 0.5;
 			_loop_notch_z2 = _loop_notch_z1;
 			_loop_notch_z1 = p_input;
 			out = out * (1.0 - _loop_notch_freq) + bp * _loop_notch_freq;
 		} break;
 
 		case LOOP_NOTCH: {
-			double notch = p_input - 2.0 * _loop_notch_z1 + _loop_notch_z2;
-			_loop_notch_z2 = _loop_notch_z1;
+			// Two-point average: its zero at Nyquist is the notch.
+			double avg = (p_input + _loop_notch_z1) * 0.5;
 			_loop_notch_z1 = p_input;
-			out -= notch * _loop_notch_freq * 0.5;
+			out = out * (1.0 - _loop_notch_freq) + avg * _loop_notch_freq;
 		} break;
 
 		case LOOP_COMB: {
@@ -343,15 +348,12 @@ double SiOPMChannelKS::_apply_loop_filter_sample(double p_input) {
 		} break;
 
 		case LOOP_METALLIC: {
+			// Passive for any coefficient in [-1, 1]; negative tilt darkens past the LPF.
+			out += (p_input - out) * _loop_shelf_coef;
 			double ap_in = out;
 			double ap_out = -_loop_ap_coef * ap_in + _loop_ap_z1;
 			_loop_ap_z1 = ap_in + _loop_ap_coef * ap_out;
 			out = ap_out;
-			if (_loop_shelf_coef != 0.0) {
-				double high = out - _loop_shelf_z1;
-				_loop_shelf_z1 = out;
-				out += high * _loop_shelf_coef;
-			}
 		} break;
 
 		case LOOP_DIFFUSED: {
@@ -843,7 +845,6 @@ void SiOPMChannelKS::_execute_note_on_immediate() {
 	_allpass2_z1 = 0.0;
 	_loop_ap_z1 = 0.0;
 	_loop_lpf_z1 = 0.0;
-	_loop_shelf_z1 = 0.0;
 	_loop_notch_z1 = 0.0;
 	_loop_notch_z2 = 0.0;
 	_loop_comb_z1 = 0.0;
@@ -1260,7 +1261,6 @@ void SiOPMChannelKS::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	_loop_ap_z1 = 0.0;
 	_loop_lpf_z1 = 0.0;
 	_loop_shelf_coef = 0.0;
-	_loop_shelf_z1 = 0.0;
 	_loop_notch_freq = 0.5;
 	_loop_notch_z1 = 0.0;
 	_loop_notch_z2 = 0.0;
@@ -1343,7 +1343,6 @@ void SiOPMChannelKS::reset() {
 
 	_loop_ap_z1 = 0.0;
 	_loop_lpf_z1 = 0.0;
-	_loop_shelf_z1 = 0.0;
 	_loop_notch_z1 = 0.0;
 	_loop_notch_z2 = 0.0;
 	_loop_comb_z1 = 0.0;
