@@ -279,6 +279,16 @@ void SiMMLTrack::set_portament(int p_frame) {
 	}
 }
 
+void SiMMLTrack::set_portament_ms(int p_ms) {
+	// The sweep advances once per envelope frame of _envelope_interval samples.
+	int frames = 0;
+	if (p_ms > 0) {
+		double samples = (double)p_ms * SiOPMRefTable::get_instance()->sampling_rate / 1000.0;
+		frames = MAX(1, (int)Math::round(samples / _envelope_interval));
+	}
+	set_portament(frames);
+}
+
 void SiMMLTrack::set_envelope_fps(int p_fps) {
 	int fps = MAX(p_fps, 1);
 	_envelope_interval = MAX(1, SiOPMRefTable::get_instance()->sampling_rate / fps);
@@ -1059,6 +1069,13 @@ void SiMMLTrack::_key_on() {
 	if (_flag_no_key_on) {
 		// Portament.
 		if (_setting_sweep_step[1] > 0) {
+			// Portament can be set while this note sounds (a realtime glide
+			// edit). Its key-on then did not start the envelope phase that
+			// advances the sweep, so start it here.
+			if (_process_mode != ProcessMode::ENVELOPE) {
+				_update_process(1);
+			}
+			_envelope_pitch_active = true;
 			_channel->set_pitch(old_pitch);
 			_sweep_step = ((_pitch_index - old_pitch) << FIXED_BITS) / _setting_sweep_step[1];
 			_sweep_end = _pitch_index << FIXED_BITS;

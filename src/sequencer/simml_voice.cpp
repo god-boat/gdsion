@@ -223,7 +223,7 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 		p_track->set_expression(expression);
 	}
 
-	p_track->set_portament(portament);
+	p_track->set_portament_ms(portament_ms);
 	p_track->set_release_sweep(release_sweep);
 	p_track->set_modulation_envelope(false, amplitude_modulation_depth, amplitude_modulation_depth_end, amplitude_modulation_delay, amplitude_modulation_term);
 	p_track->set_modulation_envelope(true,  pitch_modulation_depth, pitch_modulation_depth_end, pitch_modulation_delay, pitch_modulation_term);
@@ -313,7 +313,7 @@ void SiMMLVoice::reset() {
 	pitch_shift = 0;
 	pitch_bend = 0;
 	note_shift = 0;
-	portament = 0;
+	portament_ms = 0;
 	release_sweep = 0;
 
 	velocity = 256;
@@ -437,7 +437,7 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	pitch_shift = p_source->pitch_shift;
 	pitch_bend = p_source->pitch_bend;
 	note_shift = p_source->note_shift;
-	portament = p_source->portament;
+	portament_ms = p_source->portament_ms;
 	release_sweep = p_source->release_sweep;
 
 	velocity = p_source->velocity;
@@ -497,6 +497,9 @@ void SiMMLVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_tone_num", "num"), &SiMMLVoice::set_tone_num);
 	ClassDB::bind_method(D_METHOD("get_note_shift"), &SiMMLVoice::get_note_shift);
 	ClassDB::bind_method(D_METHOD("set_note_shift", "value"), &SiMMLVoice::set_note_shift);
+	ClassDB::bind_method(D_METHOD("get_portament_ms"), &SiMMLVoice::get_portament_ms);
+	ClassDB::bind_method(D_METHOD("set_portament_ms", "ms"), &SiMMLVoice::set_portament_ms);
+	ClassDB::add_property("SiMMLVoice", PropertyInfo(Variant::INT, "portament_ms"), "set_portament_ms", "get_portament_ms");
 
 	ClassDB::bind_method(D_METHOD("is_fm_voice"), &SiMMLVoice::is_fm_voice);
 	ClassDB::bind_method(D_METHOD("is_pcm_voice"), &SiMMLVoice::is_pcm_voice);

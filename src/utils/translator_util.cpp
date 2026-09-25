@@ -415,7 +415,7 @@ void TranslatorUtil::parse_ks_params(const Ref<SiOPMChannelParams> &p_params, co
 	r_attack_rate  = 48;
 	r_decay_rate   = 48;
 	r_total_level  = 0;
-	r_fixed_pitch  = 69;
+	r_fixed_pitch  = 0;
 	r_tension      = 8;
 
 	String data = p_data_string;
@@ -1261,6 +1261,10 @@ String TranslatorUtil::get_ks_params_as_mml(const Ref<SiOPMChannelParams> &p_par
 	return mml;
 }
 
+// MML `po` counts envelope frames. A voice string carries no #FPS of its own,
+// so its frames are read and written at the MML default of 60 fps.
+static const int MML_PORTAMENT_FPS = 60;
+
 void TranslatorUtil::parse_voice_setting(const Ref<SiMMLVoice> &p_voice, String p_mml, Vector<Ref<SiMMLEnvelopeTable>> p_envelopes) {
 	Ref<SiOPMChannelParams> params = p_voice->channel_params;
 
@@ -1326,7 +1330,7 @@ void TranslatorUtil::parse_voice_setting(const Ref<SiMMLVoice> &p_voice, String 
 			params->pitch_modulation_depth = p_voice->pitch_modulation_depth;
 
 		} else if (command == "po") {
-			p_voice->portament = EXTRACT_ARGUMENT(0, 30);
+			p_voice->portament_ms = EXTRACT_ARGUMENT(0, 30) * 1000 / MML_PORTAMENT_FPS;
 
 		} else if (command == "q") {
 			p_voice->default_gate_time = EXTRACT_ARGUMENT_MOD(0, 0.125, NAN);
@@ -1542,8 +1546,8 @@ String TranslatorUtil::get_voice_setting_as_mml(const Ref<SiMMLVoice> &p_voice) 
 		mml += "%x" + itos(p_voice->expression_mode);
 	}
 
-	if (p_voice->portament > 0) {
-		mml += "po" + itos(p_voice->portament);
+	if (p_voice->portament_ms > 0) {
+		mml += "po" + itos(MAX(1, (p_voice->portament_ms * MML_PORTAMENT_FPS + 500) / 1000));
 	}
 
 	if (!Math::is_nan(p_voice->default_gate_time)) {

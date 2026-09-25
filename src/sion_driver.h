@@ -485,6 +485,8 @@ private:
 		int pitch_modulation_term = 0;
 		bool has_pitch_bend = false;
 		int pitch_bend = 0;
+		bool has_portament_ms = false;
+		int portament_ms = 0;
 		// LFO frequency step
 		bool has_lfo_step = false;
 		int lfo_frequency_step = 0;
@@ -1016,6 +1018,7 @@ public:
 	void mailbox_set_amplitude_modulation(int p_track_id, int p_depth, int p_end_depth, int p_delay, int p_term, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_pitch_modulation(int p_track_id, int p_depth, int p_end_depth, int p_delay, int p_term, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_pitch_bend(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_portament_ms(int p_track_id, int p_ms, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_lfo_frequency_step(int p_track_id, int p_step, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_lfo_time_mode(int p_track_id, int p_mode, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);

@@ -458,6 +458,7 @@ public:
 	// Envelopes.
 
 	void set_portament(int p_frame);
+	void set_portament_ms(int p_ms);
 
 	void set_envelope_fps(int p_fps);
 	void set_envelope_bpm(double p_bpm);

@@ -37,7 +37,8 @@ class SiMMLVoice : public RefCounted {
 	int default_gate_ticks = -1;
 	int default_key_on_delay_ticks = -1;
 	int note_shift = 0;
-	int portament = 0;
+	// Glide time; the track converts it to its own envelope frames.
+	int portament_ms = 0;
 	int release_sweep = 0;
 
 	int velocity = 256;
@@ -181,6 +182,8 @@ public:
 	void set_tone_num(int p_num) { tone_num = p_num; }
 	int get_note_shift() const { return note_shift; }
 	void set_note_shift(int p_value) { note_shift = p_value; }
+	int get_portament_ms() const { return portament_ms; }
+	void set_portament_ms(int p_ms) { portament_ms = p_ms; }
 
 	Ref<SiOPMChannelParams> get_channel_params() const { return channel_params; }
 	Ref<SiOPMWaveBase> get_wave_data() const { return wave_data; }

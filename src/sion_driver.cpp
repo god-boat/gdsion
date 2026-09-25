@@ -1590,6 +1590,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_amplitude_modulation", "track_id", "depth", "end_depth", "delay", "term", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_amplitude_modulation, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_pitch_modulation", "track_id", "depth", "end_depth", "delay", "term", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_pitch_modulation, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_pitch_bend", "track_id", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_pitch_bend, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_portament_ms", "track_id", "ms", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_portament_ms, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_frequency_step", "track_id", "step", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_lfo_frequency_step, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_wave_shape", "track_id", "wave_shape", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_lfo_wave_shape, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_time_mode", "track_id", "mode", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_lfo_time_mode, DEFVAL(-1), DEFVAL(-1));
@@ -2863,6 +2864,16 @@ void SiONDriver::mailbox_set_pitch_bend(int p_track_id, int p_value, int64_t p_e
     _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_portament_ms(int p_track_id, int p_ms, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.entity_scope_id = p_entity_scope_id;
+    u.slot_scope_id = p_slot_scope_id;
+    u.has_portament_ms = true;
+    u.portament_ms = p_ms;
+    _mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_lfo_frequency_step(int p_track_id, int p_step, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -3647,6 +3658,9 @@ void SiONDriver::_drain_track_mailbox() {
             }
             if (u.has_pitch_bend) {
                 trk->set_pitch_bend(CLAMP(u.pitch_bend, -8192, 8191));
+            }
+            if (u.has_portament_ms) {
+                trk->set_portament_ms(u.portament_ms);
             }
             if (u.has_lfo_step) {
                 ch->set_lfo_frequency_step(u.lfo_frequency_step);
