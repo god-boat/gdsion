@@ -540,7 +540,7 @@ void SiOPMChannelPCM::_write_stream_stereo(SinglyLinkedList<int>::Element *p_out
 void SiOPMChannelPCM::note_on() {
 	_operator->note_on();
 	_is_note_on = true;
-	_is_idling = false;
+	_is_source_idling = false;
 
 	SiOPMChannelBase::note_on();
 }
@@ -554,11 +554,11 @@ void SiOPMChannelPCM::note_off() {
 
 void SiOPMChannelPCM::reset_channel_buffer_status() {
 	_buffer_index = 0;
-	_is_idling = (_operator->get_eg_output() > IDLING_THRESHOLD && _operator->get_eg_state() != SiOPMOperator::EG_ATTACK);
+	_is_source_idling = (_operator->get_eg_output() > IDLING_THRESHOLD && _operator->get_eg_state() != SiOPMOperator::EG_ATTACK);
 }
 
 void SiOPMChannelPCM::buffer(int p_length) {
-	if (_is_idling) {
+	if (is_idling()) {
 		buffer_no_process(p_length);
 		return;
 	}
@@ -570,7 +570,7 @@ void SiOPMChannelPCM::buffer(int p_length) {
 		_process_operator_mono(p_length, false);
 
 		if (_filter_on) {
-			_apply_sv_filter(mono_out, p_length, _filter_variables);
+			_apply_sv_filter(mono_out, nullptr, p_length);
 		}
 
 		if (!_mute) {
@@ -585,8 +585,7 @@ void SiOPMChannelPCM::buffer(int p_length) {
 		_process_operator_stereo(p_length, false);
 
 		if (_filter_on) {
-			_apply_sv_filter(left_out, p_length, _filter_variables);
-			_apply_sv_filter(right_out, p_length, _filter_variables2);
+			_apply_sv_filter(left_out, right_out, p_length);
 		}
 
 		if (!_mute) {
@@ -608,10 +607,6 @@ void SiOPMChannelPCM::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 	_is_note_on = false;
 	_out_pipe2 = _sound_chip->get_pipe(3, p_buffer_index);
 
-	_filter_variables2[0] = 0;
-	_filter_variables2[1] = 0;
-	_filter_variables2[2] = 0;
-
 	_sample_pitch_shift = 0;
 	_sample_volume = 1;
 	_sample_pan = 0;
@@ -621,8 +616,7 @@ void SiOPMChannelPCM::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 
 void SiOPMChannelPCM::reset() {
 	_operator->reset();
-	_is_note_on = false;
-	_is_idling = true;
+	SiOPMChannelBase::reset();
 }
 
 String SiOPMChannelPCM::_to_string() const {

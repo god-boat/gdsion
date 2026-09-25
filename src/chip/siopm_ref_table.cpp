@@ -1304,6 +1304,8 @@ void SiOPMRefTable::_create_filter_tables() {
 	for (int i = 60; i < 64; i++) {
 		filter_eg_rate[i] = 1;
 	}
+
+	filter_tail_release = std::exp(-1.0 / (0.010 * sampling_rate));
 }
 
 SiOPMRefTable::SiOPMRefTable(int p_fm_clock, double p_psg_clock, int p_sampling_rate) {

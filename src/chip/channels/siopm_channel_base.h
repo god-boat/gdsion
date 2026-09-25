@@ -106,7 +106,9 @@ protected:
 	Vector<double> _volumes;
 	double _instrument_gain = 1.0;
 	int _instrument_gain_db = 0;
-	bool _is_idling = true;
+	// Everything the concrete channel renders, its own resonators included, is silent. Buffers gate on
+	// is_idling(), which also waits out the base-owned SV filter tail.
+	bool _is_source_idling = true;
 	int _pan = 64;
 	bool _has_effect_send = false;
 	bool _mute = false;
@@ -120,7 +122,13 @@ protected:
 	int _cutoff_frequency = 0;
 	int _cutoff_offset = 0;
 	double _resonance = 0;
+	// Filter memory (low, band, high) for the left/mono and right channels.
 	double _filter_variables[3] = {};
+	double _filter_variables2[3] = {};
+	// Release applied to the filter tail since the source fell silent.
+	double _sv_filter_tail_gain = 1.0;
+	// The source was idling when the filter finished its last block.
+	bool _sv_filter_source_was_idling = false;
 	int _filter_eg_residue = 0;
 	int _filter_eg_step = 0;
 	int _filter_eg_next = 0;       // Phase shift.
@@ -163,8 +171,11 @@ protected:
 	double _get_lfo_bpm() const;
 
 	void _apply_ring_modulation(SinglyLinkedList<int>::Element *p_buffer_start, int p_length);
-	// NOTE: Original code would implicitly use the filter variables if nothing was passed as the 3rd argument. We make this explicit.
-	void _apply_sv_filter(SinglyLinkedList<int>::Element *p_buffer_start, int p_length, double (&r_variables)[3]);
+	// Filters the left/mono pipe and, when given, the right pipe along one shared cutoff envelope.
+	void _apply_sv_filter(SinglyLinkedList<int>::Element *p_left_start, SinglyLinkedList<int>::Element *p_right_start, int p_length);
+	// The filter memory still carries output above one pipe unit.
+	bool _is_sv_filter_ringing() const;
+	void _clear_sv_filter_variables();
 	void _reset_sv_filter_state();
 	bool _try_shift_sv_filter_state(int p_state);
 	void _shift_sv_filter_state(int p_state);
@@ -215,7 +226,7 @@ public:
 
 	virtual int get_buffer_index() const { return _buffer_index; }
 	virtual bool is_note_on() const { return _is_note_on; }
-	virtual bool is_idling() const { return _is_idling; }
+	virtual bool is_idling() const { return _is_source_idling && !_is_sv_filter_ringing(); }
 	virtual int64_t get_reported_source_sample() const { return -1; }
 	virtual double get_reported_clip_time_beats() const { return -1.0; }
 
@@ -245,7 +256,7 @@ public:
 
 	// Filter control.
 
-	virtual void activate_filter(bool p_active) { _filter_on = p_active; }
+	virtual void activate_filter(bool p_active);
 	virtual void set_sv_filter(int p_cutoff = 128, int p_resonance = 0, int p_attack_rate = 0, int p_decay_rate1 = 0, int p_decay_rate2 = 0, int p_release_rate = 0, int p_decay_cutoff1 = 128, int p_decay_cutoff2 = 128, int p_sustain_cutoff = 128, int p_release_cutoff = 128);
 	virtual void offset_filter(int p_offset);
 

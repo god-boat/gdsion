@@ -205,7 +205,7 @@ private:
 	// Hint from the owning channel that the next note_on() should be treated
 	// as a voice-steal event, even if the current EG state looks idle. This
 	// lets us apply the deferred-release logic based on channel-level
-	// knowledge (_is_note_on / _is_idling) rather than relying solely on the
+	// knowledge (_is_note_on / _is_source_idling) rather than relying solely on the
 	// operator's own EG state, which can be reset by initialize().
 	bool _is_voice_steal_hint = false;
 

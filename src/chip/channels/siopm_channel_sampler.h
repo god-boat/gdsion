@@ -58,13 +58,9 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 	double _amp_rate_scale = 1.0;
 	double _envelope_level = 1.0;
 
-	bool _click_guard_active = false;
-	int _click_guard_samples_left = 0;
-	double _click_guard_level = 1.0;
-	static const int RELEASE_SAMPLES = 512; // ≈ 512 / 48 000 Hz ≈ 10.7 ms at 48 kHz.
-
 	// Voice stealing declick: defer sample/envelope changes until quiet.
 	bool _has_deferred_note_on = false;
+	Ref<SiOPMWaveSamplerData> _deferred_sample_data;
 	int _deferred_wave_number = -1;
 	int _deferred_sample_start_phase = 0;
 	double _deferred_pitch_step = 1.0;
@@ -78,9 +74,8 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 	// AM linear gain derived from log domain (parity with FM).
 	double _amplitude_modulation_gain = 1.0;
 
-	// Second output pipe and filter variables for stereo processing.
+	// Second output pipe for stereo processing.
 	SinglyLinkedList<int> *_out_pipe2 = nullptr;
-	double _filter_variables2[3] = { 0, 0, 0 };
 
 	// LFO helpers.
 	void _set_lfo_state(bool p_enabled);
@@ -97,11 +92,10 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 	void _refresh_active_amp_stage();
 	int _compute_amp_samples_per_unit(int p_rate) const;
 	void _update_amp_envelope();
-	void _begin_click_guard();
-	void _stop_click_guard();
 
-	// Voice stealing declick helper.
-	void _execute_note_on_immediate();
+	// Voice stealing declick helpers.
+	void _execute_deferred_note_on();
+	void _execute_note_on_immediate(const Ref<SiOPMWaveSamplerData> &p_sample_data);
 	
 	// Unified pitch calculation.
 	double _get_note_pitch_ratio() const;

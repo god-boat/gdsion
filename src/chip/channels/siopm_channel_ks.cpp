@@ -807,7 +807,7 @@ bool SiOPMChannelKS::_is_quiet_enough_for_deferred_note_on() const {
 }
 
 bool SiOPMChannelKS::_should_defer_note_on() const {
-	if (_is_idling) {
+	if (_is_source_idling) {
 		return false;
 	}
 
@@ -815,7 +815,7 @@ bool SiOPMChannelKS::_should_defer_note_on() const {
 }
 
 void SiOPMChannelKS::_execute_note_on_immediate() {
-	const bool was_voice_active = _is_note_on || _has_deferred_note_on || !_is_idling || _kill_fade_remaining_samples > 0;
+	const bool was_voice_active = _is_note_on || _has_deferred_note_on || !_is_source_idling || _kill_fade_remaining_samples > 0;
 	_has_deferred_note_on = false;
 	cancel_kill_fade();
 
@@ -930,7 +930,7 @@ void SiOPMChannelKS::note_on() {
 		_decay_lpf = _ks_mute_decay_lpf;
 		_decay = _ks_mute_decay;
 		_declick_target = 0.0;
-		_is_idling = false;
+		_is_source_idling = false;
 		return;
 	}
 
@@ -981,12 +981,12 @@ void SiOPMChannelKS::note_off() {
 
 void SiOPMChannelKS::reset_channel_buffer_status() {
 	SiOPMChannelFM::reset_channel_buffer_status();
-	if (!_is_idling) {
+	if (!_is_source_idling) {
 		return;
 	}
 
 	if (Math::abs(_output) >= KS_SUB_SAMPLE_SILENCE) {
-		_is_idling = false;
+		_is_source_idling = false;
 		return;
 	}
 
@@ -995,7 +995,7 @@ void SiOPMChannelKS::reset_channel_buffer_status() {
 	const int live_delay_length = CLAMP(_ks_active_delay_length, 0, delay_buffer_size);
 	for (int i = 0; i < live_delay_length; i++) {
 		if (delay_buffer[i] != 0) {
-			_is_idling = false;
+			_is_source_idling = false;
 			return;
 		}
 	}
@@ -1008,7 +1008,7 @@ void SiOPMChannelKS::reset_channel_buffer_status() {
 	// the channel can idle early and truncate their remaining ring into a click.
 	for (int i = 0; i < BODY_RESONATOR_COUNT; i++) {
 		if (_body_resonators[i].is_ringing(KS_SUB_SAMPLE_SILENCE)) {
-			_is_idling = false;
+			_is_source_idling = false;
 			return;
 		}
 	}
@@ -1155,7 +1155,7 @@ void SiOPMChannelKS::buffer(int p_length) {
 		_execute_note_on_immediate();
 	}
 
-	if (_is_idling) {
+	if (is_idling()) {
 		buffer_no_process(p_length);
 		return;
 	}
@@ -1171,7 +1171,7 @@ void SiOPMChannelKS::buffer(int p_length) {
 	_apply_karplus_strong(mono_out, p_length);
 
 	if (_filter_on) {
-		_apply_sv_filter(mono_out, p_length, _filter_variables);
+		_apply_sv_filter(mono_out, nullptr, p_length);
 	}
 	if (_kill_fade_remaining_samples > 0) {
 		_apply_kill_fade(mono_out, p_length);
@@ -1205,7 +1205,7 @@ void SiOPMChannelKS::buffer(int p_length) {
 void SiOPMChannelKS::buffer_no_process(int p_length) {
 	if (_has_deferred_note_on) {
 		_execute_note_on_immediate();
-		if (!_is_idling) {
+		if (!_is_source_idling) {
 			buffer(p_length);
 			return;
 		}

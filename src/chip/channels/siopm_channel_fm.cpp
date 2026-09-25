@@ -1598,7 +1598,7 @@ void SiOPMChannelFM::note_on() {
 	// event from the channel's point of view. Let the operators know so they
 	// can defer envelope ATTACK and phase reset until their envelopes reach
 	// (practically) zero instead of restarting abruptly mid-release.
-	bool is_voice_steal = _is_note_on && !_is_idling;
+	bool is_voice_steal = _is_note_on && !_is_source_idling;
 
 	for (int i = 0; i < _operator_count; i++) {
 		if (_operators[i]) {
@@ -1608,7 +1608,7 @@ void SiOPMChannelFM::note_on() {
 	}
 
 	_is_note_on = true;
-	_is_idling = false;
+	_is_source_idling = false;
 	SiOPMChannelBase::note_on();
 }
 
@@ -1623,13 +1623,13 @@ void SiOPMChannelFM::note_off() {
 
 void SiOPMChannelFM::reset_channel_buffer_status() {
 	_buffer_index = 0;
-	_is_idling = true;
+	_is_source_idling = true;
 
 	for (int i = 0; i < _operator_count; i++) {
 		SiOPMOperator *op = _operators[i];
 
 		if (op->is_final() && (op->get_eg_output() < IDLING_THRESHOLD || op->get_eg_state() == SiOPMOperator::EG_ATTACK)) {
-			_is_idling = false;
+			_is_source_idling = false;
 			break;
 		}
 	}
@@ -1644,7 +1644,7 @@ void SiOPMChannelFM::reset_channel_buffer_status() {
 }
 
 void SiOPMChannelFM::buffer(int p_length) {
-	if (_is_idling) {
+	if (is_idling()) {
 		buffer_no_process(p_length);
 		return;
 	}
@@ -1677,10 +1677,9 @@ void SiOPMChannelFM::buffer(int p_length) {
 	}
 	if (_filter_on) {
 		if (stereo_mode) {
-			_apply_sv_filter(left_start, p_length, _filter_variables);
-			_apply_sv_filter(right_start, p_length, _filter_variables2);
+			_apply_sv_filter(left_start, right_start, p_length);
 		} else {
-			_apply_sv_filter(mono_out, p_length, _filter_variables);
+			_apply_sv_filter(mono_out, nullptr, p_length);
 		}
 	}
 	if (_kill_fade_remaining_samples > 0) {
@@ -1857,11 +1856,6 @@ void SiOPMChannelFM::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
 
 	_is_note_on = false;
 	SiOPMChannelBase::initialize(p_prev, p_buffer_index);
-
-	// Reset stereo filter state.
-	_filter_variables2[0] = 0;
-	_filter_variables2[1] = 0;
-	_filter_variables2[2] = 0;
 }
 
 void SiOPMChannelFM::reset() {
@@ -1873,8 +1867,7 @@ void SiOPMChannelFM::reset() {
 		}
 	}
 
-	_is_note_on = false;
-	_is_idling = true;
+	SiOPMChannelBase::reset();
 }
 
 String SiOPMChannelFM::_to_string() const {

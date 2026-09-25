@@ -274,6 +274,12 @@ void SiOPMChannelSampler::note_on() {
 	if (_wave_number < 0) {
 		return;
 	}
+	// A key without a sample leaves the channel alone, so the previous note's filter tail rings out
+	// on its own sample layout.
+	const Ref<SiOPMWaveSamplerData> sample_data = resolve_sampler_data_for_note(_wave_number & 127);
+	if (sample_data.is_null() || sample_data->get_length() <= 0) {
+		return;
+	}
 
 	// Voice-stealing declick: defer note_on if we're currently playing audible audio.
 	// Check both envelope state and sample data validity to avoid clicks.
@@ -283,6 +289,7 @@ void SiOPMChannelSampler::note_on() {
 	if (treat_as_voice_steal) {
 		// Store the new note parameters for later execution.
 		_has_deferred_note_on = true;
+		_deferred_sample_data = sample_data;
 		_deferred_wave_number = _wave_number;
 		_deferred_sample_start_phase = _sample_start_phase;
 		_deferred_pitch_step = _pitch_step;
@@ -296,17 +303,22 @@ void SiOPMChannelSampler::note_on() {
 	}
 
 	// Not voice stealing - execute immediately.
-	_execute_note_on_immediate();
+	_execute_note_on_immediate(sample_data);
 }
 
-void SiOPMChannelSampler::_execute_note_on_immediate() {
-	_stop_click_guard();
+void SiOPMChannelSampler::_execute_deferred_note_on() {
+	_wave_number = _deferred_wave_number;
+	_sample_start_phase = _deferred_sample_start_phase;
+	_pitch_step = _deferred_pitch_step;
+	_has_deferred_note_on = false;
+	_execute_note_on_immediate(_deferred_sample_data);
+}
+
+void SiOPMChannelSampler::_execute_note_on_immediate(const Ref<SiOPMWaveSamplerData> &p_sample_data) {
 	_reset_amp_envelope();
 
-	if (_sampler_table.is_valid()) {
-		_sample_data = _sampler_table->get_sample(_wave_number & 127);
-	}
-	if (_sample_data.is_valid() && _sample_start_phase != 255) {
+	_sample_data = p_sample_data;
+	if (_sample_start_phase != 255) {
 		_sample_index = _sample_data->get_initial_sample_index(_sample_start_phase * 0.00390625); // 1/256
 		_sample_index_fp = (double)_sample_index;
 		
@@ -315,18 +327,11 @@ void SiOPMChannelSampler::_execute_note_on_immediate() {
 		_has_note_on_pitch = true;
 		_recalc_pitch_step();
 	}
-	_reported_source_sample_abs.store(
-			_sample_data.is_valid() ? MAX((int64_t)std::floor(_sample_index_fp), (int64_t)0) : (int64_t)0,
-			std::memory_order_relaxed);
+	_reported_source_sample_abs.store(MAX((int64_t)std::floor(_sample_index_fp), (int64_t)0), std::memory_order_relaxed);
 
-	_is_idling = (_sample_data == nullptr);
-	_is_note_on = !_is_idling;
-
-	// Start LFO/filter EG like other channels once we know we're active.
-	if (!_is_idling) {
-		SiOPMChannelBase::note_on();
-		_start_amp_envelope();
-	}
+	// Start LFO/filter EG like other channels.
+	SiOPMChannelBase::note_on();
+	_start_amp_envelope();
 }
 
 void SiOPMChannelSampler::note_off() {
@@ -347,7 +352,7 @@ void SiOPMChannelSampler::note_off() {
 }
 
 void SiOPMChannelSampler::buffer(int p_length) {
-	if (_is_idling || _sample_data == nullptr || _sample_data->get_length() <= 0) {
+	if (is_idling()) {
 		buffer_no_process(p_length);
 		return;
 	}
@@ -382,46 +387,25 @@ void SiOPMChannelSampler::buffer(int p_length) {
 			if (loop_point >= 0) {
 				_sample_index_fp = loop_point + (_sample_index_fp - end_point);
 			} else if (_amp_stage != AMP_STAGE_IDLE) {
-				// Sample reached its end (one-shot). Transition to IDLE with
-				// click guard so the filter can keep running on zero-input and
-				// decay naturally. Don't set _is_idling — the click guard
-				// countdown in _update_amp_envelope() handles that.
-				_begin_click_guard();
-				_amp_stage = AMP_STAGE_IDLE;
-				_amp_level = 0.0;
-				_amp_stage_samples_left = 0;
-				_amp_stage_increment = 0.0;
-				_envelope_level = 0.0;
-				_is_idling = !_click_guard_active;
+				// Sample reached its end (one-shot).
+				_set_amp_stage(AMP_STAGE_IDLE);
 			}
-			// If already IDLE (click guard running or expired), fall through
-			// to the envelope update which counts down the guard and writes
-			// zeros via the IDLE check below.
 		}
 
 		// LFO and ADSR updates.
 		_update_lfo();
 		_update_amp_envelope();
+		// A silent source writes zeros; the base filter tail rings out over them.
 		if (_amp_stage == AMP_STAGE_IDLE) {
-			if (!_click_guard_active) {
-				for (; i < p_length; i++) {
-					left_write->value = 0;
-					left_write = left_write->next();
-					if (channels == 2 && right_write) {
-						right_write->value = 0;
-						right_write = right_write->next();
-					}
-				}
-				break;
-			} else {
+			for (; i < p_length; i++) {
 				left_write->value = 0;
 				left_write = left_write->next();
 				if (channels == 2 && right_write) {
 					right_write->value = 0;
 					right_write = right_write->next();
 				}
-				continue;
 			}
+			break;
 		}
 
 		// Interpolation indices.
@@ -464,10 +448,7 @@ void SiOPMChannelSampler::buffer(int p_length) {
 
 	// Apply filter on output pipes.
 	if (_filter_on) {
-		_apply_sv_filter(left_start, p_length, _filter_variables);
-		if (channels == 2 && right_start) {
-			_apply_sv_filter(right_start, p_length, _filter_variables2);
-		}
+		_apply_sv_filter(left_start, right_start, p_length);
 	}
 
 	// Write to streams.
@@ -478,9 +459,7 @@ void SiOPMChannelSampler::buffer(int p_length) {
 			_write_stream_stereo(left_start, right_start, p_length);
 		}
 	}
-	_reported_source_sample_abs.store(
-			_sample_data.is_valid() ? MAX((int64_t)std::floor(_sample_index_fp), (int64_t)0) : (int64_t)0,
-			std::memory_order_relaxed);
+	_reported_source_sample_abs.store(MAX((int64_t)std::floor(_sample_index_fp), (int64_t)0), std::memory_order_relaxed);
 
 	// Metering: copy post-filter mono lane (or left) into meter ring.
 	// Advance pipe cursors for next buffer.
@@ -509,7 +488,7 @@ void SiOPMChannelSampler::buffer_no_process(int p_length) {
 			return;
 		}
 	}
-	
+
 	// Rotate the output buffers similarly to PCM to keep both pipes aligned.
 	int pipe_index = (_buffer_index + p_length) & (_sound_chip->get_buffer_length() - 1);
 	if (_output_mode == OutputMode::OUTPUT_STANDARD) {
@@ -546,14 +525,10 @@ void SiOPMChannelSampler::initialize(SiOPMChannelBase *p_prev, int p_buffer_inde
 	SiOPMChannelBase::initialize(p_prev, p_buffer_index);
 	reset();
 	_out_pipe2 = _sound_chip->get_pipe(3, p_buffer_index);
-	_filter_variables2[0] = 0;
-	_filter_variables2[1] = 0;
-	_filter_variables2[2] = 0;
 }
 
 void SiOPMChannelSampler::reset() {
-	_is_note_on = false;
-	_is_idling = true;
+	SiOPMChannelBase::reset();
 
 	_bank_number = 0;
 	_wave_number = -1;
@@ -570,11 +545,11 @@ void SiOPMChannelSampler::reset() {
 	_has_note_on_pitch = false;
 	_pitch_step = 1.0;
 	_sample_index_fp = 0.0;
-	_stop_click_guard();
 	_reset_amp_envelope();
 
 	// Clear voice-stealing deferred state.
 	_has_deferred_note_on = false;
+	_deferred_sample_data = Ref<SiOPMWaveSamplerData>();
 	_deferred_wave_number = -1;
 	_deferred_sample_start_phase = 0;
 	_deferred_pitch_step = 1.0;
@@ -637,12 +612,10 @@ void SiOPMChannelSampler::_reset_amp_envelope() {
 	_amp_stage_increment = 0.0;
 	_amp_stage_samples_left = 0;
 	_envelope_level = 0.0;
-	_is_idling = true;
+	_is_source_idling = true;
 }
 
 void SiOPMChannelSampler::_start_amp_envelope() {
-	_stop_click_guard();
-	_is_idling = false;
 	_set_amp_stage(AMP_STAGE_ATTACK);
 }
 
@@ -671,11 +644,6 @@ void SiOPMChannelSampler::_advance_amp_stage() {
 		} break;
 		case AMP_STAGE_RELEASE: {
 			_set_amp_stage(AMP_STAGE_IDLE);
-			_begin_click_guard();
-			// Keep the channel alive during the click guard period so that
-			// buffer() continues to run the filter on zero-input, allowing
-			// filter state to decay naturally instead of freezing.
-			_is_idling = !_click_guard_active;
 		} break;
 		default:
 			break;
@@ -687,24 +655,24 @@ void SiOPMChannelSampler::_set_amp_stage(AmplitudeStage p_stage) {
 	
 	switch (p_stage) {
 		case AMP_STAGE_ATTACK: {
-			_is_idling = false;
+			_is_source_idling = false;
 			_amp_level = CLAMP(_amp_level, 0.0, 1.0);
 			_configure_amp_stage(1.0, _amp_attack_rate);
 		} break;
 		case AMP_STAGE_DECAY: {
-			_is_idling = false;
+			_is_source_idling = false;
 			double sustain = (double)_amp_sustain_level * 0.0078125;
 			_configure_amp_stage(sustain, _amp_decay_rate);
 		} break;
 		case AMP_STAGE_SUSTAIN: {
-			_is_idling = false;
+			_is_source_idling = false;
 			_amp_stage_samples_left = 0;
 			_amp_stage_increment = 0.0;
 			_amp_level = (double)_amp_sustain_level * 0.0078125;
 			_envelope_level = _amp_level;
 		} break;
 		case AMP_STAGE_RELEASE: {
-			_is_idling = false;
+			_is_source_idling = false;
 			_configure_amp_stage(0.0, _amp_release_rate);
 		} break;
 		case AMP_STAGE_IDLE:
@@ -713,10 +681,7 @@ void SiOPMChannelSampler::_set_amp_stage(AmplitudeStage p_stage) {
 			_amp_stage_increment = 0.0;
 			_amp_level = 0.0;
 			_envelope_level = 0.0;
-			// NOTE: _is_idling is NOT set here. The caller is responsible for
-			// managing idling state, because _advance_amp_stage() activates
-			// the click guard after this and needs the channel to stay alive
-			// so the filter can decay naturally on zero-input.
+			_is_source_idling = true;
 		} break;
 	}
 }
@@ -825,14 +790,7 @@ void SiOPMChannelSampler::_update_amp_envelope() {
 				// Check if we have a deferred note_on waiting and we're quiet enough.
 				// Must check BEFORE _advance_amp_stage() which transitions to IDLE.
 				if (_has_deferred_note_on && _amp_stage == AMP_STAGE_RELEASE && _amp_level < 0.1) {
-					// Restore deferred parameters.
-					_wave_number = _deferred_wave_number;
-					_sample_start_phase = _deferred_sample_start_phase;
-					_pitch_step = _deferred_pitch_step;
-					_has_deferred_note_on = false;
-
-					// Now execute the actual note_on.
-					_execute_note_on_immediate();
+					_execute_deferred_note_on();
 					return; // Early return since envelope state was reset
 				}
 				
@@ -854,42 +812,13 @@ void SiOPMChannelSampler::_update_amp_envelope() {
 			// Safety net: if we somehow ended up in IDLE with a deferred note_on still pending,
 			// execute it now to prevent permanent silence.
 			if (_has_deferred_note_on) {
-				_wave_number = _deferred_wave_number;
-				_sample_start_phase = _deferred_sample_start_phase;
-				_pitch_step = _deferred_pitch_step;
-				_has_deferred_note_on = false;
-				_execute_note_on_immediate();
+				_execute_deferred_note_on();
 				return;
 			}
 			break;
 	}
 
 	_envelope_level = CLAMP(_amp_level, 0.0, 1.0);
-	if (_click_guard_active) {
-		if (_click_guard_samples_left > 0) {
-			_click_guard_samples_left--;
-			_click_guard_level = (double)_click_guard_samples_left / RELEASE_SAMPLES;
-			_envelope_level *= _click_guard_level;
-		} else {
-			_stop_click_guard();
-			_envelope_level = 0.0;
-			// Click guard finished — the filter has had enough zero-input
-			// time to decay. Now the channel can go fully idle.
-			_is_idling = true;
-		}
-	}
-}
-
-void SiOPMChannelSampler::_begin_click_guard() {
-	_click_guard_active = true;
-	_click_guard_samples_left = RELEASE_SAMPLES;
-	_click_guard_level = 1.0;
-}
-
-void SiOPMChannelSampler::_stop_click_guard() {
-	_click_guard_active = false;
-	_click_guard_samples_left = 0;
-	_click_guard_level = 1.0;
 }
 
 void SiOPMChannelSampler::_write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length) {

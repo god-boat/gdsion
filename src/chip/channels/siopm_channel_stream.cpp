@@ -237,8 +237,9 @@ double SiOPMChannelStream::_evaluate_clip_envelope(double p_clip_time_beats) con
 // ---------------------------------------------------------------------------
 
 void SiOPMChannelStream::_start_playback_at(int64_t p_start_sample) {
+	// A start without playable data stops the channel instead of leaving the previous playback half-running.
 	if (_stream_data.is_null() || !_stream_data->is_valid()) {
-		_is_idling = true;
+		reset();
 		return;
 	}
 
@@ -248,14 +249,13 @@ void SiOPMChannelStream::_start_playback_at(int64_t p_start_sample) {
 	_playback_pos = 0.0;
 	_playing = true;
 	_reached_end = false;
-	_is_idling = false;
+	_is_source_idling = false;
 	_is_note_on = true;
 	_loops_completed = 0;
 
-	// Preserve any scheduler-owned clip envelope state that was already armed
-	// via mailbox before the deferred note_on executes. reset() clears these
-	// fields between clips, so on a fresh start they are either valid state for
-	// this key_on or the default zero/unity values from reset().
+	// Preserve the scheduler-owned clip state armed via mailbox before the
+	// deferred note_on executes. The scheduler re-arms every clip field before
+	// each key_on, so nothing here is left over from the previous clip.
 	_clip_envelope = _evaluate_clip_envelope(_clip_time_beats);
 	_reported_clip_time_beats.store(_clip_time_beats, std::memory_order_relaxed);
 
@@ -311,29 +311,24 @@ void SiOPMChannelStream::note_on_at(int64_t p_start_sample) {
 
 void SiOPMChannelStream::note_off() {
 	// Normal placement end: the scheduler-owned clip envelope has already
-	// reached zero, so we can stop transport state directly without routing
-	// through the technical hard-stop fade.
-	if (!_playing) {
-		reset();
+	// reached zero, so we can stop the source directly without routing
+	// through the technical hard-stop fade. A source that already ran out,
+	// or is being hard-stopped, has nothing left to stop.
+	if (!_playing || _kill_fade_remaining_samples > 0) {
 		return;
 	}
 
-	if (_kill_fade_remaining_samples > 0) {
-		return;
-	}
+	_stop_source();
+}
 
+void SiOPMChannelStream::_stop_source() {
+	_playing = false;
+	_is_source_idling = true;
 	SiOPMChannelBase::note_off();
-	reset();
 }
 
 void SiOPMChannelStream::hard_stop() {
-	if (!_playing) {
-		return;
-	}
-
-	// Keep _playing = true so buffer() continues running and the kill fade
-	// can attenuate the audio to zero over ~2ms. The kill fade calls reset()
-	// on completion, which sets _playing = false.
+	// The source or its filter tail keeps rendering until the kill fade completes.
 	start_kill_fade();
 
 	SiOPMChannelBase::note_off();
@@ -344,7 +339,7 @@ void SiOPMChannelStream::hard_stop() {
 // ---------------------------------------------------------------------------
 
 void SiOPMChannelStream::buffer(int p_length) {
-	if (_is_idling || _stream_data.is_null() || !_stream_data->is_valid() || !_playing) {
+	if (is_idling() || _stream_data.is_null() || !_stream_data->is_valid()) {
 		buffer_no_process(p_length);
 		return;
 	}
@@ -353,7 +348,7 @@ void SiOPMChannelStream::buffer(int p_length) {
 
 	// Determine effective clip/loop end (relative to in_sample, in source frames).
 	int64_t effective_end = _effective_clip_length();
-	if (effective_end <= 0) {
+	if (_playing && effective_end <= 0) {
 		buffer_no_process(p_length);
 		return;
 	}
@@ -386,12 +381,24 @@ void SiOPMChannelStream::buffer(int p_length) {
 		right_start = _out_pipe2->get();
 		right_write = right_start;
 	}
+	const auto write_silence = [&](int p_samples) {
+		for (int i = 0; i < p_samples; i++) {
+			left_write->value = 0;
+			left_write = left_write->next();
+			if (right_write) {
+				right_write->value = 0;
+				right_write = right_write->next();
+			}
+		}
+	};
 
-	// Branch: granular modes (TONES=3, TEXTURE=4) vs standard playback.
+	// Render a silent source tail, granular playback, or standard playback.
 	bool granular_mode = (_warp_mode == 3 || _warp_mode == 4);
 	const double clip_beat_advance = _get_clip_beats_per_output_sample();
 
-	if (granular_mode) {
+	if (!_playing) {
+		write_silence(p_length);
+	} else if (granular_mode) {
 		// Granular overlap-add engine (delegated to SiOPMWarpProcessor).
 		//
 		// Source advance rate: determines how fast we move through the source
@@ -430,16 +437,8 @@ void SiOPMChannelStream::buffer(int p_length) {
 				// Fall through to the read/write code below (matching
 				// the sampler's loop pattern — no output sample is skipped).
 			} else {
-					start_kill_fade();
-					_playing = false;
-					for (; i < p_length; i++) {
-						left_write->value = 0;
-						left_write = left_write->next();
-						if (channels == 2 && right_write) {
-							right_write->value = 0;
-							right_write = right_write->next();
-						}
-					}
+					_stop_source();
+					write_silence(p_length - i);
 					break;
 				}
 			}
@@ -537,19 +536,9 @@ void SiOPMChannelStream::buffer(int p_length) {
 				// loader wrapped at loop_end and continued filling from
 				// loop_start), so _playback_pos is NOT reset.
 			} else {
-					// One-shot end: use kill-fade for click-safe stop (adopted
-					// from sampler's click guard pattern). This keeps the channel
-					// alive so the SV filter can decay naturally on zero-input.
-					start_kill_fade();
-					_playing = false;
-					for (; i < p_length; i++) {
-						left_write->value = 0;
-						left_write = left_write->next();
-						if (channels == 2 && right_write) {
-							right_write->value = 0;
-							right_write = right_write->next();
-						}
-					}
+					// The technical envelope already ramps the source to zero.
+					_stop_source();
+					write_silence(p_length - i);
 					break;
 				}
 			}
@@ -631,7 +620,7 @@ void SiOPMChannelStream::buffer(int p_length) {
 	}
 
 	// Request refill if ring buffer is running low.
-	if (_stream_data.is_valid()) {
+	if (_playing) {
 		int available = _stream_data->ring_available();
 		// Use half the default ring capacity as threshold.
 		if (available < SiOPMWaveStreamData::DEFAULT_RING_CAPACITY / 2) {
@@ -641,10 +630,7 @@ void SiOPMChannelStream::buffer(int p_length) {
 
 	// Apply filter on output pipes.
 	if (_filter_on) {
-		_apply_sv_filter(left_start, p_length, _filter_variables);
-		if (channels == 2 && right_start) {
-			_apply_sv_filter(right_start, p_length, _filter_variables2);
-		}
+		_apply_sv_filter(left_start, right_start, p_length);
 	}
 
 	// Apply kill fade if pending.
@@ -717,22 +703,18 @@ void SiOPMChannelStream::initialize(SiOPMChannelBase *p_prev, int p_buffer_index
 	// thread's set_wave_data() and the audio thread's note_on_at().
 	_stream_data = Ref<SiOPMWaveStreamData>();
 	_out_pipe2 = _sound_chip->get_pipe(3, p_buffer_index);
-	_filter_variables2[0] = 0;
-	_filter_variables2[1] = 0;
-	_filter_variables2[2] = 0;
 }
 
 void SiOPMChannelStream::reset() {
-	_is_note_on = false;
-	_is_idling = true;
+	SiOPMChannelBase::reset();
 	_playing = false;
 	_reached_end = false;
 
 	// NOTE: _stream_data is intentionally NOT cleared here.
 	// It is a voice binding set by set_wave_data() on the main thread.
 	// Clearing it in reset() creates a cross-thread race: stale key_off
-	// messages (from _uc_silence_all during transport restart) trigger
-	// note_off() -> reset() on the audio thread, which runs AFTER the
+	// messages (from _uc_silence_all during transport restart) trigger a
+	// hard stop whose kill fade ends in reset() on the audio thread, AFTER the
 	// main thread already called set_wave_data() for the new clip but
 	// BEFORE the audio thread processes the new key_on. The result is
 	// note_on_at() finding _stream_data null and going idle (no sound).

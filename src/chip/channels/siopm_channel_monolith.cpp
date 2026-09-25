@@ -359,7 +359,7 @@ void SiOPMChannelMonolith::_reset_amp_envelope() {
 }
 
 void SiOPMChannelMonolith::_start_amp_envelope() {
-	_is_idling = false;
+	_is_source_idling = false;
 	_set_amp_stage(AMP_STAGE_ATTACK);
 }
 
@@ -386,7 +386,7 @@ void SiOPMChannelMonolith::_advance_amp_stage() {
 		case AMP_STAGE_RELEASE: {
 			_set_amp_stage(AMP_STAGE_IDLE);
 			_declick_target = 0.0;
-			_is_idling = false;
+			_is_source_idling = false;
 		} break;
 		default:
 			break;
@@ -398,24 +398,24 @@ void SiOPMChannelMonolith::_set_amp_stage(AmplitudeStage p_stage) {
 
 	switch (p_stage) {
 		case AMP_STAGE_ATTACK: {
-			_is_idling = false;
+			_is_source_idling = false;
 			_amp_level = CLAMP(_amp_level, 0.0, 1.0);
 			_configure_amp_stage(1.0, _amp_attack_rate);
 		} break;
 		case AMP_STAGE_DECAY: {
-			_is_idling = false;
+			_is_source_idling = false;
 			double sustain = (double)_amp_sustain_level * 0.0078125;
 			_configure_amp_stage(sustain, _amp_decay_rate);
 		} break;
 		case AMP_STAGE_SUSTAIN: {
-			_is_idling = false;
+			_is_source_idling = false;
 			_amp_stage_samples_left = 0;
 			_amp_stage_increment = 0.0;
 			_amp_level = (double)_amp_sustain_level * 0.0078125;
 			_envelope_level = _amp_level;
 		} break;
 		case AMP_STAGE_RELEASE: {
-			_is_idling = false;
+			_is_source_idling = false;
 			_configure_amp_stage(0.0, _amp_release_rate);
 		} break;
 		case AMP_STAGE_IDLE:
@@ -755,7 +755,7 @@ void SiOPMChannelMonolith::note_on() {
 	}
 
 	_is_note_on = true;
-	_is_idling = false;
+	_is_source_idling = false;
 	_declick_target = 1.0;
 
 	_start_amp_envelope();
@@ -776,7 +776,7 @@ void SiOPMChannelMonolith::note_off() {
 
 void SiOPMChannelMonolith::reset_channel_buffer_status() {
 	SiOPMChannelBase::reset_channel_buffer_status();
-	_is_idling = !_is_note_on && _amp_stage == AMP_STAGE_IDLE && _declick_level <= 0.0;
+	_is_source_idling = !_is_note_on && _amp_stage == AMP_STAGE_IDLE && _declick_level <= 0.0;
 }
 
 // ---------------------------------------------------------------------------
@@ -808,7 +808,7 @@ void SiOPMChannelMonolith::_process_monolith(int p_length) {
 		} else if (_declick_level > _declick_target) {
 			_declick_level = MAX(_declick_level - DECLICK_INCREMENT, 0.0);
 			if (_declick_level <= 0.0 && _amp_stage == AMP_STAGE_IDLE) {
-				_is_idling = true;
+				_is_source_idling = true;
 			}
 		}
 

@@ -19,8 +19,6 @@ class SiOPMChannelPCM : public SiOPMChannelBase {
 
 	SiOPMOperator *_operator = nullptr;
 	Ref<SiOPMWavePCMTable> _pcm_table;
-	// Second set of variables for stereo.
-	double _filter_variables2[3] = { 0, 0, 0 };
 
 	int _amplitude_modulation_depth = 0; // = chip.amd << (ams - 1)
 	int _amplitude_modulation_output_level = 0;

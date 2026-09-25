@@ -84,7 +84,6 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	// ---- Stereo output ----
 
 	SinglyLinkedList<int> *_out_pipe2 = nullptr;
-	double _filter_variables2[3] = { 0, 0, 0 };
 
 	// Unified pitch step recalculation from _pitch_cents.
 	void _recalc_pitch_step();
@@ -102,6 +101,8 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 
 	// Shared note_on implementation: resets playback state and starts from p_start_sample.
 	void _start_playback_at(int64_t p_start_sample);
+	// Ends playback; the filter tail rings out and the channel idles once it has decayed.
+	void _stop_source();
 
 	// Stream writers (mirror sampler channel pattern).
 	void _write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length);

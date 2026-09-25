@@ -85,37 +85,71 @@ using SVFilterProcessFn = void (*)(
 		int,
 		double,
 		double,
+		double,
 		double &,
-		double &,
-		double &);
+		double (&)[3]);
 
 inline int _sanitize_sv_filter_step(int p_step) {
 	return (p_step > 0) ? p_step : 1;
 }
 
-template <SiOPMChannelBase::FilterType P_FILTER_TYPE>
+// In the tail the source is silent but the resonance still rings: seconds at low cutoff and high Q,
+// forever at cutoff 0. Scaling the memory by the release and the input by the running release gain
+// is exactly a release on the filter output, so the tail fades instead of being cut when the channel
+// idles, and a new note picks up from the scaled memory without a step. The input is released too
+// because a silent source is not zero: operator channels leave a residue below their idle threshold.
+template <SiOPMChannelBase::FilterType P_FILTER_TYPE, bool P_TAIL>
 inline void _process_sv_filter_samples(
 		SinglyLinkedList<int>::Element *&r_target,
 		int p_count,
 		double p_cutoff_value,
 		double p_feedback_value,
-		double &r_low,
-		double &r_band,
-		double &r_high) {
+		double p_tail_release,
+		double &r_tail_gain,
+		double (&r_variables)[3]) {
+	double low = r_variables[0];
+	double band = r_variables[1];
+	double high = r_variables[2];
+
 	for (int i = 0; i < p_count; i++) {
-		r_high = static_cast<double>(r_target->value) - r_low - r_band * p_feedback_value;
-		r_band += r_high * p_cutoff_value;
-		r_low += r_band * p_cutoff_value;
+		double input = static_cast<double>(r_target->value);
+		if constexpr (P_TAIL) {
+			r_tail_gain *= p_tail_release;
+			low *= p_tail_release;
+			band *= p_tail_release;
+			input *= r_tail_gain;
+		}
+
+		high = input - low - band * p_feedback_value;
+		band += high * p_cutoff_value;
+		low += band * p_cutoff_value;
 
 		if constexpr (P_FILTER_TYPE == SiOPMChannelBase::FILTER_BP) {
-			r_target->value = static_cast<int>(r_band);
+			r_target->value = static_cast<int>(band);
 		} else if constexpr (P_FILTER_TYPE == SiOPMChannelBase::FILTER_HP) {
-			r_target->value = static_cast<int>(r_high);
+			r_target->value = static_cast<int>(high);
 		} else {
-			r_target->value = static_cast<int>(r_low);
+			r_target->value = static_cast<int>(low);
 		}
 
 		r_target = r_target->next();
+	}
+
+	r_variables[0] = low;
+	r_variables[1] = band;
+	r_variables[2] = high;
+}
+
+template <bool P_TAIL>
+SVFilterProcessFn _sv_filter_process_fn(int p_filter_type) {
+	switch (p_filter_type) {
+		case SiOPMChannelBase::FILTER_BP:
+			return &_process_sv_filter_samples<SiOPMChannelBase::FILTER_BP, P_TAIL>;
+		case SiOPMChannelBase::FILTER_HP:
+			return &_process_sv_filter_samples<SiOPMChannelBase::FILTER_HP, P_TAIL>;
+		case SiOPMChannelBase::FILTER_LP:
+		default:
+			return &_process_sv_filter_samples<SiOPMChannelBase::FILTER_LP, P_TAIL>;
 	}
 }
 } // namespace
@@ -311,7 +345,15 @@ void SiOPMChannelBase::set_sv_filter(int p_cutoff, int p_resonance, int p_attack
 	_filter_eg_time[EG_OFF]     = INT32_MAX;
 
 	_resonance = (1 << (9 - CLAMP(p_resonance, 0, 9))) * 0.001953125; // 0.001953125 = 1/512
-	_filter_on = (p_cutoff < 128 || p_resonance > 0 || p_attack_rate > 0 || p_release_rate > 0);
+	activate_filter(p_cutoff < 128 || p_resonance > 0 || p_attack_rate > 0 || p_release_rate > 0);
+}
+
+void SiOPMChannelBase::activate_filter(bool p_active) {
+	// A disabled filter keeps no memory, so enabling it again never resumes a stale tail.
+	if (!p_active) {
+		_clear_sv_filter_variables();
+	}
+	_filter_on = p_active;
 }
 
 void SiOPMChannelBase::offset_filter(int p_offset) {
@@ -428,6 +470,7 @@ void SiOPMChannelBase::note_on() {
 	// voice stealing), cancel it. Otherwise the fade would attenuate or even reset
 	// the channel while the new note is starting, causing missing attacks/dropped notes.
 	cancel_kill_fade();
+	_sv_filter_source_was_idling = false;
 
 	_lfo_phase = 0; // Reset.
 	if (_filter_on) {
@@ -501,36 +544,45 @@ void SiOPMChannelBase::_apply_ring_modulation(SinglyLinkedList<int>::Element *p_
 	}
 }
 
-void SiOPMChannelBase::_apply_sv_filter(SinglyLinkedList<int>::Element *p_buffer_start, int p_length, double (&r_variables)[3]) {
-	if (!p_buffer_start || p_length <= 0) {
+void SiOPMChannelBase::_apply_sv_filter(SinglyLinkedList<int>::Element *p_left_start, SinglyLinkedList<int>::Element *p_right_start, int p_length) {
+	if (!p_left_start || p_length <= 0) {
 		return;
 	}
 
 	int cutoff = CLAMP(_cutoff_frequency + _cutoff_offset, 0, 128);
 	double cutoff_value = _table->filter_cutoff_table[cutoff];
 	const double feedback_value = _resonance; // * _table->filter_feedback_table[out]; // This is commented out in original code.
-	SVFilterProcessFn process_samples = &_process_sv_filter_samples<FILTER_LP>;
+	const double tail_release = _table->filter_tail_release;
+	// The channel keeps rendering past a silent source only while the filter still rings (see is_idling()).
+	// A source can fall silent partway through a block, and what it rendered before that must not be
+	// released, so the tail starts with the first block the source idles through from its start.
+	const bool tail = _sv_filter_source_was_idling && _is_source_idling;
+	if (!tail) {
+		_sv_filter_tail_gain = 1.0;
+	}
+	const SVFilterProcessFn process_samples = tail ? _sv_filter_process_fn<true>(_filter_type) : _sv_filter_process_fn<false>(_filter_type);
 
-	switch (_filter_type) {
-		case FILTER_BP:
-			process_samples = &_process_sv_filter_samples<FILTER_BP>;
-			break;
-		case FILTER_HP:
-			process_samples = &_process_sv_filter_samples<FILTER_HP>;
-			break;
-		case FILTER_LP:
-		default:
-			break;
+	// A mono block has no right channel to carry memory for.
+	if (!p_right_start) {
+		_filter_variables2[0] = 0;
+		_filter_variables2[1] = 0;
+		_filter_variables2[2] = 0;
 	}
 
 	// Previous setting.
 	int step = _sanitize_sv_filter_step(_filter_eg_residue);
 
-	SinglyLinkedList<int>::Element *target = p_buffer_start;
+	SinglyLinkedList<int>::Element *left = p_left_start;
+	SinglyLinkedList<int>::Element *right = p_right_start;
 	int length = p_length;
-	double low = r_variables[0];
-	double band = r_variables[1];
-	double high = r_variables[2];
+	const auto process_segment = [&](int p_count) {
+		// Both channels release along the same gain.
+		double right_tail_gain = _sv_filter_tail_gain;
+		process_samples(left, p_count, cutoff_value, feedback_value, tail_release, _sv_filter_tail_gain, _filter_variables);
+		if (right) {
+			process_samples(right, p_count, cutoff_value, feedback_value, tail_release, right_tail_gain, _filter_variables2);
+		}
+	};
 	const auto advance_filter_state = [&]() {
 		_cutoff_frequency += _filter_eg_cutoff_inc;
 		cutoff = CLAMP(_cutoff_frequency + _cutoff_offset, 0, 128);
@@ -544,27 +596,41 @@ void SiOPMChannelBase::_apply_sv_filter(SinglyLinkedList<int>::Element *p_buffer
 	};
 
 	while (length >= step) {
-		process_samples(target, step, cutoff_value, feedback_value, low, band, high);
+		process_segment(step);
 		length -= step;
 		advance_filter_state();
 	}
 
-	process_samples(target, length, cutoff_value, feedback_value, low, band, high);
-
-	r_variables[0] = low;
-	r_variables[1] = band;
-	r_variables[2] = high;
+	process_segment(length);
 
 	// Next setting.
 	_filter_eg_residue = step - length;
+	_sv_filter_source_was_idling = _is_source_idling;
+}
+
+bool SiOPMChannelBase::_is_sv_filter_ringing() const {
+	// low and band are the memory; high is derived from them and the input each sample.
+	return std::abs(_filter_variables[0]) >= 1.0 || std::abs(_filter_variables[1]) >= 1.0 || std::abs(_filter_variables2[0]) >= 1.0 || std::abs(_filter_variables2[1]) >= 1.0;
+}
+
+void SiOPMChannelBase::_clear_sv_filter_variables() {
+	for (int i = 0; i < 3; i++) {
+		_filter_variables[i] = 0;
+		_filter_variables2[i] = 0;
+	}
+	_sv_filter_tail_gain = 1.0;
+	_sv_filter_source_was_idling = false;
 }
 
 void SiOPMChannelBase::start_kill_fade(int p_samples) {
+	// An idle channel is already silent, so there is nothing to fade.
+	if (is_idling()) {
+		return;
+	}
+
 	// If we can't compute a sensible fade, fall back to immediate reset.
 	if (p_samples == 0) {
 		reset();
-		_kill_fade_total_samples = 0;
-		_kill_fade_remaining_samples = 0;
 		return;
 	}
 
@@ -584,7 +650,7 @@ void SiOPMChannelBase::start_kill_fade(int p_samples) {
 	_kill_fade_total_samples = samples;
 	_kill_fade_remaining_samples = samples;
 	// Ensure we process at least until the fade completes.
-	_is_idling = false;
+	_is_source_idling = false;
 }
 
 void SiOPMChannelBase::_apply_kill_fade(SinglyLinkedList<int>::Element *p_buffer_start, int p_length) {
@@ -652,7 +718,7 @@ void SiOPMChannelBase::_apply_kill_fade_stereo(SinglyLinkedList<int>::Element *p
 }
 
 void SiOPMChannelBase::buffer(int p_length) {
-	if (_is_idling) {
+	if (is_idling()) {
 		buffer_no_process(p_length);
 		return;
 	}
@@ -670,7 +736,7 @@ void SiOPMChannelBase::buffer(int p_length) {
 		_apply_ring_modulation(mono_out, p_length);
 	}
 	if (_filter_on) {
-		_apply_sv_filter(mono_out, p_length, _filter_variables);
+		_apply_sv_filter(mono_out, nullptr, p_length);
 	}
 	if (_kill_fade_remaining_samples > 0) {
 		_apply_kill_fade(mono_out, p_length);
@@ -741,7 +807,7 @@ void SiOPMChannelBase::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) 
 
 	// Buffer index.
 	_is_note_on = false;
-	_is_idling = true;
+	_is_source_idling = true;
 	_buffer_index = p_buffer_index;
 
 	// LFO.
@@ -757,9 +823,7 @@ void SiOPMChannelBase::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) 
 	set_output(OutputMode::OUTPUT_STANDARD, 0);
 
 	// LP filter.
-	_filter_variables[0] = 0;
-	_filter_variables[1] = 0;
-	_filter_variables[2] = 0;
+	_clear_sv_filter_variables();
 	_cutoff_offset = 0;
 	_filter_type = FILTER_LP;
 	set_sv_filter();
@@ -769,8 +833,9 @@ void SiOPMChannelBase::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) 
 
 void SiOPMChannelBase::reset() {
 	_is_note_on = false;
-	_is_idling = true;
+	_is_source_idling = true;
 	cancel_kill_fade();
+	_clear_sv_filter_variables();
 }
 
 String SiOPMChannelBase::_to_string() const {

@@ -139,7 +139,7 @@ void SiOPMChannelStrata::offset_volume(int p_expression, int p_velocity) {
 void SiOPMChannelStrata::note_on() {
 	_osc.Strike();
 	_is_note_on = true;
-	_is_idling = false;
+	_is_source_idling = false;
 	_declick_target = 1.0;
 	SiOPMChannelBase::note_on();
 }
@@ -152,7 +152,7 @@ void SiOPMChannelStrata::note_off() {
 
 void SiOPMChannelStrata::reset_channel_buffer_status() {
 	SiOPMChannelBase::reset_channel_buffer_status();
-	_is_idling = !_is_note_on && _declick_level <= 0.0;
+	_is_source_idling = !_is_note_on && _declick_level <= 0.0;
 }
 
 void SiOPMChannelStrata::_process_strata(int p_length) {
@@ -187,7 +187,7 @@ void SiOPMChannelStrata::_process_strata(int p_length) {
 			} else if (_declick_level > _declick_target) {
 				_declick_level = MAX(_declick_level - DECLICK_INCREMENT, 0.0);
 				if (_declick_level <= 0.0) {
-					_is_idling = true;
+					_is_source_idling = true;
 				}
 			}
 

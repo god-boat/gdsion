@@ -238,6 +238,8 @@ public:
 	double filter_feedback_table[129];
 	// FILTER envlope rate.
 	int filter_eg_rate[64];
+	// FILTER output release per sample once a channel's source is silent (10 ms time constant).
+	double filter_tail_release = 0;
 
 	// Pulse generator.
 

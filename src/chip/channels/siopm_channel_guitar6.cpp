@@ -26,8 +26,7 @@ void SiOPMChannelGuitar6::Resonator::init(double p_freq, double p_q, double p_ga
 	a2 = a2_raw / a0;
 	gain = p_gain;
 
-	x1l = x2l = y1l = y2l = 0;
-	x1r = x2r = y1r = y2r = 0;
+	reset();
 }
 
 void SiOPMChannelGuitar6::Resonator::process(double *p_left, double *p_right, int p_num_samples) {
@@ -48,6 +47,15 @@ void SiOPMChannelGuitar6::Resonator::process(double *p_left, double *p_right, in
 		y1r = yr;
 		p_right[i] += yr * gain;
 	}
+}
+
+bool SiOPMChannelGuitar6::Resonator::is_ringing(double p_threshold) const {
+	return std::abs(y1l * gain) >= p_threshold || std::abs(y2l * gain) >= p_threshold || std::abs(y1r * gain) >= p_threshold || std::abs(y2r * gain) >= p_threshold;
+}
+
+void SiOPMChannelGuitar6::Resonator::reset() {
+	x1l = x2l = y1l = y2l = 0;
+	x1r = x2r = y1r = y2r = 0;
 }
 
 // --- GuitarString ---
@@ -317,6 +325,11 @@ void SiOPMChannelGuitar6::set_guitar6_params(double p_character_seed, double p_c
 	_plug_damp_variation = CLAMP(p_plug_damp_variation, 0.0, 1.0);
 	_string_tension = CLAMP(p_string_tension, 0.0, 1.0);
 	_stereo_spread = CLAMP(p_stereo_spread, 0.0, 1.0);
+	if (p_body_bypass && !_body_bypass) {
+		for (int r = 0; r < 3; r++) {
+			_body_resonators[r].reset();
+		}
+	}
 	_body_bypass = p_body_bypass;
 }
 
@@ -325,7 +338,7 @@ void SiOPMChannelGuitar6::pluck_string(int p_string_index, int p_tab_index, doub
 		return;
 	}
 	_strings[p_string_index].add_pluck(p_tab_index, p_velocity, p_target_sample);
-	_is_idling = false;
+	_is_source_idling = false;
 }
 
 void SiOPMChannelGuitar6::offset_volume(int p_expression, int p_velocity) {
@@ -334,7 +347,7 @@ void SiOPMChannelGuitar6::offset_volume(int p_expression, int p_velocity) {
 
 void SiOPMChannelGuitar6::note_on() {
 	_is_note_on = true;
-	_is_idling = false;
+	_is_source_idling = false;
 
 	int tab_index = 0;
 	double vel = 1.0;
@@ -369,13 +382,13 @@ void SiOPMChannelGuitar6::note_off() {
 
 void SiOPMChannelGuitar6::reset_channel_buffer_status() {
 	_buffer_index = 0;
-	_is_idling = true;
+	_is_source_idling = true;
 
-	static constexpr double IDLE_RMS_THRESHOLD = 0.0001;
+	static constexpr double IDLE_THRESHOLD = 0.0001;
 
 	for (int s = 0; s < NUM_STRINGS; s++) {
 		if (_strings[s].pending_pluck_count > 0) {
-			_is_idling = false;
+			_is_source_idling = false;
 			return;
 		}
 		if (_strings[s].period_n != -1) {
@@ -384,10 +397,23 @@ void SiOPMChannelGuitar6::reset_channel_buffer_status() {
 				sum_sq += _strings[s].delay[j] * _strings[s].delay[j];
 			}
 			double rms = sqrt(sum_sq / (double)_strings[s].period_n);
-			if (rms > IDLE_RMS_THRESHOLD) {
-				_is_idling = false;
+			if (rms > IDLE_THRESHOLD) {
+				_is_source_idling = false;
 				return;
 			}
+		}
+	}
+
+	if (_body_bypass) {
+		return;
+	}
+
+	// Keep processing until the body resonators downstream of the strings have decayed, otherwise
+	// the channel idles early and truncates their remaining ring into a click.
+	for (int r = 0; r < 3; r++) {
+		if (_body_resonators[r].is_ringing(IDLE_THRESHOLD)) {
+			_is_source_idling = false;
+			return;
 		}
 	}
 }
@@ -397,7 +423,7 @@ void SiOPMChannelGuitar6::_no_process_guitar(int p_length) {
 }
 
 void SiOPMChannelGuitar6::buffer(int p_length) {
-	if (_is_idling) {
+	if (is_idling()) {
 		buffer_no_process(p_length);
 		return;
 	}
@@ -501,12 +527,15 @@ void SiOPMChannelGuitar6::initialize(SiOPMChannelBase *p_prev, int p_buffer_inde
 		_strings[s].init(s, sample_rate);
 	}
 
-	_is_idling = true;
+	_is_source_idling = true;
 }
 
 void SiOPMChannelGuitar6::reset() {
 	for (int s = 0; s < NUM_STRINGS; s++) {
 		_strings[s].reset_state();
+	}
+	for (int r = 0; r < 3; r++) {
+		_body_resonators[r].reset();
 	}
 
 	SiOPMChannelBase::reset();

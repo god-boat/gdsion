@@ -107,6 +107,8 @@ class SiOPMChannelGuitar6 : public SiOPMChannelBase {
 
 		void init(double p_freq, double p_q, double p_gain, double p_sample_rate);
 		void process(double *p_left, double *p_right, int p_num_samples);
+		bool is_ringing(double p_threshold) const;
+		void reset();
 	};
 
 	// --- Channel-level state ---
