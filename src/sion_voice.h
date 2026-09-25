@@ -70,7 +70,7 @@ public:
 
 	void set_sampler_table(const Ref<SiOPMWaveSamplerTable> &p_table);
 
-	void set_pms_guitar(int p_attack_rate = 48, int p_decay_rate = 48, int p_total_level = 0, int p_fixed_pitch = 69, int p_wave_shape = 20, int p_tension = 8);
+	void set_pms_guitar(int p_attack_rate = 48, int p_decay_rate = 48, int p_total_level = 0, int p_fixed_pitch = 0, int p_wave_shape = 20, int p_tension = 8);
 	void set_ks_extended(
 			int p_exciter_type = 0, int p_exciter_color = 50, int p_exciter_length = 50,
 			int p_exciter_shape = 50, int p_exciter_drive = 0, int p_exciter_pitch_follow = 100, int p_exciter_randomness = 0,

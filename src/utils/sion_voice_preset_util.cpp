@@ -966,7 +966,7 @@ voice->set_pms_guitar(
 	/*attack_rate */ p_attack_rate,
 	/*decay_rate  */ p_decay_rate,
 	/*total_level */ p_total_level,
-	/*fixed_pitch */ 69,                        // A4 reference; transposed per-note later
+	/*fixed_pitch */ 0,                         // Track the played note.
 	/*wave_shape  */ p_wave_shape,
 	/*tension     */ tension);
 

@@ -206,11 +206,11 @@
 			<param index="0" name="attack_rate" type="int" default="48" />
 			<param index="1" name="decay_rate" type="int" default="48" />
 			<param index="2" name="total_level" type="int" default="0" />
-			<param index="3" name="fixed_pitch" type="int" default="69" />
+			<param index="3" name="fixed_pitch" type="int" default="0" />
 			<param index="4" name="wave_shape" type="int" default="20" />
 			<param index="5" name="tension" type="int" default="8" />
 			<description>
-				Sets PMS guitar parameters.
+				Sets PMS guitar parameters. Set [param fixed_pitch] to 0 to make the selected waveform follow played notes; a positive value holds the waveform at that MIDI note.
 			</description>
 		</method>
 	</methods>

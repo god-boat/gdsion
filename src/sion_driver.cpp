@@ -3726,14 +3726,9 @@ void SiONDriver::_drain_track_mailbox() {
             if (u.has_pms_guitar) {
                 SiOPMChannelKS *ks_ch = Object::cast_to<SiOPMChannelKS>(ch);
                 if (ks_ch) {
-                    ks_ch->set_algorithm(1, false, 1);
-                    ks_ch->set_feedback(0, 0);
-                    ks_ch->set_active_operator_index(0);
-                    ks_ch->set_types(u.pms_wave_shape, PITCH_TABLE_OPM);
-                    ks_ch->set_params_by_value(
-                            u.pms_attack_rate, u.pms_decay_rate, 0, 63, 15, u.pms_total_level,
-                            0, 0, 1, 0, 0, 1, 0, u.pms_fixed_pitch);
-                    ks_ch->set_all_release_rate(u.pms_tension);
+                    ks_ch->set_karplus_strong_params(
+                            u.pms_attack_rate, u.pms_decay_rate, u.pms_total_level,
+                            u.pms_fixed_pitch, u.pms_wave_shape, u.pms_tension);
                 }
             }
             // KS extended resonator updates

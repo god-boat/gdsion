@@ -199,6 +199,7 @@ private:
 	double _apply_inharmonicity(double p_input);
 	double _apply_body_resonance(double p_input);
 	double _get_effective_pitch_index(double p_pitch_index) const;
+	void _update_wave_pitch();
 	double _get_pitch_wave_length(double p_pitch_index) const;
 	double _get_reference_exciter_frequency(double p_sample_rate) const;
 	void _update_pitch_modifiers(double &r_wave_length_mod);
@@ -308,7 +309,7 @@ public:
 	double get_pick_bend() const { return _pick_bend; }
 	void set_tension_mod(double p_value) { _tension_mod = CLAMP(p_value, -1.0, 1.0); }
 	double get_tension_mod() const { return _tension_mod; }
-	void set_pitch_keytrack(double p_value) { _pitch_keytrack = CLAMP(p_value, 0.0, 2.0); }
+	void set_pitch_keytrack(double p_value);
 	double get_pitch_keytrack() const { return _pitch_keytrack; }
 	void set_pitch_glide(double p_value) { _pitch_glide = CLAMP(p_value, 0.0, 1.0); }
 	double get_pitch_glide() const { return _pitch_glide; }

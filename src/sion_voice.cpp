@@ -616,7 +616,7 @@ void SiONVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_mml", "index", "chip_type", "append_postfix"), &SiONVoice::get_mml, DEFVAL(SiONChipType::CHIP_AUTO), DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("set_by_mml", "mml"), &SiONVoice::set_by_mml);
 
-	ClassDB::bind_method(D_METHOD("set_pms_guitar", "attack_rate", "decay_rate", "total_level", "fixed_pitch", "wave_shape", "tension"), &SiONVoice::set_pms_guitar, DEFVAL(48), DEFVAL(48), DEFVAL(0), DEFVAL(69), DEFVAL(20), DEFVAL(8));
+	ClassDB::bind_method(D_METHOD("set_pms_guitar", "attack_rate", "decay_rate", "total_level", "fixed_pitch", "wave_shape", "tension"), &SiONVoice::set_pms_guitar, DEFVAL(48), DEFVAL(48), DEFVAL(0), DEFVAL(0), DEFVAL(20), DEFVAL(8));
 	ClassDB::bind_method(D_METHOD("set_ks_extended",
 			"exciter_type", "exciter_color", "exciter_length", "exciter_shape", "exciter_drive", "exciter_pitch_follow", "exciter_randomness",
 			"loop_filter_mode", "loop_damping", "loop_brightness", "loop_loss", "loop_tone_tilt",

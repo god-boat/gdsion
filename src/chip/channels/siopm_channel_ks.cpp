@@ -475,6 +475,16 @@ double SiOPMChannelKS::_get_effective_pitch_index(double p_pitch_index) const {
 	return tracked_pitch;
 }
 
+void SiOPMChannelKS::_update_wave_pitch() {
+	// The operator ignores this while its fixed-pitch note is enabled.
+	SiOPMChannelFM::set_pitch((int)Math::round(_get_effective_pitch_index(_ks_pitch_index)));
+}
+
+void SiOPMChannelKS::set_pitch_keytrack(double p_value) {
+	_pitch_keytrack = CLAMP(p_value, 0.0, 2.0);
+	_update_wave_pitch();
+}
+
 double SiOPMChannelKS::_get_pitch_wave_length(double p_pitch_index) const {
 	if (_table == nullptr) {
 		return 0.0;
@@ -651,6 +661,7 @@ void SiOPMChannelKS::set_karplus_strong_params(int p_attack_rate, int p_decay_ra
 	_active_operator->set_pitch_table_type(wave_table->get_default_pitch_table_type());
 
 	set_all_release_rate(p_tension);
+	_update_wave_pitch();
 }
 
 void SiOPMChannelKS::apply_ks_runtime_params(int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension) {
@@ -666,6 +677,7 @@ void SiOPMChannelKS::apply_ks_runtime_params(int p_attack_rate, int p_decay_rate
 		_active_operator->set_pitch_table_type(wave_table->get_default_pitch_table_type());
 	}
 	set_all_release_rate(p_tension);
+	_update_wave_pitch();
 }
 
 void SiOPMChannelKS::apply_voice_params(const Ref<SiOPMChannelParams> &p_params, const Ref<SiOPMWaveBase> &p_wave_data, int p_tension) {
@@ -740,6 +752,7 @@ void SiOPMChannelKS::set_types(int p_pg_type, SiONPitchTableType p_pt_type) {
 void SiOPMChannelKS::set_pitch(int p_value) {
 	_previous_pitch_index = (double)_ks_pitch_index;
 	_ks_pitch_index = p_value;
+	_update_wave_pitch();
 }
 
 void SiOPMChannelKS::set_all_attack_rate(int p_value) {
@@ -762,6 +775,7 @@ void SiOPMChannelKS::set_fixed_pitch(int p_value) {
 	for (int i = 0; i < _operator_count; i++) {
 		_operators[i]->set_fixed_pitch_index(p_value);
 	}
+	_update_wave_pitch();
 }
 
 // Volume control.

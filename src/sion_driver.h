@@ -507,7 +507,7 @@ private:
 		int pms_attack_rate = 48;
 		int pms_decay_rate = 48;
 		int pms_total_level = 0;
-		int pms_fixed_pitch = 69;
+		int pms_fixed_pitch = 0;
 		int pms_wave_shape = 20;
 		int pms_tension = 8;
 		bool has_ks_extended = false;
