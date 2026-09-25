@@ -1650,7 +1650,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_loop_region", "track_id", "start_sample", "end_sample"), &SiONDriver::mailbox_stream_set_loop_region);
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_clip_envelope", "track_id", "clip_time_beats", "fade_in_beats", "fade_out_start_beats", "clip_end_beats"), &SiONDriver::mailbox_stream_set_clip_envelope);
 	// Note control (thread-safe) - track_instance_id targets specific track by Godot object ID
-	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "key_velocity_16", "release_velocity_16", "track_instance_id"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(-1), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "key_velocity_16", "release_velocity_16", "track_instance_id", "legato"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(-1), DEFVAL(0), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_key_on", "track_id", "note", "tick_length", "start_sample", "track_instance_id"), &SiONDriver::mailbox_stream_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_key_off", "track_id", "immediate", "track_instance_id", "delay_16th_beats"), &SiONDriver::mailbox_key_off, DEFVAL(false), DEFVAL(0), DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_key_off", "track_id", "track_instance_id"), &SiONDriver::mailbox_stream_key_off, DEFVAL(0));
@@ -3213,7 +3213,7 @@ void SiONDriver::mailbox_stream_set_clip_envelope(int p_track_id, double p_clip_
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_key_on(int p_track_id, int p_note, int p_tick_length, int p_key_velocity_16, int p_release_velocity_16, uint64_t p_track_instance_id) {
+void SiONDriver::mailbox_key_on(int p_track_id, int p_note, int p_tick_length, int p_key_velocity_16, int p_release_velocity_16, uint64_t p_track_instance_id, bool p_legato) {
     _TrackUpdate u;
     u.track_id = p_track_id;
     u.track_instance_id = p_track_instance_id;
@@ -3222,6 +3222,7 @@ void SiONDriver::mailbox_key_on(int p_track_id, int p_note, int p_tick_length, i
     u.key_on_length = p_tick_length;
     u.key_velocity_16 = p_key_velocity_16;
     u.release_velocity_16 = p_release_velocity_16;
+    u.key_on_legato = p_legato;
     _mb_try_push(u);
 }
 
@@ -3962,6 +3963,12 @@ void SiONDriver::_drain_track_mailbox() {
                     if (u.key_velocity_16 >= 0) {
                         const int key_expression = (int)(((int64_t)CLAMP(u.key_velocity_16, 0, 65535) * 127 + 32767) / 65535);
                         trk->set_expression(CLAMP(key_expression, 0, 128));
+                    }
+                    // The slur flag is read by the deferred _key_on(), which
+                    // then moves pitch (sweeping on portament) instead of
+                    // releasing and re-triggering the sounding note.
+                    if (u.key_on_legato) {
+                        trk->handle_slur();
                     }
                     trk->key_on(u.key_on_note, u.key_on_length, 0);
                 }

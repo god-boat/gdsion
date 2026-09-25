@@ -587,6 +587,9 @@ private:
 		int key_on_length = 0;  // tick length, 0 = indefinite
 		int key_velocity_16 = -1;
 		int release_velocity_16 = -1;
+		// Legato key-on: the sounding note continues without retrigger; only
+		// its pitch moves to key_on_note (swept when the voice sets portament).
+		bool key_on_legato = false;
 		// Stream start sample: when set alongside has_key_on, the deferred note_on
 		// uses note_on_at() instead of plain note_on(), starting playback from this
 		// absolute source frame. This is note-on metadata, not a transport seek.
@@ -1074,7 +1077,8 @@ public:
 	void mailbox_stream_set_clip_envelope(int p_track_id, double p_clip_time_beats, double p_fade_in_beats, double p_fade_out_start_beats, double p_clip_end_beats);
 	// Note control (thread-safe alternatives to direct track method calls)
 	// p_track_instance_id: If non-zero, targets specific track by Godot object ID (for pooled tracks)
-	void mailbox_key_on(int p_track_id, int p_note, int p_tick_length = 0, int p_key_velocity_16 = -1, int p_release_velocity_16 = -1, uint64_t p_track_instance_id = 0);
+	// p_legato: slur from the note the target is sounding into p_note (no envelope retrigger)
+	void mailbox_key_on(int p_track_id, int p_note, int p_tick_length = 0, int p_key_velocity_16 = -1, int p_release_velocity_16 = -1, uint64_t p_track_instance_id = 0, bool p_legato = false);
 	// Stream key-on: starts a stream note from an explicit source-frame position.
 	// Bundles key_on + start_sample into a single message so the deferred note_on
 	// uses note_on_at() instead of plain note_on(). p_start_sample = -1 uses _in_sample.
