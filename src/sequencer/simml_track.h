@@ -200,6 +200,12 @@ private:
 	double _envelope_bpm = 120.0;
 	int _active_envelope_phase = -1;
 
+	// Glide length as the voice states it. The track converts it to envelope
+	// frames, so a synced glide follows the envelope tempo.
+	int _portament_ms = 0;
+	int _portament_time_mode = ENVELOPE_TIME_FREE;
+	int _portament_sync_division = 0;
+
 	// Envelopes.
 
 	// Keeping element pointers because this references external data, so we want to have our own iterators.
@@ -290,9 +296,13 @@ private:
 	struct PendingKeyOnContext {
 		bool has_stream_start_sample = false;
 		int64_t stream_start_sample = 0;
+		// A retriggered note starts at this note's pitch and glides to its own
+		// when portament is set. -1 means no glide.
+		int glide_from_note = -1;
 		void clear() {
 			has_stream_start_sample = false;
 			stream_start_sample = 0;
+			glide_from_note = -1;
 		}
 	};
 	PendingKeyOnContext _pending_key_on_ctx;
@@ -309,6 +319,9 @@ private:
 	void _process_envelope_tick();
 	int _buffer_envelope(int p_length, int p_step);
 	void _process_buffer(int p_length);
+
+	void _refresh_portament();
+	void _start_portament_sweep(int p_from_pitch);
 
 	void _toggle_key();
 	void _key_on();
@@ -459,6 +472,8 @@ public:
 
 	void set_portament(int p_frame);
 	void set_portament_ms(int p_ms);
+	void set_portament_time_mode(int p_mode);
+	void set_portament_sync_division(int p_division);
 
 	void set_envelope_fps(int p_fps);
 	void set_envelope_bpm(double p_bpm);
@@ -546,6 +561,11 @@ public:
 	void set_pending_key_on_stream_start(int64_t p_start_sample) {
 		_pending_key_on_ctx.has_stream_start_sample = true;
 		_pending_key_on_ctx.stream_start_sample = p_start_sample;
+	}
+
+	// Set the glide source note for the next deferred key-on.
+	void set_pending_key_on_glide_from(int p_note) {
+		_pending_key_on_ctx.glide_from_note = p_note;
 	}
 
 	//

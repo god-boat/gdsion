@@ -37,12 +37,20 @@ class SiMMLVoice : public RefCounted {
 	int default_gate_ticks = -1;
 	int default_key_on_delay_ticks = -1;
 	int note_shift = 0;
-	// Glide time; the track converts it to its own envelope frames.
+	// Glide length; the track converts it to its own envelope frames. The time
+	// mode (SiMMLTrack::EnvelopeTimeMode) picks milliseconds or a beat division.
 	int portament_ms = 0;
-	// Voice-allocation policy read by the host's note routing: a mono voice
-	// sounds through one held track and plays overlapping notes legato. The
-	// sequencer does not read it.
+	int portament_time_mode = 0;
+	int portament_sync_division = 4;
+	// Voice-allocation policy read by the host's note routing. The sequencer
+	// does not read it. A mono voice sounds through one track: priority (0 last,
+	// 1 lowest, 2 highest) picks which held note it plays, legato slurs between
+	// held notes instead of retriggering, and glide_always glides in from the
+	// last note even when the previous one was released.
 	bool mono = false;
+	int mono_priority = 0;
+	bool mono_legato = true;
+	bool glide_always = false;
 	int release_sweep = 0;
 
 	int velocity = 256;
@@ -188,8 +196,18 @@ public:
 	void set_note_shift(int p_value) { note_shift = p_value; }
 	int get_portament_ms() const { return portament_ms; }
 	void set_portament_ms(int p_ms) { portament_ms = p_ms; }
+	int get_portament_time_mode() const { return portament_time_mode; }
+	void set_portament_time_mode(int p_mode) { portament_time_mode = p_mode; }
+	int get_portament_sync_division() const { return portament_sync_division; }
+	void set_portament_sync_division(int p_division) { portament_sync_division = p_division; }
 	bool get_mono() const { return mono; }
 	void set_mono(bool p_mono) { mono = p_mono; }
+	int get_mono_priority() const { return mono_priority; }
+	void set_mono_priority(int p_priority) { mono_priority = p_priority; }
+	bool get_mono_legato() const { return mono_legato; }
+	void set_mono_legato(bool p_legato) { mono_legato = p_legato; }
+	bool get_glide_always() const { return glide_always; }
+	void set_glide_always(bool p_always) { glide_always = p_always; }
 
 	Ref<SiOPMChannelParams> get_channel_params() const { return channel_params; }
 	Ref<SiOPMWaveBase> get_wave_data() const { return wave_data; }

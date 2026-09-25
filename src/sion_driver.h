@@ -487,6 +487,10 @@ private:
 		int pitch_bend = 0;
 		bool has_portament_ms = false;
 		int portament_ms = 0;
+		bool has_portament_time_mode = false;
+		int portament_time_mode = 0;
+		bool has_portament_sync_division = false;
+		int portament_sync_division = 0;
 		// LFO frequency step
 		bool has_lfo_step = false;
 		int lfo_frequency_step = 0;
@@ -592,6 +596,9 @@ private:
 		// Legato key-on: the sounding note continues without retrigger; only
 		// its pitch moves to key_on_note (swept when the voice sets portament).
 		bool key_on_legato = false;
+		// A retriggered key-on starts at this note's pitch and sweeps to
+		// key_on_note when the voice sets portament. -1 means no glide.
+		int key_on_glide_from_note = -1;
 		// Stream start sample: when set alongside has_key_on, the deferred note_on
 		// uses note_on_at() instead of plain note_on(), starting playback from this
 		// absolute source frame. This is note-on metadata, not a transport seek.
@@ -1019,6 +1026,8 @@ public:
 	void mailbox_set_pitch_modulation(int p_track_id, int p_depth, int p_end_depth, int p_delay, int p_term, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_pitch_bend(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_portament_ms(int p_track_id, int p_ms, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_portament_time_mode(int p_track_id, int p_mode, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_portament_sync_division(int p_track_id, int p_division, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_lfo_frequency_step(int p_track_id, int p_step, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_lfo_time_mode(int p_track_id, int p_mode, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
@@ -1081,7 +1090,7 @@ public:
 	// Note control (thread-safe alternatives to direct track method calls)
 	// p_track_instance_id: If non-zero, targets specific track by Godot object ID (for pooled tracks)
 	// p_legato: slur from the note the target is sounding into p_note (no envelope retrigger)
-	void mailbox_key_on(int p_track_id, int p_note, int p_tick_length = 0, int p_key_velocity_16 = -1, int p_release_velocity_16 = -1, uint64_t p_track_instance_id = 0, bool p_legato = false);
+	void mailbox_key_on(int p_track_id, int p_note, int p_tick_length = 0, int p_key_velocity_16 = -1, int p_release_velocity_16 = -1, uint64_t p_track_instance_id = 0, bool p_legato = false, int p_glide_from_note = -1);
 	// Stream key-on: starts a stream note from an explicit source-frame position.
 	// Bundles key_on + start_sample into a single message so the deferred note_on
 	// uses note_on_at() instead of plain note_on(). p_start_sample = -1 uses _in_sample.

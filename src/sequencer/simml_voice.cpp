@@ -224,6 +224,8 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 	}
 
 	p_track->set_portament_ms(portament_ms);
+	p_track->set_portament_time_mode(portament_time_mode);
+	p_track->set_portament_sync_division(portament_sync_division);
 	p_track->set_release_sweep(release_sweep);
 	p_track->set_modulation_envelope(false, amplitude_modulation_depth, amplitude_modulation_depth_end, amplitude_modulation_delay, amplitude_modulation_term);
 	p_track->set_modulation_envelope(true,  pitch_modulation_depth, pitch_modulation_depth_end, pitch_modulation_delay, pitch_modulation_term);
@@ -314,7 +316,12 @@ void SiMMLVoice::reset() {
 	pitch_bend = 0;
 	note_shift = 0;
 	portament_ms = 0;
+	portament_time_mode = 0;
+	portament_sync_division = 4;
 	mono = false;
+	mono_priority = 0;
+	mono_legato = true;
+	glide_always = false;
 	release_sweep = 0;
 
 	velocity = 256;
@@ -439,7 +446,12 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	pitch_bend = p_source->pitch_bend;
 	note_shift = p_source->note_shift;
 	portament_ms = p_source->portament_ms;
+	portament_time_mode = p_source->portament_time_mode;
+	portament_sync_division = p_source->portament_sync_division;
 	mono = p_source->mono;
+	mono_priority = p_source->mono_priority;
+	mono_legato = p_source->mono_legato;
+	glide_always = p_source->glide_always;
 	release_sweep = p_source->release_sweep;
 
 	velocity = p_source->velocity;
@@ -502,9 +514,24 @@ void SiMMLVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_portament_ms"), &SiMMLVoice::get_portament_ms);
 	ClassDB::bind_method(D_METHOD("set_portament_ms", "ms"), &SiMMLVoice::set_portament_ms);
 	ClassDB::add_property("SiMMLVoice", PropertyInfo(Variant::INT, "portament_ms"), "set_portament_ms", "get_portament_ms");
+	ClassDB::bind_method(D_METHOD("get_portament_time_mode"), &SiMMLVoice::get_portament_time_mode);
+	ClassDB::bind_method(D_METHOD("set_portament_time_mode", "mode"), &SiMMLVoice::set_portament_time_mode);
+	ClassDB::add_property("SiMMLVoice", PropertyInfo(Variant::INT, "portament_time_mode"), "set_portament_time_mode", "get_portament_time_mode");
+	ClassDB::bind_method(D_METHOD("get_portament_sync_division"), &SiMMLVoice::get_portament_sync_division);
+	ClassDB::bind_method(D_METHOD("set_portament_sync_division", "division"), &SiMMLVoice::set_portament_sync_division);
+	ClassDB::add_property("SiMMLVoice", PropertyInfo(Variant::INT, "portament_sync_division"), "set_portament_sync_division", "get_portament_sync_division");
 	ClassDB::bind_method(D_METHOD("get_mono"), &SiMMLVoice::get_mono);
 	ClassDB::bind_method(D_METHOD("set_mono", "mono"), &SiMMLVoice::set_mono);
 	ClassDB::add_property("SiMMLVoice", PropertyInfo(Variant::BOOL, "mono"), "set_mono", "get_mono");
+	ClassDB::bind_method(D_METHOD("get_mono_priority"), &SiMMLVoice::get_mono_priority);
+	ClassDB::bind_method(D_METHOD("set_mono_priority", "priority"), &SiMMLVoice::set_mono_priority);
+	ClassDB::add_property("SiMMLVoice", PropertyInfo(Variant::INT, "mono_priority"), "set_mono_priority", "get_mono_priority");
+	ClassDB::bind_method(D_METHOD("get_mono_legato"), &SiMMLVoice::get_mono_legato);
+	ClassDB::bind_method(D_METHOD("set_mono_legato", "legato"), &SiMMLVoice::set_mono_legato);
+	ClassDB::add_property("SiMMLVoice", PropertyInfo(Variant::BOOL, "mono_legato"), "set_mono_legato", "get_mono_legato");
+	ClassDB::bind_method(D_METHOD("get_glide_always"), &SiMMLVoice::get_glide_always);
+	ClassDB::bind_method(D_METHOD("set_glide_always", "always"), &SiMMLVoice::set_glide_always);
+	ClassDB::add_property("SiMMLVoice", PropertyInfo(Variant::BOOL, "glide_always"), "set_glide_always", "get_glide_always");
 
 	ClassDB::bind_method(D_METHOD("is_fm_voice"), &SiMMLVoice::is_fm_voice);
 	ClassDB::bind_method(D_METHOD("is_pcm_voice"), &SiMMLVoice::is_pcm_voice);

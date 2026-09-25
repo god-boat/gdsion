@@ -1591,6 +1591,8 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_pitch_modulation", "track_id", "depth", "end_depth", "delay", "term", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_pitch_modulation, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_pitch_bend", "track_id", "value", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_pitch_bend, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_portament_ms", "track_id", "ms", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_portament_ms, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_portament_time_mode", "track_id", "mode", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_portament_time_mode, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_portament_sync_division", "track_id", "division", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_portament_sync_division, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_frequency_step", "track_id", "step", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_lfo_frequency_step, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_wave_shape", "track_id", "wave_shape", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_lfo_wave_shape, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_time_mode", "track_id", "mode", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_lfo_time_mode, DEFVAL(-1), DEFVAL(-1));
@@ -1651,7 +1653,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_loop_region", "track_id", "start_sample", "end_sample"), &SiONDriver::mailbox_stream_set_loop_region);
 	ClassDB::bind_method(D_METHOD("mailbox_stream_set_clip_envelope", "track_id", "clip_time_beats", "fade_in_beats", "fade_out_start_beats", "clip_end_beats"), &SiONDriver::mailbox_stream_set_clip_envelope);
 	// Note control (thread-safe) - track_instance_id targets specific track by Godot object ID
-	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "key_velocity_16", "release_velocity_16", "track_instance_id", "legato"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(-1), DEFVAL(0), DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("mailbox_key_on", "track_id", "note", "tick_length", "key_velocity_16", "release_velocity_16", "track_instance_id", "legato", "glide_from_note"), &SiONDriver::mailbox_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(-1), DEFVAL(0), DEFVAL(false), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_key_on", "track_id", "note", "tick_length", "start_sample", "track_instance_id"), &SiONDriver::mailbox_stream_key_on, DEFVAL(0), DEFVAL(-1), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("mailbox_key_off", "track_id", "immediate", "track_instance_id", "delay_16th_beats"), &SiONDriver::mailbox_key_off, DEFVAL(false), DEFVAL(0), DEFVAL(0.0));
 	ClassDB::bind_method(D_METHOD("mailbox_stream_key_off", "track_id", "track_instance_id"), &SiONDriver::mailbox_stream_key_off, DEFVAL(0));
@@ -2874,6 +2876,26 @@ void SiONDriver::mailbox_set_portament_ms(int p_track_id, int p_ms, int64_t p_en
     _mb_try_push(u);
 }
 
+void SiONDriver::mailbox_set_portament_time_mode(int p_track_id, int p_mode, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.entity_scope_id = p_entity_scope_id;
+    u.slot_scope_id = p_slot_scope_id;
+    u.has_portament_time_mode = true;
+    u.portament_time_mode = p_mode;
+    _mb_try_push(u);
+}
+
+void SiONDriver::mailbox_set_portament_sync_division(int p_track_id, int p_division, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+    _TrackUpdate u;
+    u.track_id = p_track_id;
+    u.entity_scope_id = p_entity_scope_id;
+    u.slot_scope_id = p_slot_scope_id;
+    u.has_portament_sync_division = true;
+    u.portament_sync_division = p_division;
+    _mb_try_push(u);
+}
+
 void SiONDriver::mailbox_set_lfo_frequency_step(int p_track_id, int p_step, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
     _TrackUpdate u;
     u.track_id = p_track_id;
@@ -3224,7 +3246,7 @@ void SiONDriver::mailbox_stream_set_clip_envelope(int p_track_id, double p_clip_
 	_mb_try_push(u);
 }
 
-void SiONDriver::mailbox_key_on(int p_track_id, int p_note, int p_tick_length, int p_key_velocity_16, int p_release_velocity_16, uint64_t p_track_instance_id, bool p_legato) {
+void SiONDriver::mailbox_key_on(int p_track_id, int p_note, int p_tick_length, int p_key_velocity_16, int p_release_velocity_16, uint64_t p_track_instance_id, bool p_legato, int p_glide_from_note) {
     _TrackUpdate u;
     u.track_id = p_track_id;
     u.track_instance_id = p_track_instance_id;
@@ -3234,6 +3256,7 @@ void SiONDriver::mailbox_key_on(int p_track_id, int p_note, int p_tick_length, i
     u.key_velocity_16 = p_key_velocity_16;
     u.release_velocity_16 = p_release_velocity_16;
     u.key_on_legato = p_legato;
+    u.key_on_glide_from_note = p_glide_from_note;
     _mb_try_push(u);
 }
 
@@ -3662,6 +3685,12 @@ void SiONDriver::_drain_track_mailbox() {
             if (u.has_portament_ms) {
                 trk->set_portament_ms(u.portament_ms);
             }
+            if (u.has_portament_time_mode) {
+                trk->set_portament_time_mode(u.portament_time_mode);
+            }
+            if (u.has_portament_sync_division) {
+                trk->set_portament_sync_division(u.portament_sync_division);
+            }
             if (u.has_lfo_step) {
                 ch->set_lfo_frequency_step(u.lfo_frequency_step);
             }
@@ -3978,6 +4007,9 @@ void SiONDriver::_drain_track_mailbox() {
                     // releasing and re-triggering the sounding note.
                     if (u.key_on_legato) {
                         trk->handle_slur();
+                    }
+                    if (u.key_on_glide_from_note >= 0) {
+                        trk->set_pending_key_on_glide_from(u.key_on_glide_from_note);
                     }
                     trk->key_on(u.key_on_note, u.key_on_length, 0);
                 }

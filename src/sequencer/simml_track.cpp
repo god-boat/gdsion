@@ -15,6 +15,7 @@
 #include "chip/siopm_ref_table.h"
 #include "chip/wave/siopm_wave_sampler_table.h"
 #include "chip/wave/siopm_wave_table.h"
+#include "dsp/lfo.h"
 #include "sequencer/base/mml_executor.h"
 #include "sequencer/base/mml_sequence.h"
 #include "sequencer/simml_channel_settings.h"
@@ -280,10 +281,31 @@ void SiMMLTrack::set_portament(int p_frame) {
 }
 
 void SiMMLTrack::set_portament_ms(int p_ms) {
+	_portament_ms = p_ms;
+	_refresh_portament();
+}
+
+void SiMMLTrack::set_portament_time_mode(int p_mode) {
+	_portament_time_mode = p_mode;
+	_refresh_portament();
+}
+
+void SiMMLTrack::set_portament_sync_division(int p_division) {
+	_portament_sync_division = CLAMP(p_division, 0, sion::dsp::BEAT_DIVISION_COUNT - 1);
+	_refresh_portament();
+}
+
+void SiMMLTrack::_refresh_portament() {
 	// The sweep advances once per envelope frame of _envelope_interval samples.
+	double sampling_rate = SiOPMRefTable::get_instance()->sampling_rate;
+	double samples = 0.0;
+	if (_portament_time_mode == ENVELOPE_TIME_SYNCED) {
+		samples = sion::dsp::beat_division_beats(_portament_sync_division) * sampling_rate * 60.0 / _envelope_bpm;
+	} else if (_portament_ms > 0) {
+		samples = (double)_portament_ms * sampling_rate / 1000.0;
+	}
 	int frames = 0;
-	if (p_ms > 0) {
-		double samples = (double)p_ms * SiOPMRefTable::get_instance()->sampling_rate / 1000.0;
+	if (samples > 0.0) {
 		frames = MAX(1, (int)Math::round(samples / _envelope_interval));
 	}
 	set_portament(frames);
@@ -306,6 +328,9 @@ void SiMMLTrack::set_envelope_bpm(double p_bpm) {
 	_envelope_bpm = p_bpm;
 	_refresh_envelope_clock_counters(0);
 	_refresh_envelope_clock_counters(1);
+	if (_portament_time_mode == ENVELOPE_TIME_SYNCED) {
+		_refresh_portament();
+	}
 }
 
 void SiMMLTrack::set_release_sweep(int p_sweep) {
@@ -1075,11 +1100,7 @@ void SiMMLTrack::_key_on() {
 			if (_process_mode != ProcessMode::ENVELOPE) {
 				_update_process(1);
 			}
-			_envelope_pitch_active = true;
-			_channel->set_pitch(old_pitch);
-			_sweep_step = ((_pitch_index - old_pitch) << FIXED_BITS) / _setting_sweep_step[1];
-			_sweep_end = _pitch_index << FIXED_BITS;
-			_sweep_pitch = old_pitch << FIXED_BITS;
+			_start_portament_sweep(old_pitch);
 		} else {
 			_sweep_pitch = _channel->get_pitch() << FIXED_BITS;
 		}
@@ -1104,6 +1125,12 @@ void SiMMLTrack::_key_on() {
 
 		_update_process(1);
 
+		// A retriggered note can glide in from another note: a mono voice
+		// that retriggers, or one that glides even between detached notes.
+		if (_pending_key_on_ctx.glide_from_note >= 0 && _setting_sweep_step[1] > 0) {
+			_start_portament_sweep(((_pending_key_on_ctx.glide_from_note + _note_shift) << 6) + _pitch_shift);
+		}
+
 		// If the pending key-on context carries a stream start sample,
 		// use note_on_at() so playback begins from that offset instead
 		// of _in_sample. This is how arrangement-phase starts work:
@@ -1115,11 +1142,20 @@ void SiMMLTrack::_key_on() {
 		} else {
 			_channel->note_on();
 		}
-		_pending_key_on_ctx.clear();
 	}
 
+	_pending_key_on_ctx.clear();
 	_flag_no_key_on = false;
 	_key_on_counter = _key_on_length;
+}
+
+// Sweeps pitch from p_from_pitch to this note's pitch over the portament length.
+void SiMMLTrack::_start_portament_sweep(int p_from_pitch) {
+	_envelope_pitch_active = true;
+	_channel->set_pitch(p_from_pitch);
+	_sweep_step = ((_pitch_index - p_from_pitch) << FIXED_BITS) / _setting_sweep_step[1];
+	_sweep_end = _pitch_index << FIXED_BITS;
+	_sweep_pitch = p_from_pitch << FIXED_BITS;
 }
 
 bool SiMMLTrack::_note_off_channel(bool p_stream_hard_stop) {
@@ -1401,6 +1437,9 @@ void SiMMLTrack::reset(int p_buffer_index) {
 
 	_pitch_index = 0;
 	_sweep_pitch = 0;
+	_portament_ms = 0;
+	_portament_time_mode = ENVELOPE_TIME_FREE;
+	_portament_sync_division = 0;
 
 	_envelope_pitch_active = false;
 	_envelope_exp_offset = 0;
