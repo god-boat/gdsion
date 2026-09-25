@@ -39,6 +39,10 @@ class SiMMLVoice : public RefCounted {
 	int note_shift = 0;
 	// Glide time; the track converts it to its own envelope frames.
 	int portament_ms = 0;
+	// Voice-allocation policy read by the host's note routing: a mono voice
+	// sounds through one held track and plays overlapping notes legato. The
+	// sequencer does not read it.
+	bool mono = false;
 	int release_sweep = 0;
 
 	int velocity = 256;
@@ -184,6 +188,8 @@ public:
 	void set_note_shift(int p_value) { note_shift = p_value; }
 	int get_portament_ms() const { return portament_ms; }
 	void set_portament_ms(int p_ms) { portament_ms = p_ms; }
+	bool get_mono() const { return mono; }
+	void set_mono(bool p_mono) { mono = p_mono; }
 
 	Ref<SiOPMChannelParams> get_channel_params() const { return channel_params; }
 	Ref<SiOPMWaveBase> get_wave_data() const { return wave_data; }

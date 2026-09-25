@@ -314,6 +314,7 @@ void SiMMLVoice::reset() {
 	pitch_bend = 0;
 	note_shift = 0;
 	portament_ms = 0;
+	mono = false;
 	release_sweep = 0;
 
 	velocity = 256;
@@ -438,6 +439,7 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	pitch_bend = p_source->pitch_bend;
 	note_shift = p_source->note_shift;
 	portament_ms = p_source->portament_ms;
+	mono = p_source->mono;
 	release_sweep = p_source->release_sweep;
 
 	velocity = p_source->velocity;
@@ -500,6 +502,9 @@ void SiMMLVoice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_portament_ms"), &SiMMLVoice::get_portament_ms);
 	ClassDB::bind_method(D_METHOD("set_portament_ms", "ms"), &SiMMLVoice::set_portament_ms);
 	ClassDB::add_property("SiMMLVoice", PropertyInfo(Variant::INT, "portament_ms"), "set_portament_ms", "get_portament_ms");
+	ClassDB::bind_method(D_METHOD("get_mono"), &SiMMLVoice::get_mono);
+	ClassDB::bind_method(D_METHOD("set_mono", "mono"), &SiMMLVoice::set_mono);
+	ClassDB::add_property("SiMMLVoice", PropertyInfo(Variant::BOOL, "mono"), "set_mono", "get_mono");
 
 	ClassDB::bind_method(D_METHOD("is_fm_voice"), &SiMMLVoice::is_fm_voice);
 	ClassDB::bind_method(D_METHOD("is_pcm_voice"), &SiMMLVoice::is_pcm_voice);
