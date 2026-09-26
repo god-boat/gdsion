@@ -16,9 +16,10 @@ class SiOPMSoundChip;
 // stream routing for free — matching the path used by FM and PCM channels.
 //
 // Braids' DSP runs at a hardcoded 96 kHz internal sample rate and processes
-// 24-sample blocks. We render in 24-sample sub-blocks at the host rate,
-// applying a sample-rate pitch correction so MIDI note numbers translate
-// to the same audible pitch regardless of host rate.
+// 24-sample blocks. We render whole 24-sample blocks at the host rate and
+// drain them across however SiON segments the buffer, applying a
+// sample-rate pitch correction so MIDI note numbers translate to the same
+// audible pitch regardless of host rate.
 class SiOPMChannelStrata : public SiOPMChannelBase {
 	GDCLASS(SiOPMChannelStrata, SiOPMChannelBase)
 
@@ -42,11 +43,18 @@ class SiOPMChannelStrata : public SiOPMChannelBase {
 	double _declick_level = 0.0;
 	double _declick_target = 0.0;
 
+	// Braids expects whole blocks: shapes that render two samples per
+	// iteration underflow on odd sizes, and per-block state (parameter ramps,
+	// envelopes) advances once per Render call. SiON segments are arbitrary,
+	// so rendered samples carry over between _process_strata calls;
+	// _render_read_pos == BRAIDS_BLOCK_SIZE means the block is drained.
 	int16_t _render_buffer[BRAIDS_BLOCK_SIZE] = {};
+	int _render_read_pos = BRAIDS_BLOCK_SIZE;
 	uint8_t _sync_buffer[BRAIDS_BLOCK_SIZE] = {};
 
 	void _recompute_pitch_correction(double p_sample_rate);
 	void _set_strata_pitch();
+	void _render_block();
 
 	// Pipe-based process function called by the base class buffer().
 	// Renders Braids output scaled to the SiON integer pipe domain.

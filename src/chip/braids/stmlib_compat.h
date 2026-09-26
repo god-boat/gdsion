@@ -50,10 +50,11 @@ inline uint32_t Interpolate824(const uint32_t* table, uint32_t phase) {
 	return a + (static_cast<int64_t>(b - a) * static_cast<int64_t>(t) >> 16);
 }
 
+// uint8 tables are offset binary (128 = zero); the result is signed.
 inline int16_t Interpolate824(const uint8_t* table, uint32_t phase) {
 	int32_t a = table[phase >> 24];
 	int32_t b = table[(phase >> 24) + 1];
-	return (a + ((b - a) * static_cast<int32_t>((phase >> 8) & 0xffff) >> 16)) << 8;
+	return (a << 8) + ((b - a) * static_cast<int32_t>(phase & 0xffffff) >> 16) - 32768;
 }
 
 inline int16_t Interpolate1022(const int16_t* table, uint32_t phase) {

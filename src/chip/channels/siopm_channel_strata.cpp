@@ -1,7 +1,6 @@
 #include "siopm_channel_strata.h"
 
 #include <cmath>
-#include <cstring>
 #include <godot_cpp/core/class_db.hpp>
 #include "chip/siopm_channel_params.h"
 #include "chip/siopm_ref_table.h"
@@ -155,50 +154,41 @@ void SiOPMChannelStrata::reset_channel_buffer_status() {
 	_is_source_idling = !_is_note_on && _declick_level <= 0.0;
 }
 
+void SiOPMChannelStrata::_render_block() {
+	_set_strata_pitch();
+	_osc.Render(_sync_buffer, _render_buffer, BRAIDS_BLOCK_SIZE);
+	_render_read_pos = 0;
+}
+
 void SiOPMChannelStrata::_process_strata(int p_length) {
 	SinglyLinkedList<int>::Element *in_pipe   = _in_pipe->get();
 	SinglyLinkedList<int>::Element *base_pipe = _base_pipe->get();
 	SinglyLinkedList<int>::Element *out_pipe  = _out_pipe->get();
 
-	_set_strata_pitch();
-	_osc.set_shape((braids::MacroOscillatorShape)_shape);
-	_osc.set_parameters((int16_t)_timbre, (int16_t)_color);
-
 	// Braids int16 peak = 32768, SiON pipe peak = 1 << LOG_VOLUME_BITS = 8192.
 	// Scale factor = 8192/32768 = 0.25, combined with per-note expression.
 	const double gain = _expression * 0.25;
 
-	int written = 0;
-	while (written < p_length) {
-		int chunk = p_length - written;
-		if (chunk > BRAIDS_BLOCK_SIZE) {
-			chunk = BRAIDS_BLOCK_SIZE;
+	for (int i = 0; i < p_length; i++) {
+		if (_render_read_pos == BRAIDS_BLOCK_SIZE) {
+			_render_block();
 		}
-		// Braids drum shapes decrement size by 2 per iteration; an odd size
-		// causes unsigned underflow in size_t. Round up to the next even number
-		// for Render, but only read `chunk` samples from the output.
-		int render_size = (chunk + 1) & ~1;
-		memset(_sync_buffer, 0, sizeof(_sync_buffer));
-		_osc.Render(_sync_buffer, _render_buffer, (size_t)render_size);
 
-		for (int i = 0; i < chunk; i++) {
-			if (_declick_level < _declick_target) {
-				_declick_level = MIN(_declick_level + DECLICK_INCREMENT, _declick_target);
-			} else if (_declick_level > _declick_target) {
-				_declick_level = MAX(_declick_level - DECLICK_INCREMENT, 0.0);
-				if (_declick_level <= 0.0) {
-					_is_source_idling = true;
-				}
+		if (_declick_level < _declick_target) {
+			_declick_level = MIN(_declick_level + DECLICK_INCREMENT, _declick_target);
+		} else if (_declick_level > _declick_target) {
+			_declick_level = MAX(_declick_level - DECLICK_INCREMENT, 0.0);
+			if (_declick_level <= 0.0) {
+				_is_source_idling = true;
 			}
-
-			int sample = (int)((double)_render_buffer[i] * gain * _declick_level);
-			out_pipe->value = sample + base_pipe->value;
-
-			in_pipe   = in_pipe->next();
-			base_pipe = base_pipe->next();
-			out_pipe  = out_pipe->next();
 		}
-		written += chunk;
+
+		int sample = (int)((double)_render_buffer[_render_read_pos++] * gain * _declick_level);
+		out_pipe->value = sample + base_pipe->value;
+
+		in_pipe   = in_pipe->next();
+		base_pipe = base_pipe->next();
+		out_pipe  = out_pipe->next();
 	}
 
 	_in_pipe->set(in_pipe);
@@ -223,6 +213,7 @@ void SiOPMChannelStrata::initialize(SiOPMChannelBase *p_prev, int p_buffer_index
 	_osc.Init();
 	_osc.set_shape((braids::MacroOscillatorShape)_shape);
 	_osc.set_parameters((int16_t)_timbre, (int16_t)_color);
+	_render_read_pos = BRAIDS_BLOCK_SIZE;
 
 	_process_function = Callable(this, "_process_strata");
 }
@@ -231,6 +222,7 @@ void SiOPMChannelStrata::reset() {
 	_osc.Init();
 	_osc.set_shape((braids::MacroOscillatorShape)_shape);
 	_osc.set_parameters((int16_t)_timbre, (int16_t)_color);
+	_render_read_pos = BRAIDS_BLOCK_SIZE;
 	_declick_level = 0.0;
 	_declick_target = 0.0;
 
