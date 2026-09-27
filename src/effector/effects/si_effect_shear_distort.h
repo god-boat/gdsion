@@ -14,24 +14,31 @@
 // Stereo "shear" distortion.
 //
 // Wet path, per channel:
-//   width (M/S) -> body crossover -> pre-emphasis tilt -> drive + bias ->
-//   4x oversampled morphing waveshaper -> auto makeup -> DC block ->
-//   de-emphasis tilt -> tone lowpass -> + protected low band
+//   width (M/S) -> body crossover -> pre-emphasis tilt -> peak envelope ->
+//   4x oversampled waveshaper (bias + shape waveform, then drive into one
+//   saturator) -> auto makeup -> DC block -> de-emphasis tilt -> tone lowpass
+//   -> + protected low band
 //
 // Design notes:
+//   - Shape and Bias act on the waveform relative to its own peak envelope,
+//     before Drive, and Drive only pushes a single saturator. Full drive turns
+//     any waveform into a square wave switching at its zero crossings, so the
+//     Shape stops are built to differ there: they stay distinct at every drive
+//     and input level.
 //   - The shaper runs 4x oversampled through polyphase IIR halfbands and all
 //     curves are C1-continuous, which keeps aliasing (the main source of
 //     digital harshness) low.
-//   - Wet level is auto-compensated against drive/bias on a fixed character
-//     reference so Shape can stay audible instead of leveling itself away.
+//   - Wet level is auto-compensated against drive/bias on the plain saturator
+//     so Shape can stay audible instead of leveling itself away.
 //   - Lows below the body crossover can bypass the shaper (Body), keeping the
 //     bottom end full instead of letting saturation flatten it.
 //   - All audible parameters are smoothed (~5 ms) to avoid zipper noise.
 //
 // Parameters (normalized 0..1 except bias -1..+1):
 //   0  Drive  – gain into the shaper, 0..+48 dB on a perceptual curve
-//   1  Shape  – morph: warm -> tube (even harmonics) -> clip -> chew
-//   2  Bias   – shifts the shaper operating point (gated/sputtery fuzz)
+//   1  Shape  – waveform morph: warm -> tube (even harmonics) -> fold -> octave
+//   2  Bias   – shifts the operating point relative to the signal peak
+//               (pulse width at high drive, gated/sputtery fuzz at the ends)
 //   3  Tone   – tilt into the shaper + post lowpass macro (dark..open)
 //   4  Body   – 0: lows fully distorted, 1: lows bypass the shaper cleanly
 //   5  Width  – stereo side drive (0=mono, 0.5=unity, 1=wide)
@@ -48,6 +55,8 @@ private:
 	static const double BODY_CROSSOVER_HZ;
 	static const double TILT_PIVOT_HZ;
 	static const double DC_BLOCK_HZ;
+	static const double ENV_RELEASE_HZ;
+	static const double ENV_FLOOR;
 	static const double SHEAR_LFO_RATE_1;
 	static const double SHEAR_LFO_RATE_2;
 
@@ -107,6 +116,7 @@ private:
 		sion::dsp::OnePole tilt_pre_lpf;
 		sion::dsp::OnePole tilt_post_lpf;
 		sion::dsp::OnePole dc;
+		double env = 0.0;
 		ToneSVF tone_svf;
 		HalfbandStage up_steep;
 		HalfbandStage up_light;
@@ -141,6 +151,7 @@ private:
 	double _body_coeff = 0.0;
 	double _tilt_coeff = 0.0;
 	double _dc_coeff = 0.0;
+	double _env_decay = 0.0;
 
 	ChannelState _left;
 	ChannelState _right;
@@ -153,11 +164,10 @@ private:
 	void _snap_smoothers();
 
 	static double _fast_tanh(double p_x);
-	static double _curve_warm(double p_x);
-	static double _curve_tube(double p_x);
-	static double _curve_clip(double p_x);
-	static double _curve_chew(double p_x);
-	static double _shape_sample(double p_input, double p_drive, double p_bias, double p_shape);
+	static double _stop_tube(double p_u);
+	static double _stop_fold(double p_u);
+	static double _stop_octave(double p_u);
+	static double _shape_sample(double p_u, double p_gain, double p_bias, double p_shape);
 
 	double _process_channel(ChannelState &p_ch, double p_input, double p_drive, double p_bias,
 			double p_makeup, double p_body, double p_shape,

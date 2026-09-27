@@ -12,6 +12,8 @@ using sion::dsp::one_pole_coeff;
 const double SiEffectShearDistort::BODY_CROSSOVER_HZ = 200.0;
 const double SiEffectShearDistort::TILT_PIVOT_HZ = 700.0;
 const double SiEffectShearDistort::DC_BLOCK_HZ = 5.0;
+const double SiEffectShearDistort::ENV_RELEASE_HZ = 2.0; // ~80 ms release
+const double SiEffectShearDistort::ENV_FLOOR = 1e-6;
 const double SiEffectShearDistort::SHEAR_LFO_RATE_1 = 0.03;
 const double SiEffectShearDistort::SHEAR_LFO_RATE_2 = 0.04854101966249685; // rate1 * golden ratio
 
@@ -137,6 +139,7 @@ void SiEffectShearDistort::ChannelState::clear() {
 	tilt_pre_lpf = {};
 	tilt_post_lpf = {};
 	dc = {};
+	env = 0.0;
 	tone_svf.clear();
 	up_steep.clear();
 	up_light.clear();
@@ -152,7 +155,13 @@ void SiEffectShearDistort::ChannelState::flush_denormals() {
 	down_steep.flush_denormals();
 }
 
-// --- Distortion curves ----------------------------------------------------------
+// --- Waveshaper -----------------------------------------------------------------
+//
+// Shape morphs the waveform before one saturator, in envelope-relative units:
+// u = input / peak envelope, so |u| peaks near 1 at any input level. Drive
+// only pushes the saturator. At low drive the output follows the stop's
+// waveform; at full drive it becomes a square wave switching at the stop's
+// zero crossings, which saturation cannot flatten.
 //
 // All curves are C1-continuous (no slope discontinuities), which keeps the
 // harmonic series rolling off fast enough for 4x oversampling to handle.
@@ -169,60 +178,53 @@ double SiEffectShearDistort::_fast_tanh(double p_x) {
 	return p_x * (27.0 + x2) / (27.0 + 9.0 * x2);
 }
 
-double SiEffectShearDistort::_curve_warm(double p_x) {
-	return _fast_tanh(p_x * 0.45);
+double SiEffectShearDistort::_stop_tube(double p_u) {
+	// The square term adds a 2nd harmonic directly and moves the zero crossing,
+	// so full drive gives an asymmetric pulse. Centered on a full-envelope sine
+	// (mean of u^2 is 0.5), so at low drive it adds no DC to thump at note onsets.
+	return p_u + 0.4 * (p_u * p_u - 0.5);
 }
 
-double SiEffectShearDistort::_curve_tube(double p_x) {
-	// Smooth asymmetric knee: the negative side stays softer while the
-	// positive side pushes harder, adding audible even harmonics.
-	double soft = _fast_tanh(p_x * 0.55);
-	double hard = _fast_tanh(p_x * 2.50);
-	double side = 0.5 + 0.5 * _fast_tanh(p_x * 1.80);
-	return soft + (hard - soft) * side;
+double SiEffectShearDistort::_stop_fold(double p_u) {
+	// Folds back through zero near each peak: six edges per cycle at full drive.
+	return Math::sin(1.5 * M_PI * p_u);
 }
 
-double SiEffectShearDistort::_curve_clip(double p_x) {
-	// Cubic soft clip: reaches the rails sooner, with zero slope at the corners.
-	if (p_x >= 1.0) {
-		return 1.0;
-	}
-	if (p_x <= -1.0) {
-		return -1.0;
-	}
-	return p_x * (1.5 - 0.5 * p_x * p_x);
+double SiEffectShearDistort::_stop_octave(double p_u) {
+	// Full-wave rectified around a rounded corner, so the pulses run at twice the
+	// input frequency. Recentered on the rectified full-envelope sine's mean, so
+	// at low drive it adds no DC to thump at note onsets.
+	const double corner = 0.05;
+	const double rectified_sine_mean = 0.5905;
+	return 2.0 * (Math::sqrt(p_u * p_u + corner * corner) - corner - rectified_sine_mean);
 }
 
-double SiEffectShearDistort::_curve_chew(double p_x) {
-	// Parallel dual-knee saturation. The fast path clamps the center hard while
-	// the slow path keeps body, so it growls without folding back on itself.
-	double slow = _fast_tanh(p_x * 0.055);
-	double fast = _fast_tanh(p_x * 5.50);
-	return slow * 0.42 + fast * 0.58;
-}
-
-double SiEffectShearDistort::_shape_sample(double p_input, double p_drive, double p_bias, double p_shape) {
+double SiEffectShearDistort::_shape_sample(double p_u, double p_gain, double p_bias, double p_shape) {
+	double u = p_u + p_bias;
 	double pos = p_shape * 3.0;
 	int region = MIN((int)pos, 2);
 	double t = pos - (double)region;
 
-	double y_a, y_b;
+	// Stops: warm (u itself) -> tube -> fold -> octave.
+	double g_a, g_b;
 	switch (region) {
 		case 0:
-			y_a = _curve_warm(p_input * p_drive * 0.30 + p_bias * 0.65);
-			y_b = _curve_tube(p_input * p_drive * 0.62 + p_bias * 1.10);
+			g_a = u;
+			g_b = _stop_tube(u);
 			break;
 		case 1:
-			y_a = _curve_tube(p_input * p_drive * 0.62 + p_bias * 1.10);
-			y_b = _curve_clip(p_input * p_drive * 1.00 + p_bias * 0.90);
+			g_a = _stop_tube(u);
+			g_b = _stop_fold(u);
 			break;
 		default:
-			y_a = _curve_clip(p_input * p_drive * 1.00 + p_bias * 0.90);
-			y_b = _curve_chew(p_input * p_drive * 1.30 + p_bias * 1.20);
+			g_a = _stop_fold(u);
+			g_b = _stop_octave(u);
 			break;
 	}
 
-	return y_a + (y_b - y_a) * t;
+	// Blending before the saturator makes in-between positions new waveforms,
+	// not a mix of two finished outputs.
+	return _fast_tanh(p_gain * (g_a + (g_b - g_a) * t));
 }
 
 // --- Internal parameter updates -------------------------------------------------
@@ -232,16 +234,18 @@ void SiEffectShearDistort::_update_derived() {
 	// warm low end, where the ear is most sensitive to saturation amount).
 	double drive_db = 48.0 * Math::pow(_p_drive, 1.5);
 	double drive_linear = Math::pow(10.0, drive_db / 20.0);
-	double bias_term = _p_bias * 1.5;
+	// Bias is a fraction of the signal peak, so at full drive it sets pulse
+	// width instead of vanishing under the gain.
+	double bias_term = _p_bias * 0.8;
 
-	// Auto makeup: measure a fixed character reference and normalize toward
-	// 0.5, so Drive tracks dry level without leveling Shape differences away.
+	// Auto makeup: measure the plain saturator (the warm stop) at a fixed set of
+	// peak levels and normalize toward 0.5, so Drive and Bias track dry level
+	// without leveling Shape differences away.
 	static const double refs[3] = { 0.35, 0.55, 0.75 };
-	const double makeup_reference_shape = 0.25;
 	double sum = 0.0;
 	for (int i = 0; i < 3; i++) {
-		double pos = _shape_sample(refs[i], drive_linear, bias_term, makeup_reference_shape);
-		double neg = _shape_sample(-refs[i], drive_linear, bias_term, makeup_reference_shape);
+		double pos = _shape_sample(1.0, drive_linear * refs[i], bias_term, 0.0);
+		double neg = _shape_sample(-1.0, drive_linear * refs[i], bias_term, 0.0);
 		double swing = (pos - neg) * 0.5;
 		sum += swing * swing;
 	}
@@ -271,6 +275,7 @@ void SiEffectShearDistort::_update_filters() {
 	_body_coeff = one_pole_coeff(BODY_CROSSOVER_HZ, sr);
 	_tilt_coeff = one_pole_coeff(TILT_PIVOT_HZ, sr);
 	_dc_coeff = one_pole_coeff(DC_BLOCK_HZ, sr);
+	_env_decay = 1.0 - one_pole_coeff(ENV_RELEASE_HZ, sr);
 
 	// Tone 0..1 -> post lowpass 550 Hz .. fully open (exponential sweep).
 	double tone_hz = MIN(550.0 * Math::pow(40.0, _p_tone), sr * 0.45);
@@ -336,6 +341,12 @@ double SiEffectShearDistort::_process_channel(ChannelState &p_ch, double p_input
 	double tilt_low = p_ch.tilt_pre_lpf.lowpass(_tilt_coeff, into);
 	into = tilt_low + (into - tilt_low) * p_tilt_pre;
 
+	// Peak envelope: instant attack, ENV_RELEASE_HZ release, floored so silence
+	// divides cleanly. The shaper sees the input relative to it.
+	p_ch.env = MAX(Math::abs(into), MAX(p_ch.env * _env_decay, ENV_FLOOR));
+	double inv_env = 1.0 / p_ch.env;
+	double gain = p_drive * p_ch.env;
+
 	// 4x oversampled waveshaping.
 	double u0, u1;
 	p_ch.up_steep.upsample(into, u0, u1);
@@ -343,10 +354,10 @@ double SiEffectShearDistort::_process_channel(ChannelState &p_ch, double p_input
 	p_ch.up_light.upsample(u0, s0, s1);
 	p_ch.up_light.upsample(u1, s2, s3);
 
-	s0 = _shape_sample(s0, p_drive, p_bias, p_shape);
-	s1 = _shape_sample(s1, p_drive, p_bias, p_shape);
-	s2 = _shape_sample(s2, p_drive, p_bias, p_shape);
-	s3 = _shape_sample(s3, p_drive, p_bias, p_shape);
+	s0 = _shape_sample(s0 * inv_env, gain, p_bias, p_shape);
+	s1 = _shape_sample(s1 * inv_env, gain, p_bias, p_shape);
+	s2 = _shape_sample(s2 * inv_env, gain, p_bias, p_shape);
+	s3 = _shape_sample(s3 * inv_env, gain, p_bias, p_shape);
 
 	double d0 = p_ch.down_light.downsample(s0, s1);
 	double d1 = p_ch.down_light.downsample(s2, s3);
