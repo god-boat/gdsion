@@ -2,9 +2,11 @@
 #define SI_EFFECT_MB_COMPRESSOR_H
 
 #include "dsp/linkwitz_riley.h"
+#include "dsp/soft_knee.h"
 #include "effector/si_effect_base.h"
 
 #include <godot_cpp/templates/vector.hpp>
+#include <godot_cpp/variant/packed_float64_array.hpp>
 #include <atomic>
 #include <cmath>
 
@@ -110,8 +112,19 @@ class SiEffectMultibandCompressor : public SiEffectBase {
 		double mix_delta = 0.0;
 	};
 
+	struct CrossoverFrequencies {
+		double low_mid;
+		double mid_high;
+	};
+
+	static _FORCE_INLINE_ CrossoverFrequencies _compute_crossover_frequencies(double p_low_mid, double p_mid_high) {
+		double low_mid = CLAMP(p_low_mid, MIN_FREQUENCY, MAX_FREQUENCY / MIN_CROSSOVER_RATIO);
+		return { low_mid, CLAMP(p_mid_high, low_mid * MIN_CROSSOVER_RATIO, MAX_FREQUENCY) };
+	}
+
 	// One band worth of settings, snapshotted out of the atomic store at the
-	// top of a block. Plain doubles: only the audio thread ever reads these.
+	// top of a block, or supplied to a static transfer query. Plain doubles;
+	// each caller owns its settings.
 	struct BandSettings {
 		double upper_threshold_db = DEFAULT_MID_UPPER_THRESHOLD;
 		double lower_threshold_db = DEFAULT_MID_LOWER_THRESHOLD;
@@ -125,27 +138,23 @@ class SiEffectMultibandCompressor : public SiEffectBase {
 		double mix_delta = 0.0;
 	};
 
-	// Soft-kneed excess past a threshold, in dB: zero below the knee, the raw
-	// excess above it, quadratic across it.
-	static _FORCE_INLINE_ double _soft_excess_db(double p_excess_db, double p_knee_db) {
-		if (p_knee_db <= 0.0) {
-			return MAX(p_excess_db, 0.0);
-		}
-
-		double half_knee = p_knee_db * 0.5;
-		if (p_excess_db <= -half_knee) {
-			return 0.0;
-		}
-		if (p_excess_db >= half_knee) {
-			return p_excess_db;
-		}
-
-		double y = p_excess_db + half_knee;
-		return y * y / (2.0 * p_knee_db);
-	}
-
 	static _FORCE_INLINE_ double _db_to_linear(double p_db) {
 		return std::pow(10.0, p_db / 20.0);
+	}
+
+	struct BandGain {
+		double downward_db;
+		double upward_db;
+		double multiplier;
+	};
+
+	// Shared by audio processing and static transfer queries. Settings carry
+	// the effective lower threshold; makeup gain and mix are applied afterward.
+	static _FORCE_INLINE_ BandGain _compute_band_gain(double p_input_db, const BandSettings &p_settings) {
+		double downward_db = -p_settings.upper_amount * sion::dsp::soft_knee_excess_db(p_input_db - p_settings.upper_threshold_db, p_settings.knee_db);
+		double upward_db = p_settings.lower_amount * sion::dsp::soft_knee_excess_db(p_settings.lower_threshold_db - p_input_db, p_settings.knee_db);
+		upward_db = CLAMP(upward_db, -MAX_UPWARD_GAIN_DB, MAX_UPWARD_GAIN_DB);
+		return { downward_db, upward_db, _db_to_linear(MAX(downward_db + upward_db, MIN_TOTAL_GAIN_DB)) };
 	}
 
 	// Mean square to dBFS. The detector carries 0.5 * (L^2 + R^2), so a mono
@@ -272,6 +281,20 @@ protected:
 	static void _bind_methods();
 
 public:
+	// Ordered low/mid and mid/high splits used by both the DSP and editor.
+	static PackedFloat64Array compute_effective_crossover_frequencies(double p_low_mid, double p_mid_high);
+
+	// Effective threshold used by the DSP and editor when the authored pair
+	// is inverted. Both sections run off one envelope.
+	static double compute_effective_lower_threshold_db(double p_upper_threshold_db, double p_lower_threshold_db);
+
+	// Steady-state outputs for one band's hypothetical input levels, in order.
+	// Uses the live gain computer without detector ballistics or block ramps,
+	// preparing settings and makeup once for the whole curve. Settings come
+	// from canonical parameters, so no live effect instance is required.
+	static PackedFloat64Array compute_output_curve_db(const PackedFloat64Array &p_input_levels_db, double p_upper_threshold_db, double p_lower_threshold_db,
+			double p_upper_amount, double p_lower_amount, double p_knee_db, double p_output_gain_db, double p_mix);
+
 	void set_params(int p_enabled_bands = BAND_MULTIBAND,
 			double p_low_upper_threshold = DEFAULT_LOW_UPPER_THRESHOLD,
 			double p_mid_upper_threshold = DEFAULT_MID_UPPER_THRESHOLD,

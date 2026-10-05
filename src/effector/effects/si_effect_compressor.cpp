@@ -5,6 +5,7 @@
 /***************************************************/
 
 #include "si_effect_compressor.h"
+#include "dsp/soft_knee.h"
 
 void SiEffectCompressor::set_params(double p_threshold_db, double p_ratio,
 		double p_attack_ms, double p_release_ms,
@@ -56,6 +57,7 @@ int SiEffectCompressor::process(const ProcessContext &p_context, int p_channels,
 	// Snapshot atomic params at block boundary (no lock needed).
 	double threshold_db    = _params.threshold_db.load(std::memory_order_relaxed);
 	double ratio           = MAX(_params.ratio.load(std::memory_order_relaxed), MIN_RATIO);
+	double amount          = 1.0 - 1.0 / ratio;
 	double attack_ms       = MAX(_params.attack_ms.load(std::memory_order_relaxed), MIN_ATTACK_MS);
 	double release_ms      = MAX(_params.release_ms.load(std::memory_order_relaxed), MIN_RELEASE_MS);
 	double knee_db         = _params.knee_db.load(std::memory_order_relaxed);
@@ -88,7 +90,7 @@ int SiEffectCompressor::process(const ProcessContext &p_context, int p_channels,
 
 		// Gain computer (soft knee).
 		double over_db = input_db - threshold_db;
-		double target_gr_db = _soft_knee_gr(over_db, knee_db, ratio);
+		double target_gr_db = -amount * sion::dsp::soft_knee_excess_db(over_db, knee_db);
 
 		// Gain smoothing (one-pole). More negative = more reduction = attack.
 		double coeff = (target_gr_db < _gain_db) ? _attack_coeff : _release_coeff;

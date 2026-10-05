@@ -32,12 +32,6 @@ void SiEffectMultibandCompressor::BandCompressor::process(double *p_audio, int p
 	double release_coeff = _compute_coeff(release_ms, p_sample_rate);
 	double meter_coeff = _compute_coeff(RMS_METER_MS, p_sample_rate);
 
-	double upper_threshold_db = p_settings.upper_threshold_db;
-	double lower_threshold_db = p_settings.lower_threshold_db;
-	double upper_amount = p_settings.upper_amount;
-	double lower_amount = p_settings.lower_amount;
-	double knee_db = p_settings.knee_db;
-
 	// De-zipper the makeup gain across the block.
 	double target_output_mult = _db_to_linear(p_settings.output_gain_db);
 	double delta_output_mult = (target_output_mult - _output_mult) / p_length;
@@ -54,11 +48,13 @@ void SiEffectMultibandCompressor::BandCompressor::process(double *p_audio, int p
 	// sample anyway.
 	const bool full_wet = (mix >= 1.0 && mix_delta == 0.0);
 
+	// Keep gain settings local so audio buffer writes cannot alias their reads.
+	const BandSettings gain_settings = p_settings;
+
 	double envelope = _envelope;
 	double input_mean_squared = _input_mean_squared;
 	double output_mean_squared = _output_mean_squared;
-	double downward_db = 0.0;
-	double upward_db = 0.0;
+	BandGain band_gain = { 0.0, 0.0, 1.0 };
 
 	for (int i = 0; i < p_length; ++i) {
 		int frame = i << 1;
@@ -79,14 +75,12 @@ void SiEffectMultibandCompressor::BandCompressor::process(double *p_audio, int p
 		// Downward above the upper threshold, upward below the lower one, both
 		// off the same envelope. A negative lower amount expands downward
 		// instead of compressing upward.
-		downward_db = -upper_amount * _soft_excess_db(envelope_db - upper_threshold_db, knee_db);
-		upward_db = lower_amount * _soft_excess_db(lower_threshold_db - envelope_db, knee_db);
-		upward_db = CLAMP(upward_db, -MAX_UPWARD_GAIN_DB, MAX_UPWARD_GAIN_DB);
+		band_gain = _compute_band_gain(envelope_db, gain_settings);
 
 		_output_mult += delta_output_mult;
 		mix += mix_delta;
 
-		double gain = _db_to_linear(MAX(downward_db + upward_db, MIN_TOTAL_GAIN_DB)) * _output_mult;
+		double gain = band_gain.multiplier * _output_mult;
 		double wet_left = dry_left * gain;
 		double wet_right = dry_right * gain;
 		double out_left = full_wet ? wet_left : dry_left + (wet_left - dry_left) * mix;
@@ -117,8 +111,47 @@ void SiEffectMultibandCompressor::BandCompressor::process(double *p_audio, int p
 	// halves of the band the way OTT-style meters do.
 	_meter_input_db.store((float)_mean_square_to_db(input_mean_squared), std::memory_order_relaxed);
 	_meter_output_db.store((float)_mean_square_to_db(output_mean_squared), std::memory_order_relaxed);
-	_meter_downward_db.store((float)(-downward_db), std::memory_order_relaxed);
-	_meter_upward_db.store((float)upward_db, std::memory_order_relaxed);
+	_meter_downward_db.store((float)(-band_gain.downward_db), std::memory_order_relaxed);
+	_meter_upward_db.store((float)band_gain.upward_db, std::memory_order_relaxed);
+}
+
+// -----------------------------------------------------------------------------
+// Static transfer
+// -----------------------------------------------------------------------------
+
+PackedFloat64Array SiEffectMultibandCompressor::compute_effective_crossover_frequencies(double p_low_mid, double p_mid_high) {
+	CrossoverFrequencies frequencies = _compute_crossover_frequencies(p_low_mid, p_mid_high);
+	PackedFloat64Array result;
+	result.push_back(frequencies.low_mid);
+	result.push_back(frequencies.mid_high);
+	return result;
+}
+
+double SiEffectMultibandCompressor::compute_effective_lower_threshold_db(double p_upper_threshold_db, double p_lower_threshold_db) {
+	return MIN(p_lower_threshold_db, p_upper_threshold_db);
+}
+
+PackedFloat64Array SiEffectMultibandCompressor::compute_output_curve_db(const PackedFloat64Array &p_input_levels_db, double p_upper_threshold_db, double p_lower_threshold_db,
+		double p_upper_amount, double p_lower_amount, double p_knee_db, double p_output_gain_db, double p_mix) {
+	BandSettings settings;
+	settings.upper_threshold_db = p_upper_threshold_db;
+	settings.lower_threshold_db = compute_effective_lower_threshold_db(p_upper_threshold_db, p_lower_threshold_db);
+	settings.upper_amount = p_upper_amount;
+	settings.lower_amount = p_lower_amount;
+	settings.knee_db = p_knee_db;
+	double output_mult = _db_to_linear(p_output_gain_db);
+
+	PackedFloat64Array output_levels_db;
+	int64_t sample_count = p_input_levels_db.size();
+	output_levels_db.resize(sample_count);
+	const double *input = p_input_levels_db.ptr();
+	double *output = output_levels_db.ptrw();
+	for (int64_t i = 0; i < sample_count; ++i) {
+		BandGain band_gain = _compute_band_gain(input[i], settings);
+		double wet_gain = band_gain.multiplier * output_mult;
+		output[i] = input[i] + 20.0 * std::log10(1.0 + (wet_gain - 1.0) * p_mix);
+	}
+	return output_levels_db;
 }
 
 // -----------------------------------------------------------------------------
@@ -245,7 +278,7 @@ void SiEffectMultibandCompressor::_snapshot_bands(const BlockSettings &p_block, 
 		// is intended: it is what lets the pair be dragged together into one
 		// continuous upward-to-downward transfer curve instead of meeting at a
 		// corner.
-		out.lower_threshold_db = MIN(out.lower_threshold_db, out.upper_threshold_db);
+		out.lower_threshold_db = compute_effective_lower_threshold_db(out.upper_threshold_db, out.lower_threshold_db);
 		out.upper_amount = src.upper_amount.load(std::memory_order_relaxed);
 		out.lower_amount = src.lower_amount.load(std::memory_order_relaxed);
 		out.output_gain_db = src.output_gain.load(std::memory_order_relaxed);
@@ -393,8 +426,10 @@ int SiEffectMultibandCompressor::process(const ProcessContext &p_context, int p_
 	// The splits are independent controls, so order them here rather than
 	// trusting the UI: an inverted pair would hand the mid band a negative
 	// width and fill it with garbage.
-	double lm_frequency = CLAMP((double)_params.lm_frequency.load(std::memory_order_relaxed), MIN_FREQUENCY, MAX_FREQUENCY / MIN_CROSSOVER_RATIO);
-	double mh_frequency = CLAMP((double)_params.mh_frequency.load(std::memory_order_relaxed), lm_frequency * MIN_CROSSOVER_RATIO, MAX_FREQUENCY);
+	CrossoverFrequencies frequencies = _compute_crossover_frequencies(
+			_params.lm_frequency.load(std::memory_order_relaxed), _params.mh_frequency.load(std::memory_order_relaxed));
+	double lm_frequency = frequencies.low_mid;
+	double mh_frequency = frequencies.mid_high;
 
 	if (lm_frequency != _active_lm_frequency || mh_frequency != _active_mh_frequency || sample_rate != _active_sample_rate) {
 		_lm_coeffs.set_cutoff(lm_frequency, sample_rate);
@@ -510,6 +545,13 @@ double SiEffectMultibandCompressor::get_band_upward_gain_db(int p_band) const {
 // -----------------------------------------------------------------------------
 
 void SiEffectMultibandCompressor::_bind_methods() {
+	ClassDB::bind_static_method("SiEffectMultibandCompressor", D_METHOD("compute_effective_crossover_frequencies", "low_mid", "mid_high"),
+			&SiEffectMultibandCompressor::compute_effective_crossover_frequencies);
+	ClassDB::bind_static_method("SiEffectMultibandCompressor", D_METHOD("compute_effective_lower_threshold_db", "upper_threshold_db", "lower_threshold_db"),
+			&SiEffectMultibandCompressor::compute_effective_lower_threshold_db);
+	ClassDB::bind_static_method("SiEffectMultibandCompressor", D_METHOD("compute_output_curve_db", "input_levels_db", "upper_threshold_db", "lower_threshold_db", "upper_amount", "lower_amount", "knee_db", "output_gain_db", "mix"),
+			&SiEffectMultibandCompressor::compute_output_curve_db);
+
 	ClassDB::bind_method(D_METHOD("set_params", "enabled_bands",
 								  "low_upper_threshold", "mid_upper_threshold", "high_upper_threshold",
 								  "low_lower_threshold", "mid_lower_threshold", "high_lower_threshold",

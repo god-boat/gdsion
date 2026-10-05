@@ -64,25 +64,6 @@ class SiEffectCompressor : public SiEffectBase {
 		return std::exp(-1.0 / (p_time_ms * 0.001 * p_sample_rate));
 	}
 
-	static _FORCE_INLINE_ double _soft_knee_gr(double p_over_db, double p_knee_db, double p_ratio) {
-		if (p_knee_db <= 0.0) {
-			if (p_over_db <= 0.0) {
-				return 0.0;
-			}
-			return -p_over_db * (1.0 - 1.0 / p_ratio);
-		}
-
-		double half_knee = p_knee_db * 0.5;
-		if (p_over_db <= -half_knee) {
-			return 0.0;
-		} else if (p_over_db >= half_knee) {
-			return -p_over_db * (1.0 - 1.0 / p_ratio);
-		}
-
-		double y = p_over_db + half_knee;
-		return -(1.0 - 1.0 / p_ratio) * y * y / (2.0 * p_knee_db);
-	}
-
 protected:
 	static void _bind_methods();
 
