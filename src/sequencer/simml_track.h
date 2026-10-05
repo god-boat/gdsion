@@ -542,7 +542,8 @@ public:
 	int prepare_buffer(int p_buffer_length);
 	void buffer(int p_length);
 
-	void key_on(int p_note, int p_tick_length = 0, int p_sample_delay = 0);
+	// A legato key-on slurs from the sounding note instead of retriggering it.
+	void key_on(int p_note, int p_tick_length = 0, int p_sample_delay = 0, bool p_legato = false);
 	void key_off(int p_sample_delay = 0, bool p_with_reset = false);
 	// Stream-specific key-off: if the channel is a SiOPMChannelStream, performs
 	// hard_stop() (declick kill fade) and finishes the track. Non-stream channels

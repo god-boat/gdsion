@@ -4002,16 +4002,10 @@ void SiONDriver::_drain_track_mailbox() {
                         const int key_expression = (int)(((int64_t)CLAMP(u.key_velocity_16, 0, 65535) * 127 + 32767) / 65535);
                         trk->set_expression(CLAMP(key_expression, 0, 128));
                     }
-                    // The slur flag is read by the deferred _key_on(), which
-                    // then moves pitch (sweeping on portament) instead of
-                    // releasing and re-triggering the sounding note.
-                    if (u.key_on_legato) {
-                        trk->handle_slur();
-                    }
                     if (u.key_on_glide_from_note >= 0) {
                         trk->set_pending_key_on_glide_from(u.key_on_glide_from_note);
                     }
-                    trk->key_on(u.key_on_note, u.key_on_length, 0);
+                    trk->key_on(u.key_on_note, u.key_on_length, 0, u.key_on_legato);
                 }
                 if (u.has_stream_key_off) {
                     trk->stream_key_off();

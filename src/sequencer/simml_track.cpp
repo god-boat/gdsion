@@ -1262,7 +1262,15 @@ void SiMMLTrack::_mml_key_on(int p_note) {
 	}
 }
 
-void SiMMLTrack::key_on(int p_note, int p_tick_length, int p_sample_delay) {
+void SiMMLTrack::key_on(int p_note, int p_tick_length, int p_sample_delay, bool p_legato) {
+	// A key-on that lands while another still waits to execute replaces it, and
+	// slurs only if the waiting one did too. A retrigger that has not executed
+	// started no note yet, so a slur onto it would leave nothing sounding.
+	if (p_legato && (_flag_no_key_on || _executor->get_waiting_note() < 0)) {
+		handle_slur();
+	} else {
+		_flag_no_key_on = false;
+	}
 	_track_start_delay = p_sample_delay;
 	_executor->execute_single_note(p_note, p_tick_length);
 }
@@ -1562,7 +1570,7 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("clear_note_envelope_bindings"), &SiMMLTrack::clear_note_envelope_bindings);
 
 	// Real-time note control
-	ClassDB::bind_method(D_METHOD("key_on", "note", "tick_length", "sample_delay"), &SiMMLTrack::key_on, DEFVAL(0), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("key_on", "note", "tick_length", "sample_delay", "legato"), &SiMMLTrack::key_on, DEFVAL(0), DEFVAL(0), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("key_off", "sample_delay", "with_reset"), &SiMMLTrack::key_off, DEFVAL(0), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("set_expression", "value"), &SiMMLTrack::set_expression);
 	ClassDB::bind_method(D_METHOD("set_velocity", "value"), &SiMMLTrack::set_velocity);
