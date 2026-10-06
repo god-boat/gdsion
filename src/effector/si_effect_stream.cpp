@@ -327,6 +327,7 @@ void SiEffectStream::initialize(int p_depth) {
 	_pan = 64;
 	_post_fader_gain = 1.0;
 	_post_pan = _pan;
+	_meter.reset();
 	_has_effect_send = false;
 	_depth = p_depth;
 }

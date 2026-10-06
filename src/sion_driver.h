@@ -12,7 +12,6 @@
 #include <godot_cpp/classes/audio_stream_generator_playback.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
 #include <godot_cpp/classes/node.hpp>
-#include <array>
 #include <atomic>
 #include <mutex>
 #include <godot_cpp/templates/hash_map.hpp>
@@ -36,6 +35,7 @@
 #include "sequencer/base/mml_data.h"
 #include "sequencer/base/mml_system_command.h"
 #include "templates/singly_linked_list.h"
+#include "utils/meter_state.h"
 #include "sion_data.h"
 #include "sion_stream.h"
 #include "sion_stream_playback.h"
@@ -218,31 +218,8 @@ private:
 	void _publish_frame_clock_anchor();
 
 	// --- Professional audio metering infrastructure ---
-public:
-	// Meter data snapshot (cache-line friendly, lock-free readable)
-	struct MeterSnapshot {
-		float rms_left = 0.0f;
-		float rms_right = 0.0f;
-		float peak_left = 0.0f;
-		float peak_right = 0.0f;
-		uint64_t timestamp_us = 0;
-		uint32_t sample_count = 0;
-	};
-
-private:
-	// Lock-free ring buffer for historical meter data
-	static constexpr int METER_RING_SIZE = 8;
-	std::array<MeterSnapshot, METER_RING_SIZE> _meter_ring;
-	std::atomic<int> _meter_ring_head{0};
-	std::atomic<int> _meter_ring_tail{0};
-
-	// Per-track meter storage (atomic snapshots per track_id)
-	HashMap<int, MeterSnapshot> _track_meters;
-	mutable std::mutex _track_meters_mutex;  // Protects HashMap structure, not individual reads
-
-	// Master output meter (atomic for lock-free read)
-	MeterSnapshot _master_meter;
-	mutable std::mutex _master_meter_mutex;
+	// Track meters live on each track's SiEffectStream.
+	MeterState _master_meter;
 
 	// Flush denormals to zero on the render thread. Read once per render_interleaved()
 	// call, so it can be toggled from the main thread while audio is running --
@@ -254,13 +231,12 @@ private:
 	// Time::get_singleton() calls from audio thread can block on main thread!
 	std::atomic<bool> _metering_enabled{false};
 	std::atomic<int> _meter_downsample_factor{4};  // Process every Nth buffer
-	int _meter_downsample_counter = 0;
+	int _meter_downsample_counter = 0; // Render-thread owned.
 
 	// Metering helper functions
 	void _update_batch_meters(const Vector<double> *out_buf, int frames);
-	void _meter_track_output(int track_id, const Vector<double> *track_buf, int frames, double p_post_fader_gain, int p_post_pan);
+	void _meter_track_output(MeterState &p_meter, const Vector<double> *track_buf, int frames, double p_post_fader_gain, int p_post_pan);
 	void _meter_all_track_outputs(int frames);
-	void _push_meter_to_ring(const MeterSnapshot &snapshot);
 
 	ExceptionMode _note_on_exception_mode = NEM_IGNORE;
 	// Send the CHANGE_BPM event when position changes.
@@ -897,10 +873,9 @@ public:
 	bool is_metering_enabled() const;
 	void set_meter_downsample_factor(int p_factor);
 	int get_meter_downsample_factor() const;
-	Dictionary get_master_meter_snapshot() const;
-	Dictionary get_track_meter_snapshot(int p_track_id) const;
-	void register_track_for_metering(int p_track_id);
-	void unregister_track_for_metering(int p_track_id);
+	// Reading takes the held peaks: the next read reports peaks from here on.
+	Dictionary take_master_meter();
+	Dictionary take_track_meter(int p_track_id);
 
 	// MIDI.
 	// FIXME: Implement SMF/MIDI support.

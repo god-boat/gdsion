@@ -44,11 +44,8 @@ void SiOPMSoundChip::begin_process() {
 }
 
 void SiOPMSoundChip::end_process() {
-	// Removed: output_stream->limit();
-	// Soft-clipping here is counterproductive:
-	// 1. Saturates to ±2/3, reducing headroom unnecessarily
-	// 2. Runs before effector chain, so doesn't protect final output
-	// 3. Hard clamping at generate_audio() is the proper safety net
+	// Nothing in gdsion limits or clamps the mix: it leaves render_interleaved()
+	// as unclamped float, and the platform audio backend decides what overs become.
 	if (_bitrate != 0) {
 		output_stream->quantize(_bitrate);
 	}

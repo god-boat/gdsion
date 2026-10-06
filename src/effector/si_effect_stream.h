@@ -11,6 +11,7 @@
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include "effector/si_effect_base.h"
+#include "utils/meter_state.h"
 
 using namespace godot;
 
@@ -26,6 +27,8 @@ class SiEffectStream {
 	SiOPMStream *_stream = nullptr;
 	double _post_fader_gain = 1.0;
 	int _post_pan = 64; // 0-128
+	// Post-fader level of this stream's output, read by the mixer.
+	MeterState _meter;
 	// Deeper streams execute first.
 	int _depth = 0;
 	int _pan = 64;
@@ -53,6 +56,7 @@ public:
 
 	double get_post_fader_gain() const { return _post_fader_gain; }
 	int get_post_pan() const { return _post_pan; }
+	MeterState &get_meter() { return _meter; }
 
 	int get_depth() const { return _depth; }
 	int get_pan() const;
