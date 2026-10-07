@@ -7,7 +7,6 @@
 #include "mml_executor.h"
 
 #include "sequencer/base/mml_event.h"
-#include "sequencer/base/mml_parser.h"
 #include "sequencer/base/mml_sequence.h"
 
 MMLEvent *MMLExecutor::get_current_event() const {
@@ -178,12 +177,21 @@ void MMLExecutor::clear() {
 	_decimal_fraction_sample_count = 0;
 }
 
+// The executor owns its scratch events outright. Borrowing them from the parser's
+// shared free-event chain would let a track built on one thread race a track
+// destroyed on another.
+static MMLEvent *_new_scratch_event(int p_event_id) {
+	MMLEvent *event = memnew(MMLEvent);
+	event->initialize(p_event_id, 0, 0);
+	return event;
+}
+
 MMLExecutor::MMLExecutor() {
-	_nop_event = MMLParser::get_instance()->alloc_event(MMLEvent::NO_OP, 0);
-	_process_event = MMLParser::get_instance()->alloc_event(MMLEvent::PROCESS, 0);
-	_note_event = MMLParser::get_instance()->alloc_event(MMLEvent::DRIVER_NOTE, 0);
-	_bend_from_event = MMLParser::get_instance()->alloc_event(MMLEvent::NOTE, 0);
-	_bend_event = MMLParser::get_instance()->alloc_event(MMLEvent::PITCHBEND, 0);
+	_nop_event = _new_scratch_event(MMLEvent::NO_OP);
+	_process_event = _new_scratch_event(MMLEvent::PROCESS);
+	_note_event = _new_scratch_event(MMLEvent::DRIVER_NOTE);
+	_bend_from_event = _new_scratch_event(MMLEvent::NOTE);
+	_bend_event = _new_scratch_event(MMLEvent::PITCHBEND);
 
 	_bend_from_event->set_next(_bend_event);
 	_bend_event->set_next(_note_event);
@@ -192,11 +200,11 @@ MMLExecutor::MMLExecutor() {
 }
 
 MMLExecutor::~MMLExecutor() {
-	MMLParser::get_instance()->free_event(_nop_event);
-	MMLParser::get_instance()->free_event(_process_event);
-	MMLParser::get_instance()->free_event(_note_event);
-	MMLParser::get_instance()->free_event(_bend_from_event);
-	MMLParser::get_instance()->free_event(_bend_event);
+	memdelete(_nop_event);
+	memdelete(_process_event);
+	memdelete(_note_event);
+	memdelete(_bend_from_event);
+	memdelete(_bend_event);
 
 	_nop_event = nullptr;
 	_process_event = nullptr;

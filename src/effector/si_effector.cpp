@@ -331,10 +331,8 @@ void SiEffector::initialize() {
 }
 
 void SiEffector::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("get_slot_effects", "slot"), &SiEffector::get_slot_effects);
-	ClassDB::bind_method(D_METHOD("add_slot_effect", "slot", "effect"), &SiEffector::add_slot_effect);
-	ClassDB::bind_method(D_METHOD("set_slot_effects", "slot", "effects"), &SiEffector::set_slot_effects);
-	ClassDB::bind_method(D_METHOD("clear_slot_effects", "slot"), &SiEffector::clear_slot_effects);
+	// The effector belongs to the render owner while streaming; scripts edit
+	// effects through the driver's command queue.
 }
 
 SiEffector::SiEffector(SiOPMSoundChip *p_chip) {

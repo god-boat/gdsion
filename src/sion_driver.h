@@ -16,6 +16,7 @@
 #include <mutex>
 #include <godot_cpp/templates/hash_map.hpp>
 #include <godot_cpp/templates/list.hpp>
+#include <godot_cpp/templates/local_vector.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
@@ -68,8 +69,6 @@ class SiONOfflineRenderer;
 class SiONDriver : public Node, public PoolyRenderClient, public PoolyTimingClient {
 	GDCLASS(SiONDriver, Node)
 
-	friend class SiONOfflineRenderer;
-
 public:
 	static const char *VERSION;
 	static const char *VERSION_FLAVOR;
@@ -91,18 +90,12 @@ private:
 	};
 
 	static const int TIME_AVERAGING_COUNT = 8;
-	static const int TRACK_EFFECT_ARG_MAX = 48;
-	static const int TRACK_EFFECT_CHAIN_MAX = 8;
 
 	// Single unique instance.
 	static SiONDriver *_mutex;
 	static bool _allow_multiple_drivers;
 	static bool _is_supported_backend_sample_rate(int p_sample_rate);
 	static int _resolve_supported_backend_sample_rate();
-
-	// Guards audio state to prevent concurrent access between the audio thread
-	// (generate_audio) and the main thread (play/stop/reset operations).
-	mutable std::mutex _audio_state_mutex;
 
 	SiOPMSoundChip *sound_chip = nullptr;
 	SiEffector *effector = nullptr;
@@ -165,6 +158,9 @@ private:
 	bool _fading_event_enabled = false;
 
 	bool _is_streaming = false;
+	// An offline renderer is the sole render owner while this is set.
+	bool _offline_render_active = false;
+	bool _offline_resumes_godot_output = false;
 	bool _in_streaming_process = false;
 	// Preserve stop after streaming.
 	bool _preserve_stop = false;
@@ -180,13 +176,19 @@ private:
 	int _render_buffer_index = 0;
 	int _render_buffer_size_max = 0;
 
+	// Offline rendering takes exclusive ownership after live consumers stop.
+	bool _is_render_live() const { return _is_streaming && !_offline_render_active; }
+	void _start_godot_output();
+	void _stop_godot_output();
+
 	bool _parse_system_command(const List<Ref<MMLSystemCommand>> &p_system_commands);
 
 	void _prepare_compile(String p_mml, const Ref<SiONData> &p_data);
 	void _prepare_render(const Variant &p_data, int p_buffer_size, int p_buffer_channel_num, bool p_reset_effector);
 	void _prepare_stream(const Variant &p_data, bool p_reset_effector);
 	bool _rendering();
-	void _streaming(); // no-op in pull model
+	// Main-thread frame hook while streaming.
+	void _streaming();
 
 	// Playback.
 
@@ -239,10 +241,10 @@ private:
 	void _meter_all_track_outputs(int frames);
 
 	ExceptionMode _note_on_exception_mode = NEM_IGNORE;
-	// Send the CHANGE_BPM event when position changes.
-	bool _notify_change_bpm_on_position_changed = true;
-
 	SiMMLTrack *_find_or_create_track(int p_track_id, double p_delay, double p_quant, bool p_disposable, int *r_delay_samples);
+
+	// Effective-tempo snapshot for readers; this does not synchronize sequencer edits.
+	std::atomic<double> _published_bpm { 120.0 };
 
 	void _update_volume();
 	void _fade_callback(double p_value);
@@ -348,8 +350,16 @@ private:
 
 	void _emit_signal_thread_safe(const StringName &p_signal, const Variant &p_arg = Variant());
 
-	// --- Realtime mailbox (track-scoped SPSC ring, drained on audio thread) ------
-	struct _TrackUpdate {
+	// One ordered SPSC queue carries note/parameter, effect and retirement
+	// commands. Only the producer writes head and only the consumer writes tail.
+	struct _DriverCommand {
+		enum Op {
+			OP_TRACK_UPDATE = 0,     // Parameter and note updates for every matching track.
+			OP_EFFECT,               // An edit of the logical track's effect stream.
+			OP_RETIRE_TRACK,         // Stops one track and hands it to the sequencer to delete.
+		};
+		int op = OP_TRACK_UPDATE;
+
 		int track_id = -1;
 		// Optional: when >= 0, restricts update to tracks stamped with this
 		// exact resolved entity token (see ScopeAddressingPlan section 7.3).
@@ -630,56 +640,57 @@ private:
 		double stream_clip_fade_out_start_beats = 0.0;
 		double stream_clip_end_beats = 0.0;
 
-		// Track effects (applied to per-track SiEffectStream, not per-voice channels)
-		enum FxOp {
-			FX_OP_NONE = 0,
-			FX_OP_SET_CHAIN = 1,
-			FX_OP_INSERT = 2,
-			FX_OP_REMOVE = 3,
-			FX_OP_SWAP = 4,
+		// OP_EFFECT.
+		enum EffectOp {
+			FX_OP_SET_CHAIN = 0,
+			FX_OP_INSERT,
+			FX_OP_REMOVE,
+			FX_OP_SWAP,
+			FX_OP_SET_ARGS,
+			FX_OP_SET_ARG,
+			FX_OP_SET_BYPASS,
+			FX_OP_SET_MUTE,
 		};
-		int fx_op = FX_OP_NONE;
-
-		// Args/bypass update payload (also used by insert/remove/swap for indices).
-		bool has_fx_args = false;
-		bool has_fx_bypass = false;
+		int fx_op = FX_OP_SET_CHAIN;
 		int fx_index = 0;
 		int fx_index_b = 0;
-		int fx_argc = 0;
-		double fx_args[TRACK_EFFECT_ARG_MAX] = { 0.0 };
+		int fx_arg_index = 0;
+		double fx_arg_value = 0.0;
 		bool fx_bypassed = false;
-		char fx_kind[32] = { 0 };
-
-		// Chain payload cap for mailbox snapshots. The SiEffectStream itself is vector-backed.
-		int fx_chain_count = 0;
-		char fx_chain_kind[TRACK_EFFECT_CHAIN_MAX][32] = { { 0 } };
-		int fx_chain_argc[TRACK_EFFECT_CHAIN_MAX] = { 0 };
-		double fx_chain_args[TRACK_EFFECT_CHAIN_MAX][TRACK_EFFECT_ARG_MAX] = { { 0.0 } };
-		bool fx_chain_bypassed[TRACK_EFFECT_CHAIN_MAX] = { false };
+		bool fx_muted = false;
+		Vector<double> fx_args;
+		Ref<SiEffectBase> fx_effect;
+		Vector<Ref<SiEffectBase>> fx_chain;
+		Vector<bool> fx_chain_bypassed;
 	};
 
-	static const int _MB_CAPACITY = 1024; // power of two for cheap wrap
-	_TrackUpdate _mb_ring[_MB_CAPACITY];
+	// Main thread. Prepared effects handed to the render owner. Each
+	// leaves once this holds its last reference, so no payload dies on the render
+	// owner.
+	HashMap<RefCounted *, Ref<RefCounted>> _render_payloads;
+	void _retain_render_payload(const Ref<RefCounted> &p_payload);
+
+	static const int _MB_CAPACITY = 4096; // power of two for cheap wrap
+	_DriverCommand _mb_ring[_MB_CAPACITY];
 	std::atomic<int> _mb_head { 0 }; // producer (main thread)
-	std::atomic<int> _mb_tail { 0 }; // consumer (audio thread)
+	std::atomic<int> _mb_tail { 0 }; // consumer (render owner)
 
-	bool _mb_try_push(const _TrackUpdate &p_update);
-	void _drain_track_mailbox();
+	// Main thread.
+	List<_DriverCommand> _command_backlog;
 
-	struct _FxArgUpdate {
-		int track_id = -1;
-		int fx_index = 0;
-		int arg_index = 0;
-		double value = 0.0;
-	};
-
-	static const int _FX_ARG_MB_CAPACITY = 4096;
-	_FxArgUpdate _fx_arg_ring[_FX_ARG_MB_CAPACITY];
-	std::atomic<int> _fx_arg_head { 0 };
-	std::atomic<int> _fx_arg_tail { 0 };
-
-	bool _mb_fx_arg_try_push(const _FxArgUpdate &p_update);
-	void _drain_fx_arg_mailbox();
+	void _push_command(_DriverCommand &p_command);
+	bool _enqueue_command(_DriverCommand &p_command);
+	void _flush_command_backlog();
+	// Every frame while streaming, and before every offline block: releases the
+	// payloads the render owner let go of and moves waiting commands into the ring.
+	void _service_command_queue();
+	void _drain_commands();
+	// Quiescent only: discards commands from a previous driver lifetime.
+	void _discard_commands();
+	void _apply_command(_DriverCommand &p_command);
+	void _apply_track_update(const _DriverCommand &p_command);
+	void _apply_effect_command(_DriverCommand &p_command);
+	SiMMLTrack *_get_linked_track(uint64_t p_track_instance_id) const;
 
 	HashMap<int, SiEffectStream *> _track_effect_streams;
 	HashMap<int, SiOPMChannelBase *> _track_effect_channels;
@@ -695,7 +706,9 @@ private:
 	// at whatever cadence they prefer before invoking this.
 	void _process_one_block();
 	Vector<double> _args_from_variant(const Variant &p_value) const;
-	Ref<SiEffectBase> _build_effect_from_dict(const Dictionary &p_slot);
+	// Main thread: builds, configures and prepares the effect a slot describes.
+	// Null for an unknown kind, which the effector reports.
+	Ref<SiEffectBase> _prepare_effect(const Dictionary &p_slot);
 
 protected:
 	static void _bind_methods();
@@ -774,7 +787,6 @@ public:
 
 	// Sound and output properties.
 
-	int get_track_count() const;
 	int get_max_track_count() const;
 	void set_max_track_count(int p_value);
 
@@ -786,7 +798,9 @@ public:
 
 	double get_volume() const;
 	void set_volume(double p_value);
+	// Reads the published effective tempo.
 	double get_bpm() const;
+	// Synchronous pending track/channel lifecycle ownership.
 	void set_bpm(double p_value);
 
 	// Streaming and rendering.
@@ -796,9 +810,6 @@ public:
 
 	bool get_auto_stop() const { return _auto_stop; }
 	void set_auto_stop(bool p_enabled) { _auto_stop = p_enabled; }
-
-	bool is_notify_change_bpm_on_position_changed() const { return _notify_change_bpm_on_position_changed; }
-	void set_notify_change_bpm_on_position_changed(bool p_enabled) { _notify_change_bpm_on_position_changed = p_enabled; }
 
 	double get_streaming_position() const;
 	int64_t get_rendered_frame_count() const;
@@ -834,6 +845,12 @@ public:
 	SiMMLTrack *note_on_with_bend(int p_note, int p_note_to, double p_bend_length, const Ref<SiONVoice> &p_voice = Ref<SiONVoice>(), double p_length = 0, double p_delay = 0, double p_quant = 0, int p_track_id = 0, bool p_disposable = true);
 	TypedArray<SiMMLTrack> note_off(int p_note, int p_track_id = 0, double p_delay = 0, double p_quant = 0, bool p_stop_immediately = false);
 
+	// Converts a length in 1/16ths of a beat to sequencer ticks, the unit
+	// mailbox_key_on() takes.
+	int convert_event_length(double p_length_16th) const;
+
+	// Sequences run on driver-owned tracks created in place, so they require a
+	// quiescent render path: no live consumer, or an active offline render.
 	TypedArray<SiMMLTrack> sequence_on(const Ref<SiONData> &p_data, const Ref<SiONVoice> &p_voice = Ref<SiONVoice>(), double p_length = 0, double p_delay = 0, double p_quant = 1, int p_track_id = 0, bool p_disposable = true);
 	TypedArray<SiMMLTrack> sequence_off(int p_track_id, double p_delay = 0, double p_quant = 1, bool p_stop_with_reset = false);
 
@@ -1078,6 +1095,9 @@ public:
 	void mailbox_set_expression(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);
 	void mailbox_set_velocity(int p_track_id, int p_value, uint64_t p_track_instance_id = 0);
 
+	// The caller relinquishes the track: no later command may address it.
+	void mailbox_retire_track(int p_track_id, uint64_t p_track_instance_id);
+
 	// Track effects (thread-safe via mailbox, applied at audio block boundary)
 	void mailbox_track_effects_set_chain(int p_track_id, const Array &p_slots);
 	void mailbox_track_effects_insert_effect(int p_track_id, const Dictionary &p_slot, int p_index = -1);
@@ -1086,14 +1106,17 @@ public:
 	void mailbox_track_effects_set_effect_args(int p_track_id, int p_index, const Variant &p_args);
 	void mailbox_track_effects_set_effect_arg(int p_track_id, int p_fx_index, int p_arg_index, double p_value);
 	void mailbox_track_effects_set_bypass(int p_track_id, int p_index, bool p_bypassed);
+	void mailbox_track_effects_set_mute(int p_track_id, bool p_mute);
 
-	void track_effects_set_chain(int p_track_id, const Array &p_slots);
-	void track_effects_insert_effect(int p_track_id, const Dictionary &p_slot, int p_index = -1);
-	void track_effects_remove_effect(int p_track_id, int p_index);
-	void track_effects_swap_effects(int p_track_id, int p_index_a, int p_index_b);
-	void track_effects_set_effect_args(int p_track_id, int p_index, const Variant &p_args);
-	void track_effects_set_bypass(int p_track_id, int p_index, bool p_bypassed);
-	void track_effects_set_mute(int p_track_id, bool p_mute);
+	// SiONOfflineRenderer: the offline render becomes the sole render owner. The
+	// driver stops its own Godot output for the duration; the lifecycle owner
+	// stops any native consumer before beginning.
+	// Fails while another offline render owns the driver.
+	bool begin_offline_render();
+	void end_offline_render();
+	// Renders one block on the offline owner's thread, which is also the
+	// producer's, so it services the command queue first.
+	void render_offline_block(AudioFrame *p_buffer, int32_t p_frames);
 };
 
 #endif // SION_DRIVER_H

@@ -827,11 +827,6 @@ void SiMMLTrack::_disable_envelope_mode(int p_note_on) {
 }
 
 int SiMMLTrack::prepare_buffer(int p_buffer_length) {
-	// Skip processing if track is marked for disposal (prevents accessing corrupted _mml_data)
-	if (_pending_disposal) {
-		return 0;
-	}
-	
 	if (_mml_data.is_valid()) {
 		_mml_data->register_ref_stencils();
 	} else {
@@ -1520,6 +1515,7 @@ void SiMMLTrack::initialize(const Ref<SiMMLData> &p_data, MMLSequence *p_sequenc
 	_default_fps = p_fps;
 	_internal_track_id = p_internal_track_id;
 	_is_disposable = p_disposable;
+	_pending_disposal = false;
 
 	_event_trigger_on = p_event_trigger_on;
 	_event_trigger_off = p_event_trigger_off;
@@ -1528,6 +1524,11 @@ void SiMMLTrack::initialize(const Ref<SiMMLData> &p_data, MMLSequence *p_sequenc
 	_event_trigger_type_off = EventTriggerType::NO_EVENTS;
 
 	_executor->initialize(p_sequence);
+}
+
+void SiMMLTrack::retire() {
+	key_off(0, true);
+	_pending_disposal = true;
 }
 
 void SiMMLTrack::_bind_methods() {
@@ -1540,7 +1541,7 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_reported_source_sample"), &SiMMLTrack::get_reported_source_sample);
 	ClassDB::bind_method(D_METHOD("get_reported_clip_time_beats"), &SiMMLTrack::get_reported_clip_time_beats);
 	ClassDB::bind_method(D_METHOD("get_program_number"), &SiMMLTrack::get_program_number);
-	
+
 	// Scope tokens for exact-target mailbox dispatch.
 	ClassDB::bind_method(D_METHOD("get_entity_scope_id"), &SiMMLTrack::get_entity_scope_id);
 	ClassDB::bind_method(D_METHOD("set_entity_scope_id", "id"), &SiMMLTrack::set_entity_scope_id);
@@ -1578,7 +1579,7 @@ void SiMMLTrack::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("is_active"), &SiMMLTrack::is_active);
 	ClassDB::bind_method(D_METHOD("is_finished"), &SiMMLTrack::is_finished);
-	
+
 	// Disposal controls
 	ClassDB::bind_method(D_METHOD("is_pending_disposal"), &SiMMLTrack::is_pending_disposal);
 	ClassDB::bind_method(D_METHOD("mark_for_disposal"), &SiMMLTrack::mark_for_disposal);

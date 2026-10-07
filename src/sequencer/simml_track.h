@@ -131,7 +131,9 @@ private:
 	int _track_stop_delay = 0;
 	bool _stop_with_reset = false;
 	bool _is_disposable = false;
+	// Set by retire(); the sequencer deletes the track once it finishes.
 	bool _pending_disposal = false;
+
 	// Priority number to overwrite when tracks overflow.
 	int _priority = 0;
 	int _default_fps = 0;
@@ -399,10 +401,12 @@ public:
 	// Disposable track will free automatically when finished rendering.
 	bool is_disposable() const { return _is_disposable; };
 	void set_disposable() { _is_disposable = true; }
-	
-	// Mark track for safe disposal on the audio thread (called from main thread)
+
 	bool is_pending_disposal() const { return _pending_disposal; }
 	void mark_for_disposal() { _pending_disposal = true; }
+	// Render owner: stops the track with a declicking fade and hands it to the
+	// sequencer, which deletes it once it has finished.
+	void retire();
 
 	int get_velocity_mode() const { return _velocity_mode; }
 	void set_velocity_mode(int p_mode);

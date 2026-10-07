@@ -70,7 +70,7 @@ func _sample_voice(driver: SiONDriver, voice: SiONVoice) -> void:
 
 	# Hardcoding for now, but some voices may need a different value and length.
 	var note_value := 60
-	var note_length := 1 * SAMPLE_LENGTH
+	var note_length := SAMPLE_LENGTH_BEATS * 16.0
 
 	driver.stream(false)
 	driver.streaming.connect(_collect_streamed_data)
@@ -81,10 +81,10 @@ func _sample_voice(driver: SiONDriver, voice: SiONVoice) -> void:
 
 	driver.note_on(note_value, voice, note_length)
 
-	var time_remaining := note_length
+	var time_remaining := SAMPLE_LENGTH_BEATS
 	while time_remaining > 0:
 		await driver.timer_interval
-		time_remaining -= 1
+		time_remaining -= SAMPLE_LENGTH_BEATS
 
 	driver.set_stream_event_enabled(false)
 	driver.streaming.disconnect(_collect_streamed_data)

@@ -31,32 +31,32 @@ func _assert_sequence_duration(scene_tree: SceneTree, label: String, mml: String
 	if override_bpm:
 		data.set_bpm(120)
 
-	driver.stream()
-	await scene_tree.process_frame
+	# No live consumer: the offline renderer is the sole render owner, so the
+	# sequence can be started in place.
+	driver.stream_without_output()
+	var renderer := SiONOfflineRenderer.new()
+	var began := renderer.begin(driver)
+	_assert_equal("%s: renderer begin" % label, began, true)
+	if not began:
+		await _cleanup_driver(scene_tree, driver, renderer)
+		return
 
 	var voice := SiONVoice.create()
 	_assert_not_null("%s: voice create" % label, voice)
 	if voice == null:
-		await _cleanup_driver(scene_tree, driver)
+		await _cleanup_driver(scene_tree, driver, renderer)
 		return
 	voice.set_envelope(63, 0, 0, 63, 0, 0)
 
 	var tracks := driver.sequence_on(data, voice, 0, 0, 1, 0, false)
 	_assert_equal("%s: track count" % label, tracks.size(), 1)
 	if tracks.size() != 1:
-		await _cleanup_driver(scene_tree, driver)
+		await _cleanup_driver(scene_tree, driver, renderer)
 		return
 
 	var track: SiMMLTrack = tracks[0]
 	_assert_not_null("%s: track create" % label, track)
 	if track == null:
-		await _cleanup_driver(scene_tree, driver)
-		return
-
-	var renderer := SiONOfflineRenderer.new()
-	var began := renderer.begin(driver)
-	_assert_equal("%s: renderer begin" % label, began, true)
-	if not began:
 		await _cleanup_driver(scene_tree, driver, renderer)
 		return
 

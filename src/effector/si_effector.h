@@ -10,6 +10,7 @@
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/templates/hash_map.hpp>
 #include <godot_cpp/templates/list.hpp>
+#include <godot_cpp/templates/local_vector.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include "effector/si_effect_base.h"
 
@@ -27,7 +28,7 @@ class SiEffector : public Object {
 
 	SiEffectStream *_master_effect = nullptr;;
 	List<SiEffectStream *> _free_effect_streams;
-	Vector<SiEffectStream *> _local_effects;
+	LocalVector<SiEffectStream *> _local_effects;
 	// Expected to be SiOPMSoundChip::STREAM_SEND_SIZE at most.
 	Vector<SiEffectStream *> _global_effects;
 	int _global_effect_count = 0;
@@ -57,6 +58,7 @@ public:
 	void clear_slot_effects(int p_slot);
 
 	SiEffectStream *create_local_effect(int p_depth, Vector<Ref<SiEffectBase>> p_effects);
+	void reserve_local_effects(int p_count) { _local_effects.reserve(p_count); }
 	void delete_local_effect(SiEffectStream *p_effect);
 
 	void parse_global_effect_mml(int p_slot, String p_mml, String p_postfix);

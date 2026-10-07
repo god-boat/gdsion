@@ -117,6 +117,7 @@ void SiMMLEnvelopeTable::copy_from(const Ref<SiMMLEnvelopeTable> &p_source) {
 	if (_data) {
 		memdelete(_data);
 	}
+	_data = nullptr;
 
 	SinglyLinkedList<int> *source_data = p_source->get_data();
 	if (!source_data) {
@@ -125,13 +126,21 @@ void SiMMLEnvelopeTable::copy_from(const Ref<SiMMLEnvelopeTable> &p_source) {
 
 	_data = memnew(SinglyLinkedList<int>);
 
-	// FIXME: This doesn't copy the looping, but neither does the original implementation.
-
+	SinglyLinkedList<int>::Element *source_tail = source_data->get_back();
+	SinglyLinkedList<int>::Element *source_loop = source_tail ? source_tail->next() : nullptr;
+	SinglyLinkedList<int>::Element *copied_loop = nullptr;
 	SinglyLinkedList<int>::Element *current = source_data->get_front();
 	for (int i = 0; i < source_data->size(); i++) {
-		_data->append(current->value);
+		SinglyLinkedList<int>::Element *copied = _data->append(current->value);
+		if (current == source_loop) {
+			copied_loop = copied;
+		}
 		current = current->next();
 	}
+	if (copied_loop) {
+		_data->loop(copied_loop);
+	}
+	_data->front();
 }
 
 SiMMLEnvelopeTable::SiMMLEnvelopeTable(Vector<int> p_table, int p_loop_point) {

@@ -39,8 +39,9 @@ class SiONDriver;
 // mailbox_key_on() etc. take effect on the next block boundary.
 //
 // IMPORTANT: The driver must already be in streaming mode with all instruments, effects,
-// and BPM configured before calling begin(). The caller must also ensure no other thread
-// is invoking generate_audio() concurrently (e.g. stop the AudioStreamPlayer first).
+// and BPM configured before calling begin(). Between begin() and finish() the renderer is
+// the driver's sole render owner: begin() stops the driver's own Godot output, and the
+// caller must have stopped any native backend consuming the driver before calling it.
 class SiONOfflineRenderer : public RefCounted {
 	GDCLASS(SiONOfflineRenderer, RefCounted)
 
@@ -74,8 +75,8 @@ public:
 	// Returns interleaved stereo float32 (p_block_count * buffer_length * 2 elements).
 	PackedFloat32Array render_blocks(int p_block_count);
 
-	// Finishes offline rendering. Releases internal references.
-	// The driver remains in its current state for normal use.
+	// Finishes offline rendering and hands render ownership back, restarting the
+	// driver's Godot output if begin() stopped it.
 	void finish();
 
 	// Returns true if the renderer is active (between begin/finish).

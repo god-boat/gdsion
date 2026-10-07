@@ -130,7 +130,7 @@ SiMMLTrack *SiMMLSequencer::find_active_track(int p_internal_track_id, int p_del
 SiMMLTrack *SiMMLSequencer::create_controllable_track(int p_internal_track_id, bool p_disposable) {
 	for (int i = _tracks.size() - 1; i >= 0; i--) {
 		SiMMLTrack *track = _tracks[i];
-		if (!track->is_active()) {
+		if (!track->is_active() && !track->is_pending_disposal()) {
 			_initialize_track(track, p_internal_track_id, p_disposable);
 			return track;
 		}
@@ -416,6 +416,7 @@ bool SiMMLSequencer::prepare_compile(const Ref<MMLData> &p_data, String p_mml) {
 
 void SiMMLSequencer::prepare_process(const Ref<MMLData> &p_data, int p_sample_rate, int p_buffer_length) {
 	_free_all_tracks();
+	_tracks.reserve(_max_track_count);
 	_processed_sample_count = 0;
 	_bpm_change_enabled = true;
 
@@ -493,12 +494,11 @@ void SiMMLSequencer::process() {
 	_processed_sample_count += _sound_chip->get_buffer_length();
 
 	_is_sequence_finished = finished;
-	
-	// Safe point: retire tracks marked for disposal after all audio processing is complete
+
+	// Safe point: delete retired tracks that have finished sounding. No queued
+	// command can reach them any more.
 	for (int i = _tracks.size() - 1; i >= 0; --i) {
 		SiMMLTrack *track = _tracks[i];
-		ERR_FAIL_COND_MSG(track == nullptr, "SiMMLSequencer: Null track during cleanup (invariant violation).");
-		
 		if (track->is_pending_disposal() && track->is_finished()) {
 			_tracks.remove_at(i);
 			memdelete(track);
@@ -1840,8 +1840,6 @@ void SiMMLSequencer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_on_mml_portament", "event"),                  &SiMMLSequencer::_on_mml_portament);
 	ClassDB::bind_method(D_METHOD("_on_mml_driver_note_on", "event"),             &SiMMLSequencer::_on_mml_driver_note_on);
 	ClassDB::bind_method(D_METHOD("_on_mml_register_update", "event"),            &SiMMLSequencer::_on_mml_register_update);
-
-	// To be used as callables.
 	ClassDB::bind_method(D_METHOD("get_tracks_array"), &SiMMLSequencer::get_tracks_array);
 }
 

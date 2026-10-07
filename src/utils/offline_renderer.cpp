@@ -30,14 +30,15 @@ bool SiONOfflineRenderer::begin(SiONDriver *p_driver) {
 	ERR_FAIL_NULL_V_MSG(p_driver, false, "SiONOfflineRenderer: Driver is null.");
 	ERR_FAIL_COND_V_MSG(_active, false, "SiONOfflineRenderer: Already active. Call finish() first.");
 
+	ERR_FAIL_COND_V_MSG(p_driver->get_buffer_length() <= 0, false, "SiONOfflineRenderer: Driver buffer length is invalid.");
+
+	// The offline render becomes the driver's sole render owner; this also drops
+	// residual frames from the live callback, so the export starts on a block boundary.
+	if (!p_driver->begin_offline_render()) {
+		return false;
+	}
 	_driver = p_driver;
 	_buffer_length = _driver->get_buffer_length();
-	ERR_FAIL_COND_V_MSG(_buffer_length <= 0, false, "SiONOfflineRenderer: Driver buffer length is invalid.");
-
-	// Discard any residual frames left over from a previous runtime audio callback,
-	// so the export starts from a clean block boundary.
-	_driver->_residual_buffer_frame_count = 0;
-	_driver->_residual_frame_offset = 0;
 
 	// Pre-size scratch buffer for one block of stereo audio.
 	_scratch.resize(_buffer_length);
@@ -56,8 +57,8 @@ PackedFloat32Array SiONOfflineRenderer::render_block() {
 
 	// Use generate_audio() — the exact runtime audio path — so offline output is
 	// bit-identical to what the audio thread would have produced. generate_audio()
-	// drains the track + fx mailboxes internally.
-	_driver->generate_audio(_scratch.ptrw(), _buffer_length);
+	// drains the driver's command queue before the block.
+	_driver->render_offline_block(_scratch.ptrw(), _buffer_length);
 
 	int sample_count = _buffer_length * 2; // stereo interleaved
 	result.resize(sample_count);
@@ -87,7 +88,7 @@ PackedFloat32Array SiONOfflineRenderer::render_blocks(int p_block_count) {
 	int offset = 0;
 
 	for (int b = 0; b < p_block_count; ++b) {
-		_driver->generate_audio(_scratch.ptrw(), _buffer_length);
+		_driver->render_offline_block(_scratch.ptrw(), _buffer_length);
 
 		const AudioFrame *src = _scratch.ptr();
 		for (int i = 0; i < _buffer_length; ++i) {
@@ -108,6 +109,7 @@ void SiONOfflineRenderer::finish() {
 	}
 
 	_active = false;
+	_driver->end_offline_render();
 	_driver = nullptr;
 	_buffer_length = 0;
 	_total_frames_rendered = 0;

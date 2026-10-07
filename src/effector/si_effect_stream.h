@@ -44,6 +44,8 @@ class SiEffectStream {
 public:
 	Vector<Ref<SiEffectBase>> get_chain() const { return _chain; }
 	void set_chain(const Vector<Ref<SiEffectBase>> &p_effects) { _chain = p_effects; }
+	// Takes the prepared command storage, so later edits do not copy a queued chain.
+	void set_chain(Vector<Ref<SiEffectBase>> &&p_effects) { _chain = std::move(p_effects); }
 	void add_to_chain(const Ref<SiEffectBase> &p_effect) { _chain.push_back(p_effect); }
 	SiOPMStream *get_stream() const { return _stream; }
 	int get_effect_count() const { return _chain.size(); }

@@ -7,6 +7,7 @@
 #ifndef SIMML_SEQUENCER_H
 #define SIMML_SEQUENCER_H
 
+#include <godot_cpp/templates/local_vector.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/callable.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
@@ -40,7 +41,7 @@ class SiMMLSequencer : public MMLSequencer {
 	List<SiMMLTrack *> _free_tracks;
 
 	int _max_track_count = DEFAULT_MAX_TRACK_COUNT;
-	Vector<SiMMLTrack *> _tracks;
+	LocalVector<SiMMLTrack *> _tracks;
 	SiMMLTrack *_current_track = nullptr;
 
 	int _processed_sample_count = 0;
@@ -187,7 +188,6 @@ class SiMMLSequencer : public MMLSequencer {
 	void _reset_initial_operator_params();
 	void _reset_parser_settings();
 
-	// NEW: expose tracks to GDScript.
 	TypedArray<SiMMLTrack> get_tracks_array() const;
 
 protected:
@@ -204,9 +204,8 @@ public:
 	int get_max_track_count() const { return _max_track_count; }
 	void set_max_track_count(int p_value) { _max_track_count = p_value; }
 
-	Vector<SiMMLTrack *> get_tracks() const { return _tracks; }
-	// Audio-thread safe: returns const reference to avoid vector copy allocation
-	const Vector<SiMMLTrack *>& get_tracks_ref() const { return _tracks; }
+	// Render owner, or a quiescent caller.
+	const LocalVector<SiMMLTrack *> &get_tracks_ref() const { return _tracks; }
 	SiMMLTrack *get_current_track() const { return _current_track; }
 	void reset_all_tracks();
 
