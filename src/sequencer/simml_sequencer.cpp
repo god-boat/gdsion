@@ -1775,7 +1775,8 @@ void SiMMLSequencer::_reset_parser_settings() {
 	_parser_settings->max_volume = 512;
 	_parser_settings->default_volume = 256;
 	_parser_settings->max_fine_volume = 128;
-	_parser_settings->default_fine_volume = 64;
+	// Unity: every new or reset track starts at the app's default fader level.
+	_parser_settings->default_fine_volume = 128;
 }
 
 void SiMMLSequencer::_bind_methods() {

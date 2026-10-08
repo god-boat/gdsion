@@ -790,7 +790,7 @@ void SiOPMChannelBase::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) 
 		COPY_TL_TABLE(_velocity_table, p_prev->_velocity_table);
 		COPY_TL_TABLE(_expression_table, p_prev->_expression_table);
 	} else if (!p_prev) {
-		_volumes.write[0] = 0.5;
+		_volumes.write[0] = 1.0;
 		_streams.write[0] = nullptr;
 		for (int i = 1; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
 			_volumes.write[i] = 0;
