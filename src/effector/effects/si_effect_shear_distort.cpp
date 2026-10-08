@@ -6,6 +6,11 @@
 
 #include "si_effect_shear_distort.h"
 
+#include "dsp/fast_tanh.h"
+
+using sion::dsp::fast_tanh;
+using sion::dsp::HALFBAND_LIGHT;
+using sion::dsp::HALFBAND_STEEP;
 using sion::dsp::LfoShape;
 using sion::dsp::one_pole_coeff;
 
@@ -16,80 +21,6 @@ const double SiEffectShearDistort::ENV_RELEASE_HZ = 2.0; // ~80 ms release
 const double SiEffectShearDistort::ENV_FLOOR = 1e-6;
 const double SiEffectShearDistort::SHEAR_LFO_RATE_1 = 0.03;
 const double SiEffectShearDistort::SHEAR_LFO_RATE_2 = 0.04854101966249685; // rate1 * golden ratio
-
-// Two-path polyphase allpass halfband coefficients (classic public-domain
-// sets). "Steep" rejects ~69 dB with a 0.01*fs transition band and protects
-// the audible range at the 1x<->2x boundary. "Light" rejects ~70 dB with a
-// relaxed 0.1*fs transition, plenty for the 2x<->4x octave where the signal
-// only occupies the bottom quarter of the spectrum.
-static const double HALFBAND_STEEP_A[4] = { 0.07711507983241622, 0.4820706250610472, 0.7968204713315797, 0.9412514277740471 };
-static const double HALFBAND_STEEP_B[4] = { 0.2659685265210946, 0.6651041532634957, 0.8841015085506159, 0.9820054141886075 };
-static const double HALFBAND_LIGHT_A[2] = { 0.07986642623635751, 0.5453536510711322 };
-static const double HALFBAND_LIGHT_B[2] = { 0.28382934487410993, 0.8344118914807379 };
-
-// --- AllpassSection ---------------------------------------------------------------
-
-double SiEffectShearDistort::AllpassSection::process(double p_input) {
-	double y = x1 + c * (p_input - y1);
-	x1 = p_input;
-	y1 = y;
-	return y;
-}
-
-void SiEffectShearDistort::AllpassSection::clear() {
-	x1 = 0.0;
-	y1 = 0.0;
-}
-
-void SiEffectShearDistort::AllpassSection::flush_denormals() {
-	if (Math::abs(x1) < 1e-15) {
-		x1 = 0.0;
-	}
-	if (Math::abs(y1) < 1e-15) {
-		y1 = 0.0;
-	}
-}
-
-// --- HalfbandStage ----------------------------------------------------------------
-
-void SiEffectShearDistort::HalfbandStage::setup(const double *p_coeffs_a, const double *p_coeffs_b, int p_count) {
-	section_count = MIN(p_count, MAX_SECTIONS);
-	for (int i = 0; i < section_count; i++) {
-		path_a[i].c = p_coeffs_a[i];
-		path_b[i].c = p_coeffs_b[i];
-	}
-}
-
-double SiEffectShearDistort::HalfbandStage::_run_path(AllpassSection *p_path, double p_input) {
-	double value = p_input;
-	for (int i = 0; i < section_count; i++) {
-		value = p_path[i].process(value);
-	}
-	return value;
-}
-
-void SiEffectShearDistort::HalfbandStage::upsample(double p_input, double &r_out0, double &r_out1) {
-	r_out0 = _run_path(path_a, p_input);
-	r_out1 = _run_path(path_b, p_input);
-}
-
-double SiEffectShearDistort::HalfbandStage::downsample(double p_input0, double p_input1) {
-	return 0.5 * (_run_path(path_a, p_input1) + _run_path(path_b, p_input0));
-}
-
-void SiEffectShearDistort::HalfbandStage::clear() {
-	for (int i = 0; i < section_count; i++) {
-		path_a[i].clear();
-		path_b[i].clear();
-	}
-}
-
-void SiEffectShearDistort::HalfbandStage::flush_denormals() {
-	for (int i = 0; i < section_count; i++) {
-		path_a[i].flush_denormals();
-		path_b[i].flush_denormals();
-	}
-}
 
 // --- ToneSVF ----------------------------------------------------------------------
 
@@ -127,13 +58,6 @@ void SiEffectShearDistort::SmoothedParam::flush_denormals() {
 
 // --- ChannelState ---------------------------------------------------------------
 
-void SiEffectShearDistort::ChannelState::setup() {
-	up_steep.setup(HALFBAND_STEEP_A, HALFBAND_STEEP_B, 4);
-	down_steep.setup(HALFBAND_STEEP_A, HALFBAND_STEEP_B, 4);
-	up_light.setup(HALFBAND_LIGHT_A, HALFBAND_LIGHT_B, 2);
-	down_light.setup(HALFBAND_LIGHT_A, HALFBAND_LIGHT_B, 2);
-}
-
 void SiEffectShearDistort::ChannelState::clear() {
 	body_lpf = {};
 	tilt_pre_lpf = {};
@@ -141,18 +65,14 @@ void SiEffectShearDistort::ChannelState::clear() {
 	dc = {};
 	env = 0.0;
 	tone_svf.clear();
-	up_steep.clear();
-	up_light.clear();
-	down_light.clear();
-	down_steep.clear();
+	up_steep = {};
+	up_light = {};
+	down_light = {};
+	down_steep = {};
 }
 
 void SiEffectShearDistort::ChannelState::flush_denormals() {
 	tone_svf.flush_denormals();
-	up_steep.flush_denormals();
-	up_light.flush_denormals();
-	down_light.flush_denormals();
-	down_steep.flush_denormals();
 }
 
 // --- Waveshaper -----------------------------------------------------------------
@@ -165,18 +85,6 @@ void SiEffectShearDistort::ChannelState::flush_denormals() {
 //
 // All curves are C1-continuous (no slope discontinuities), which keeps the
 // harmonic series rolling off fast enough for 4x oversampling to handle.
-
-double SiEffectShearDistort::_fast_tanh(double p_x) {
-	// Pade approximation of tanh; exact ±1 with zero slope at |x| = 3.
-	if (p_x >= 3.0) {
-		return 1.0;
-	}
-	if (p_x <= -3.0) {
-		return -1.0;
-	}
-	double x2 = p_x * p_x;
-	return p_x * (27.0 + x2) / (27.0 + 9.0 * x2);
-}
 
 double SiEffectShearDistort::_stop_tube(double p_u) {
 	// The square term adds a 2nd harmonic directly and moves the zero crossing,
@@ -224,7 +132,7 @@ double SiEffectShearDistort::_shape_sample(double p_u, double p_gain, double p_b
 
 	// Blending before the saturator makes in-between positions new waveforms,
 	// not a mix of two finished outputs.
-	return _fast_tanh(p_gain * (g_a + (g_b - g_a) * t));
+	return fast_tanh(p_gain * (g_a + (g_b - g_a) * t));
 }
 
 // --- Internal parameter updates -------------------------------------------------
@@ -349,19 +257,19 @@ double SiEffectShearDistort::_process_channel(ChannelState &p_ch, double p_input
 
 	// 4x oversampled waveshaping.
 	double u0, u1;
-	p_ch.up_steep.upsample(into, u0, u1);
+	p_ch.up_steep.upsample(HALFBAND_STEEP, into, u0, u1);
 	double s0, s1, s2, s3;
-	p_ch.up_light.upsample(u0, s0, s1);
-	p_ch.up_light.upsample(u1, s2, s3);
+	p_ch.up_light.upsample(HALFBAND_LIGHT, u0, s0, s1);
+	p_ch.up_light.upsample(HALFBAND_LIGHT, u1, s2, s3);
 
 	s0 = _shape_sample(s0 * inv_env, gain, p_bias, p_shape);
 	s1 = _shape_sample(s1 * inv_env, gain, p_bias, p_shape);
 	s2 = _shape_sample(s2 * inv_env, gain, p_bias, p_shape);
 	s3 = _shape_sample(s3 * inv_env, gain, p_bias, p_shape);
 
-	double d0 = p_ch.down_light.downsample(s0, s1);
-	double d1 = p_ch.down_light.downsample(s2, s3);
-	double dist = p_ch.down_steep.downsample(d0, d1);
+	double d0 = p_ch.down_light.downsample(HALFBAND_LIGHT, s0, s1);
+	double d1 = p_ch.down_light.downsample(HALFBAND_LIGHT, s2, s3);
+	double dist = p_ch.down_steep.downsample(HALFBAND_STEEP, d0, d1);
 
 	dist *= p_makeup;
 
@@ -375,7 +283,7 @@ double SiEffectShearDistort::_process_channel(ChannelState &p_ch, double p_input
 	dist = p_ch.tone_svf.process_lowpass(dist, p_tone_g);
 
 	// Protected lows pass near-unity with a touch of glue saturation.
-	double low_out = _fast_tanh(kept_low * 1.25) * 0.8;
+	double low_out = fast_tanh(kept_low * 1.25) * 0.8;
 
 	return dist + low_out;
 }
@@ -512,7 +420,5 @@ void SiEffectShearDistort::_bind_methods() {
 
 SiEffectShearDistort::SiEffectShearDistort() :
 		SiEffectBase() {
-	_left.setup();
-	_right.setup();
 	reset();
 }

@@ -19,6 +19,7 @@
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/channels/siopm_channel_strata.h"
 #include "chip/channels/siopm_channel_monolith.h"
+#include "chip/channels/siopm_channel_iron.h"
 #include "chip/channels/siopm_channel_fm.h"
 #include "chip/channels/siopm_channel_guitar6.h"
 #include "chip/channels/siopm_channel_ks.h"
@@ -118,6 +119,7 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 		ClassDB::register_internal_class<SiOPMChannelSampler>();
 		ClassDB::register_internal_class<SiOPMChannelStream>();
 		ClassDB::register_internal_class<SiOPMChannelMonolith>();
+		ClassDB::register_internal_class<SiOPMChannelIron>();
 		ClassDB::register_internal_class<SiOPMOperator>();
 
 		ClassDB::register_abstract_class<SiOPMChannelParams>();

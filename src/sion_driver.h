@@ -562,6 +562,9 @@ private:
 		int monolith_lens = 0;
 		int monolith_glide = 0;
 		int monolith_sub_octave = 2;
+		// Iron distorted electric guitar grouped params
+		bool has_iron = false;
+		IronParams iron;
 		// Analog-Like (AL) live params
 		bool has_al_connection = false;
 		int al_connection = 0;
@@ -1049,6 +1052,13 @@ public:
 			int p_motion_target, int p_motion_amount, int p_motion_rate,
 			int p_width, int p_low_lock, int p_lens, int p_glide,
 			int p_sub_octave,
+			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	// Iron distorted electric guitar mailbox
+	void mailbox_set_iron_params(int p_track_id,
+			int p_voicing, int p_pick_attack, int p_pick_position, int p_palm_mute, int p_mute_velocity,
+			int p_sustain_ms, int p_release_ms, int p_stiffness, int p_pickup_position,
+			int p_gain, int p_tight_hz, int p_bass_db, int p_mid_db, int p_treble_db,
+			int p_cabinet, int p_mic, int p_humanize, int p_timing_ms,
 			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// Guitar6 physical model mailbox
 	void mailbox_set_guitar6(int p_track_id,

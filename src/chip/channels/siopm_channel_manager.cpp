@@ -16,6 +16,7 @@
 #include "chip/channels/siopm_channel_guitar6.h"
 #include "chip/channels/siopm_channel_stream.h"
 #include "chip/channels/siopm_channel_monolith.h"
+#include "chip/channels/siopm_channel_iron.h"
 #include "chip/siopm_sound_chip.h"
 
 using namespace godot;
@@ -34,6 +35,7 @@ void SiOPMChannelManager::initialize(SiOPMSoundChip *p_chip) {
 	_channel_managers[CHANNEL_GUITAR6] = memnew(SiOPMChannelManager(CHANNEL_GUITAR6));
 	_channel_managers[CHANNEL_STRATA]    = memnew(SiOPMChannelManager(CHANNEL_STRATA));
 	_channel_managers[CHANNEL_MONOLITH] = memnew(SiOPMChannelManager(CHANNEL_MONOLITH));
+	_channel_managers[CHANNEL_IRON] = memnew(SiOPMChannelManager(CHANNEL_IRON));
 }
 
 void SiOPMChannelManager::finalize() {
@@ -47,6 +49,7 @@ void SiOPMChannelManager::finalize() {
 	memdelete(_channel_managers[CHANNEL_GUITAR6]);
 	memdelete(_channel_managers[CHANNEL_STRATA]);
 	memdelete(_channel_managers[CHANNEL_MONOLITH]);
+	memdelete(_channel_managers[CHANNEL_IRON]);
 	_channel_managers.clear();
 }
 
@@ -107,6 +110,9 @@ SiOPMChannelBase *SiOPMChannelManager::_create_channel(SiOPMChannelBase *p_prev,
 		} break;
 		case CHANNEL_MONOLITH: {
 			new_channel = memnew(SiOPMChannelMonolith(_sound_chip));
+		} break;
+		case CHANNEL_IRON: {
+			new_channel = memnew(SiOPMChannelIron(_sound_chip));
 		} break;
 
 		default: break; // Silences enum warnings.

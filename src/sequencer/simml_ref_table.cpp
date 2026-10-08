@@ -360,6 +360,14 @@ SiMMLRefTable::SiMMLRefTable() {
 			cs->set_suitable_for_fm_voice(false);
 		}
 
+		// Iron distorted electric guitar settings.
+		channel_settings_map[SiONModuleType::MODULE_IRON] = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_IRON, SiONPulseGeneratorType::PULSE_SINE, 1, 1, 1));
+		{
+			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_IRON];
+			cs->set_channel_type(SiOPMChannelManager::CHANNEL_IRON);
+			cs->set_suitable_for_fm_voice(false);
+		}
+
 		// Stream settings.
 		{
 			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_STREAM];

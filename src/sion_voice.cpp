@@ -168,6 +168,17 @@ String SiONVoice::get_mml(int p_index, SiONChipType p_chip_type, bool p_append_p
 			data += "}";
 			mml = "#MO@" + itos(p_index) + data;
 		} break;
+		case SiONChipType::CHIP_IRON: {
+			String data = "{";
+			for (int i = 0; i < IronParams::SLOT_COUNT; i++) {
+				if (i > 0) {
+					data += ",";
+				}
+				data += itos(iron.values[i]);
+			}
+			data += "}";
+			mml = "#IR@" + itos(p_index) + data;
+		} break;
 		default:
 			ERR_FAIL_V_MSG("", vformat("SiONVoice: Chip type %d is unsupported for MML strings.", type));
 	}
@@ -261,6 +272,13 @@ int SiONVoice::set_by_mml(String p_mml) {
 				parts.size() > 15 ? parts[15].strip_edges().to_int() : 100,
 				parts.size() > 16 ? parts[16].strip_edges().to_int() : 0,
 				parts.size() > 17 ? parts[17].strip_edges().to_int() : 0);
+	} else if (command == "#IR@") {
+		PackedStringArray parts = data.split(",");
+		IronParams params;
+		for (int i = 0; i < MIN((int)parts.size(), (int)IronParams::SLOT_COUNT); i++) {
+			params.values[i] = parts[i].strip_edges().to_int();
+		}
+		set_iron_params(params);
 	} else {
 		return -1;
 	}
@@ -465,6 +483,23 @@ void SiONVoice::set_monolith(
 	monolith_sub_octave = p_sub_octave;
 }
 
+void SiONVoice::set_iron(int p_voicing, int p_pick_attack, int p_pick_position, int p_palm_mute, int p_mute_velocity,
+		int p_sustain_ms, int p_release_ms, int p_stiffness, int p_pickup_position,
+		int p_gain, int p_tight_hz, int p_bass_db, int p_mid_db, int p_treble_db,
+		int p_cabinet, int p_mic, int p_humanize, int p_timing_ms) {
+	set_iron_params({ { p_voicing, p_pick_attack, p_pick_position, p_palm_mute, p_mute_velocity,
+			p_sustain_ms, p_release_ms, p_stiffness, p_pickup_position,
+			p_gain, p_tight_hz, p_bass_db, p_mid_db, p_treble_db,
+			p_cabinet, p_mic, p_humanize, p_timing_ms } });
+}
+
+void SiONVoice::set_iron_params(const IronParams &p_params) {
+	module_type = SiONModuleType::MODULE_IRON;
+	channel_num = 0;
+	chip_type = SiONChipType::CHIP_IRON;
+	iron = p_params;
+}
+
 void SiONVoice::set_analog_like(int p_connection_type, int p_wave_shape1, int p_wave_shape2, int p_balance, int p_pitch_difference) {
 	channel_params->set_operator_count(2);
 	channel_params->set_analog_like(true);
@@ -649,6 +684,18 @@ void SiONVoice::_bind_methods() {
 			DEFVAL(0), DEFVAL(0), DEFVAL(40),
 			DEFVAL(0), DEFVAL(100), DEFVAL(0), DEFVAL(0),
 			DEFVAL(0));
+	const IronParams iron_defaults;
+	const int *d = iron_defaults.values;
+	ClassDB::bind_method(D_METHOD("set_iron",
+			"voicing", "pick_attack", "pick_position", "palm_mute", "mute_velocity",
+			"sustain_ms", "release_ms", "stiffness", "pickup_position",
+			"gain", "tight_hz", "bass_db", "mid_db", "treble_db",
+			"cabinet", "mic", "humanize", "timing_ms"),
+			&SiONVoice::set_iron,
+			DEFVAL(d[0]), DEFVAL(d[1]), DEFVAL(d[2]), DEFVAL(d[3]), DEFVAL(d[4]),
+			DEFVAL(d[5]), DEFVAL(d[6]), DEFVAL(d[7]), DEFVAL(d[8]),
+			DEFVAL(d[9]), DEFVAL(d[10]), DEFVAL(d[11]), DEFVAL(d[12]), DEFVAL(d[13]),
+			DEFVAL(d[14]), DEFVAL(d[15]), DEFVAL(d[16]), DEFVAL(d[17]));
 	ClassDB::bind_method(D_METHOD("set_analog_like", "connection_type", "wave_shape1", "wave_shape2", "balance", "pitch_difference"), &SiONVoice::set_analog_like, DEFVAL(1), DEFVAL(1), DEFVAL(0), DEFVAL(0));
 
 	ClassDB::bind_method(D_METHOD("set_envelope", "attack_rate", "decay_rate", "sustain_rate", "release_rate", "sustain_level", "total_level"), &SiONVoice::set_envelope);

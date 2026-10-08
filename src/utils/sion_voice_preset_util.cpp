@@ -939,6 +939,9 @@ void SiONVoicePresetUtil::_generate_template_voices() {
 	// Monolith: bass engine with default sub sine + saw oscillators
 	_create_monolith_voice("template.monolith", "Init Monolith");
 
+	// Iron: heavy electric guitar, single-note voicing into a modern 4x12.
+	_create_iron_voice("template.iron", "Init Iron");
+
 	// SCC (wave table): wave shape 0, sustained tone.
 	// Requires INCLUDE_WAVETABLE to have run first (populates _wave_tables).
 	if (!_wave_tables.is_empty()) {
@@ -1022,6 +1025,13 @@ void SiONVoicePresetUtil::_create_monolith_voice(const String &p_key, const Stri
 			p_drive_mode, p_grind,
 			p_motion_target, p_motion_amount, p_motion_rate,
 			p_width, p_low_lock, p_lens, p_glide);
+	voice->set_name(p_name);
+	_register_voice(p_key, voice);
+}
+
+void SiONVoicePresetUtil::_create_iron_voice(const String &p_key, const String &p_name, const IronParams &p_params) {
+	Ref<SiONVoice> voice = memnew(SiONVoice);
+	voice->set_iron_params(p_params);
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
 }

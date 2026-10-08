@@ -8,6 +8,7 @@
 #define SIMML_VOICE_H
 
 #include <godot_cpp/classes/ref_counted.hpp>
+#include "chip/channels/siopm_iron_params.h"
 #include "chip/siopm_channel_params.h"
 #include "chip/wave/siopm_wave_base.h"
 #include "sequencer/simml_envelope_table.h"
@@ -153,6 +154,9 @@ protected:
 	int monolith_lens = 0;
 	int monolith_glide = 0;
 	int monolith_sub_octave = 2;
+
+	// Iron distorted electric guitar params.
+	IronParams iron;
 
 	void set_note_on_pitch_envelope(const Ref<SiMMLEnvelopeTable> &p_envelope, int p_step = 1) {
 		note_on_pitch_envelope = p_envelope;

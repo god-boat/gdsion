@@ -54,6 +54,7 @@
 #include "chip/channels/siopm_channel_stream.h"
 #include "chip/channels/siopm_channel_strata.h"
 #include "chip/channels/siopm_channel_monolith.h"
+#include "chip/channels/siopm_channel_iron.h"
 #include "chip/channels/siopm_channel_ks.h"
 #include "chip/channels/siopm_channel_guitar6.h"
 #include "utils/fader_util.h"
@@ -1657,6 +1658,14 @@ void SiONDriver::_bind_methods() {
 			"sub_octave",
 			"entity_scope_id", "slot_scope_id"),
 			&SiONDriver::mailbox_set_monolith_params, DEFVAL(-1), DEFVAL(-1));
+	// Iron distorted electric guitar
+	ClassDB::bind_method(D_METHOD("mailbox_set_iron_params", "track_id",
+			"voicing", "pick_attack", "pick_position", "palm_mute", "mute_velocity",
+			"sustain_ms", "release_ms", "stiffness", "pickup_position",
+			"gain", "tight_hz", "bass_db", "mid_db", "treble_db",
+			"cabinet", "mic", "humanize", "timing_ms",
+			"entity_scope_id", "slot_scope_id"),
+			&SiONDriver::mailbox_set_iron_params, DEFVAL(-1), DEFVAL(-1));
 	// Guitar6 physical model
 	ClassDB::bind_method(D_METHOD("mailbox_set_guitar6", "track_id",
 			"character_seed", "character_variation",
@@ -1849,6 +1858,7 @@ void SiONDriver::_bind_methods() {
 	BIND_ENUM_CONSTANT(CHIP_GUITAR6);
 	BIND_ENUM_CONSTANT(CHIP_STRATA);
 	BIND_ENUM_CONSTANT(CHIP_MONOLITH);
+	BIND_ENUM_CONSTANT(CHIP_IRON);
 	BIND_ENUM_CONSTANT(CHIP_MAX);
 
 	BIND_ENUM_CONSTANT(MODULE_PSG);
@@ -1876,6 +1886,7 @@ void SiONDriver::_bind_methods() {
 	BIND_ENUM_CONSTANT(MODULE_GUITAR6);
 	BIND_ENUM_CONSTANT(MODULE_STRATA);
 	BIND_ENUM_CONSTANT(MODULE_MONOLITH);
+	BIND_ENUM_CONSTANT(MODULE_IRON);
 	BIND_ENUM_CONSTANT(MODULE_MAX);
 
 	BIND_ENUM_CONSTANT(PITCH_TABLE_OPM);
@@ -2990,6 +3001,24 @@ void SiONDriver::mailbox_set_monolith_params(int p_track_id,
 	_push_command(u);
 }
 
+void SiONDriver::mailbox_set_iron_params(int p_track_id,
+		int p_voicing, int p_pick_attack, int p_pick_position, int p_palm_mute, int p_mute_velocity,
+		int p_sustain_ms, int p_release_ms, int p_stiffness, int p_pickup_position,
+		int p_gain, int p_tight_hz, int p_bass_db, int p_mid_db, int p_treble_db,
+		int p_cabinet, int p_mic, int p_humanize, int p_timing_ms,
+		int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+	_DriverCommand u;
+	u.track_id = p_track_id;
+	u.entity_scope_id = p_entity_scope_id;
+	u.slot_scope_id = p_slot_scope_id;
+	u.has_iron = true;
+	u.iron = { { p_voicing, p_pick_attack, p_pick_position, p_palm_mute, p_mute_velocity,
+			p_sustain_ms, p_release_ms, p_stiffness, p_pickup_position,
+			p_gain, p_tight_hz, p_bass_db, p_mid_db, p_treble_db,
+			p_cabinet, p_mic, p_humanize, p_timing_ms } };
+	_push_command(u);
+}
+
 void SiONDriver::mailbox_set_guitar6(int p_track_id,
 		double p_character_seed, double p_character_variation,
 		double p_string_damp, double p_string_damp_variation,
@@ -3765,6 +3794,13 @@ void SiONDriver::_apply_track_update(const _DriverCommand &u) {
                         u.monolith_motion_target, u.monolith_motion_amount, u.monolith_motion_rate,
                         u.monolith_width, u.monolith_low_lock, u.monolith_lens, u.monolith_glide,
                         u.monolith_sub_octave);
+            }
+        }
+        // Iron distorted electric guitar updates
+        if (u.has_iron) {
+            SiOPMChannelIron *iron_ch = Object::cast_to<SiOPMChannelIron>(ch);
+            if (iron_ch) {
+                iron_ch->set_iron_params(u.iron);
             }
         }
         // FM operator updates and Analog-Like live params

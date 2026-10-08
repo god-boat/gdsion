@@ -7,8 +7,10 @@
 #include "chip/siopm_ref_table.h"
 #include "chip/siopm_sound_chip.h"
 #include "chip/siopm_stream.h"
+#include "dsp/fast_tanh.h"
 #include "templates/singly_linked_list.h"
 
+using sion::dsp::fast_tanh;
 using sion::dsp::LfoShape;
 using sion::dsp::one_pole_coeff;
 
@@ -29,14 +31,6 @@ static constexpr double MOTION_RES_Q_MAX = 4.5;         // capped below self-osc
 
 // Pitch drop: max envelope depth in pitch units (768 = 1 octave).
 static constexpr double PITCH_DROP_MAX_UNITS = 768.0;
-
-// Fast tanh approximation (Pade 3/3).
-static inline double fast_tanh(double x) {
-	if (x < -3.0) return -1.0;
-	if (x > 3.0) return 1.0;
-	double x2 = x * x;
-	return x * (27.0 + x2) / (27.0 + 9.0 * x2);
-}
 
 // PolyBLEP residual for anti-aliased discontinuities.
 // p_t: normalized phase [0,1), p_dt: normalized frequency (phase_inc / 2^32).

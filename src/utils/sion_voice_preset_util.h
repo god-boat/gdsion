@@ -14,6 +14,7 @@
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
+#include "chip/channels/siopm_iron_params.h"
 
 using namespace godot;
 
@@ -73,6 +74,7 @@ private:
 			int p_drive_mode = 0, int p_grind = 0,
 			int p_motion_target = 0, int p_motion_amount = 0, int p_motion_rate = 40,
 			int p_width = 0, int p_low_lock = 100, int p_lens = 0, int p_glide = 0);
+	void _create_iron_voice(const String &p_key, const String &p_name, const IronParams &p_params = IronParams());
 	void _create_single_drum_voice(const String &p_key, const String &p_name, int p_wave_shape, int p_attack_rate, int p_decay_rate, int p_sustain_rate, int p_release_rate, int p_sustain_level, int p_total_level, int p_release_sweep = 0, double p_fine_multiple = 1);
 
 	void _begin_category(const String &p_key);

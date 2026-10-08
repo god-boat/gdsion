@@ -7,6 +7,7 @@
 #ifndef SI_EFFECT_SHEAR_DISTORT_H
 #define SI_EFFECT_SHEAR_DISTORT_H
 
+#include "dsp/halfband.h"
 #include "dsp/lfo.h"
 #include "dsp/one_pole.h"
 #include "effector/si_effect_base.h"
@@ -60,33 +61,6 @@ private:
 	static const double SHEAR_LFO_RATE_1;
 	static const double SHEAR_LFO_RATE_2;
 
-	// First-order allpass section of a two-path polyphase halfband filter.
-	struct AllpassSection {
-		double c = 0.0;
-		double x1 = 0.0;
-		double y1 = 0.0;
-
-		double process(double p_input);
-		void clear();
-		void flush_denormals();
-	};
-
-	// One 2x resampling stage. Upsample: 1 in -> 2 out; downsample: 2 in -> 1 out.
-	struct HalfbandStage {
-		static const int MAX_SECTIONS = 4;
-
-		AllpassSection path_a[MAX_SECTIONS];
-		AllpassSection path_b[MAX_SECTIONS];
-		int section_count = 0;
-
-		void setup(const double *p_coeffs_a, const double *p_coeffs_b, int p_count);
-		double _run_path(AllpassSection *p_path, double p_input);
-		void upsample(double p_input, double &r_out0, double &r_out1);
-		double downsample(double p_input0, double p_input1);
-		void clear();
-		void flush_denormals();
-	};
-
 	// Zavalishin TPT state-variable lowpass; stable under cutoff modulation,
 	// so the smoothed tone cutoff can move every sample.
 	struct ToneSVF {
@@ -118,12 +92,11 @@ private:
 		sion::dsp::OnePole dc;
 		double env = 0.0;
 		ToneSVF tone_svf;
-		HalfbandStage up_steep;
-		HalfbandStage up_light;
-		HalfbandStage down_light;
-		HalfbandStage down_steep;
+		sion::dsp::Halfband up_steep;
+		sion::dsp::Halfband up_light;
+		sion::dsp::Halfband down_light;
+		sion::dsp::Halfband down_steep;
 
-		void setup();
 		void clear();
 		void flush_denormals();
 	};
@@ -163,7 +136,6 @@ private:
 	void _update_filters();
 	void _snap_smoothers();
 
-	static double _fast_tanh(double p_x);
 	static double _stop_tube(double p_u);
 	static double _stop_fold(double p_u);
 	static double _stop_octave(double p_u);
