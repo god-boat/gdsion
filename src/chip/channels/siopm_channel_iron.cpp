@@ -37,6 +37,7 @@ static constexpr double BLOOM_SECONDS = 0.06;
 static constexpr double STRUM_SECONDS = 0.0008;
 
 static constexpr double PICK_SCRAPE = 0.12;
+static constexpr double STRING_REFERENCE_HZ = 82.4068892282175; // Open low E (MIDI 40).
 static constexpr double PICK_SOFT_HZ = 900.0;
 static constexpr double PICK_HARD_RATIO = 14.0;
 static constexpr double CLICK_SECONDS = 0.0007;
@@ -120,9 +121,12 @@ static double allpass_phase_delay(double p_coeff, double p_w) {
 	return -phase / p_w;
 }
 
-// Half of a round trip of the picked shape: up to the pick point, down to the far end.
-static double pick_triangle(double p_x, double p_position) {
-	return p_x < p_position ? p_x / p_position : (1.0 - p_x) / (1.0 - p_position);
+// The derivative of the mirrored pluck displacement, in velocity-wave units.
+// Normalize its slope jump to one so pick strength sets the velocity level;
+// moving the pick changes the spectrum without overdriving the clean amp.
+static double pick_velocity(double p_phase, double p_position) {
+	const double x = p_phase < 0.5 ? 2.0 * p_phase : 2.0 - 2.0 * p_phase;
+	return x < p_position ? 1.0 - p_position : -p_position;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,10 +169,13 @@ void SiOPMChannelIron::_tune_string(GuitarString &r_string) {
 	// sqrt(decay) lets DC die within twice the T60, so a high note's loop never parks a DC residue
 	// that keeps the channel from idling. Where the cutoff is darker than that, brighten it.
 	const double decay = std::pow(0.001, r_string.period / (t60 * _sample_rate));
-	double lowpass_coeff = one_pole_coeff(cutoff, _sample_rate);
-	if (one_pole_magnitude(lowpass_coeff, w0) < std::sqrt(decay)) {
-		lowpass_coeff = one_pole_coeff_for_magnitude(std::sqrt(decay), w0);
-	}
+	// Loss is distributed along a string: a shorter round trip must lose less.
+	// Match the low-E loop's loss per second at corresponding partials rather
+	// than reapplying a fixed-Hz filter more times per second as pitch rises.
+	const double reference_period = _sample_rate / STRING_REFERENCE_HZ;
+	const double reference_magnitude = one_pole_magnitude(one_pole_coeff(cutoff, _sample_rate), Math_TAU / reference_period);
+	const double lowpass_magnitude = MAX(std::pow(reference_magnitude, r_string.period / reference_period), std::sqrt(decay));
+	const double lowpass_coeff = one_pole_coeff_for_magnitude(lowpass_magnitude, w0);
 	r_string.loop_lowpass_coeff_target = lowpass_coeff;
 	r_string.loop_gain_target = decay / one_pole_magnitude(lowpass_coeff, w0);
 
@@ -202,8 +209,9 @@ void SiOPMChannelIron::_pluck(GuitarString &r_string) {
 	}
 	r_string.bloom_cents = pick.bloom_cents;
 
-	// One period of the picked shape fills the stretch both taps read next: a bipolar
-	// triangle with its apex at the pick, the return trip mirroring the outbound one.
+	// A magnetic pickup senses velocity, so seed the waveguide with the derivative
+	// of the mirrored triangular displacement. Differentiation commutes with the
+	// linear string loop; the scrape stays in velocity units as well.
 	sion::dsp::FractionalDelay &delay = r_string.delay;
 	delay.clear();
 	double *buffer = delay.buffer.data();
@@ -214,21 +222,22 @@ void SiOPMChannelIron::_pluck(GuitarString &r_string) {
 	for (int i = 0; i < length; i++) {
 		double phase = (i - length + r_string.read_delay) / r_string.period;
 		phase -= std::floor(phase);
-		const double shape = phase < 0.5 ? pick_triangle(2.0 * phase, pick.position) : -pick_triangle(2.0 - 2.0 * phase, pick.position);
+		const double shape = pick_velocity(phase, pick.position);
 		buffer[(start + i) & mask] = shape + scrape * _random();
 	}
 
-	// A softer pick rounds the corners. Two passes start the lowpass in its periodic steady state.
+	// A softer pick rounds the corners. Warm the filter on the original excitation
+	// before writing its output; filtering the first pass again doubles the damping.
 	const double rounding_coeff = one_pole_coeff(PICK_SOFT_HZ * std::pow(PICK_HARD_RATIO, pick.hardness), _sample_rate);
 	sion::dsp::OnePole rounding;
+	for (int i = 0; i < length; i++) {
+		rounding.lowpass(rounding_coeff, buffer[(start + i) & mask]);
+	}
 	double sum = 0.0;
-	for (int pass = 0; pass < 2; pass++) {
-		sum = 0.0;
-		for (int i = 0; i < length; i++) {
-			double &sample = buffer[(start + i) & mask];
-			sample = rounding.lowpass(rounding_coeff, sample);
-			sum += sample;
-		}
+	for (int i = 0; i < length; i++) {
+		double &sample = buffer[(start + i) & mask];
+		sample = rounding.lowpass(rounding_coeff, sample);
+		sum += sample;
 	}
 	const double mean = sum / length;
 	const double amplitude = 0.5 * (0.35 + 0.65 * pick.velocity) * pick.level;
@@ -255,9 +264,9 @@ double SiOPMChannelIron::_tick_string(GuitarString &r_string) {
 	// A hard pick stretches the string sharp; the bloom shortens the period by 2^(-cents/1200)
 	// to first order, within 0.2 cents at full bloom.
 	const double read_delay = r_string.read_delay * (1.0 - r_string.bloom_cents * LN2_PER_CENT);
-	const double bridge = r_string.delay.read(read_delay);
+	const double bridge = r_string.delay.read_cubic(read_delay);
 	// The pickup hears the wave minus its reflection: a comb notching the harmonics its position nodes.
-	double pickup = bridge - r_string.delay.read(read_delay + r_string.pickup_delay);
+	double pickup = bridge - r_string.delay.read_cubic(read_delay + r_string.pickup_delay);
 
 	double loop = r_string.loop_lowpass.lowpass(r_string.loop_lowpass_coeff, bridge);
 	const double allpass_coeff = r_string.allpass_coeff;

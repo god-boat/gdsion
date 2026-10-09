@@ -13,7 +13,7 @@
 
 namespace sion::dsp {
 
-// Delay line with linearly interpolated reads. The length is a power of two, so
+// Delay line with interpolated reads. The length is a power of two, so
 // wrapping is a mask. prepare() allocates, so call it off the audio thread.
 struct FractionalDelay {
 	std::vector<double> buffer;
@@ -37,6 +37,20 @@ struct FractionalDelay {
 		int index = (int)position;
 		double a = buffer[index & mask];
 		return a + (buffer[(index + 1) & mask] - a) * (position - (double)index);
+	}
+
+	// Four-point Lagrange interpolation for feedback loops that must retain their
+	// upper harmonics. Needs one extra sample on either side: delays from 2 to mask - 1.
+	inline double read_cubic(double p_delay_samples) const {
+		double position = (double)(write_index + mask + 1) - p_delay_samples;
+		int index = (int)position;
+		double fraction = position - (double)index;
+		double a = buffer[(index - 1) & mask];
+		double b = buffer[index & mask];
+		double c = buffer[(index + 1) & mask];
+		double d = buffer[(index + 2) & mask];
+		return b + fraction * ((c - b) - (1.0 - fraction) / 6.0 *
+				((2.0 - fraction) * (a - 2.0 * b + c) + (1.0 + fraction) * (b - 2.0 * c + d)));
 	}
 
 	inline void write(double p_sample) {
