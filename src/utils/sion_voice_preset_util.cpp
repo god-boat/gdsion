@@ -942,6 +942,9 @@ void SiONVoicePresetUtil::_generate_template_voices() {
 	// Iron: heavy electric guitar, single-note voicing into a modern 4x12.
 	_create_iron_voice("template.iron", "Init Iron");
 
+	// Talus: physical-model percussion, a struck membrane at the default tuning.
+	_create_talus_voice("template.talus", "Init Talus");
+
 	// SCC (wave table): wave shape 0, sustained tone.
 	// Requires INCLUDE_WAVETABLE to have run first (populates _wave_tables).
 	if (!_wave_tables.is_empty()) {
@@ -1032,6 +1035,13 @@ void SiONVoicePresetUtil::_create_monolith_voice(const String &p_key, const Stri
 void SiONVoicePresetUtil::_create_iron_voice(const String &p_key, const String &p_name, const IronParams &p_params) {
 	Ref<SiONVoice> voice = memnew(SiONVoice);
 	voice->set_iron_params(p_params);
+	voice->set_name(p_name);
+	_register_voice(p_key, voice);
+}
+
+void SiONVoicePresetUtil::_create_talus_voice(const String &p_key, const String &p_name, const TalusParams &p_params) {
+	Ref<SiONVoice> voice = memnew(SiONVoice);
+	voice->set_talus_params(p_params);
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
 }

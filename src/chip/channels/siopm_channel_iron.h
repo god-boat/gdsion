@@ -4,6 +4,7 @@
 #include <cstdint>
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/channels/siopm_iron_params.h"
+#include "dsp/allpass.h"
 #include "dsp/biquad.h"
 #include "dsp/fractional_delay.h"
 #include "dsp/halfband.h"
@@ -52,8 +53,7 @@ class SiOPMChannelIron : public SiOPMChannelBase {
 	struct GuitarString {
 		sion::dsp::FractionalDelay delay;
 		sion::dsp::OnePole loop_lowpass;
-		double allpass_x[2] = {};
-		double allpass_y[2] = {};
+		sion::dsp::Allpass allpasses[2];
 
 		bool active = false;
 		// The fretting hand let go: the loop damps toward the release time.

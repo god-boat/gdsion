@@ -9,6 +9,7 @@
 #include "dsp/lfo.h"
 #include "templates/singly_linked_list.h"
 
+using sion::dsp::allpass_phase_delay;
 using sion::dsp::BIQUAD_HIGH_PASS;
 using sion::dsp::BIQUAD_HIGH_SHELF;
 using sion::dsp::BIQUAD_LOW_PASS;
@@ -18,6 +19,9 @@ using sion::dsp::compute_biquad_coefficients;
 using sion::dsp::fast_tanh;
 using sion::dsp::HALFBAND_STEEP;
 using sion::dsp::one_pole_coeff;
+using sion::dsp::one_pole_coeff_for_magnitude;
+using sion::dsp::one_pole_magnitude;
+using sion::dsp::one_pole_phase_delay;
 
 static constexpr double PIPE_PEAK = 8192.0;
 static constexpr double LN2_PER_CENT = 0.000577622650466621; // ln(2) / 1200
@@ -94,32 +98,6 @@ static constexpr Cabinet CABINETS[] = {
 	{ 100.0, 140.0, 1.0, 2500.0, 3.0, 9000.0 }, // Open-back 2x12.
 };
 static constexpr int CABINET_DIRECT = sizeof(CABINETS) / sizeof(CABINETS[0]);
-
-// Phase delay in samples of the one-pole lowpass y += c (x - y) at p_w radians per sample.
-static double one_pole_phase_delay(double p_coeff, double p_w) {
-	const double pole = 1.0 - p_coeff;
-	return std::atan2(pole * std::sin(p_w), 1.0 - pole * std::cos(p_w)) / p_w;
-}
-
-static double one_pole_magnitude(double p_coeff, double p_w) {
-	const double pole = 1.0 - p_coeff;
-	const double re = 1.0 - pole * std::cos(p_w);
-	const double im = pole * std::sin(p_w);
-	return p_coeff / std::sqrt(re * re + im * im);
-}
-
-// The one-pole coefficient whose magnitude at p_w is p_magnitude; brighter coefficients pass more.
-static double one_pole_coeff_for_magnitude(double p_magnitude, double p_w) {
-	const double b = 1.0 - p_magnitude * p_magnitude;
-	const double a = 1.0 - p_magnitude * p_magnitude * std::cos(p_w);
-	return 1.0 - b / (a + std::sqrt(a * a - b * b));
-}
-
-// Phase delay in samples of the allpass (a + z^-1) / (1 + a z^-1) at p_w.
-static double allpass_phase_delay(double p_coeff, double p_w) {
-	const double phase = std::atan2(-std::sin(p_w), p_coeff + std::cos(p_w)) - std::atan2(-p_coeff * std::sin(p_w), 1.0 + p_coeff * std::cos(p_w));
-	return -phase / p_w;
-}
 
 // The derivative of the mirrored pluck displacement, in velocity-wave units.
 // Normalize its slope jump to one so pick strength sets the velocity level;
@@ -203,9 +181,8 @@ void SiOPMChannelIron::_pluck(GuitarString &r_string) {
 	r_string.loop_lowpass_coeff = r_string.loop_lowpass_coeff_target;
 	r_string.loop_gain = r_string.loop_gain_target;
 	r_string.loop_lowpass = {};
-	for (int i = 0; i < 2; i++) {
-		r_string.allpass_x[i] = 0.0;
-		r_string.allpass_y[i] = 0.0;
+	for (sion::dsp::Allpass &allpass : r_string.allpasses) {
+		allpass = {};
 	}
 	r_string.bloom_cents = pick.bloom_cents;
 
@@ -269,12 +246,8 @@ double SiOPMChannelIron::_tick_string(GuitarString &r_string) {
 	double pickup = bridge - r_string.delay.read_cubic(read_delay + r_string.pickup_delay);
 
 	double loop = r_string.loop_lowpass.lowpass(r_string.loop_lowpass_coeff, bridge);
-	const double allpass_coeff = r_string.allpass_coeff;
-	for (int i = 0; i < 2; i++) {
-		const double y = allpass_coeff * loop + r_string.allpass_x[i] - allpass_coeff * r_string.allpass_y[i];
-		r_string.allpass_x[i] = loop;
-		r_string.allpass_y[i] = y;
-		loop = y;
+	for (sion::dsp::Allpass &allpass : r_string.allpasses) {
+		loop = allpass.tick(r_string.allpass_coeff, loop);
 	}
 	r_string.delay.write(loop * r_string.loop_gain);
 

@@ -565,6 +565,9 @@ private:
 		// Iron distorted electric guitar grouped params
 		bool has_iron = false;
 		IronParams iron;
+		// Talus physical-model percussion grouped params
+		bool has_talus = false;
+		TalusParams talus;
 		// Analog-Like (AL) live params
 		bool has_al_connection = false;
 		int al_connection = 0;
@@ -1059,6 +1062,15 @@ public:
 			int p_sustain_ms, int p_release_ms, int p_stiffness, int p_pickup_position,
 			int p_gain, int p_tight_hz, int p_bass_db, int p_mid_db, int p_treble_db,
 			int p_cabinet, int p_mic, int p_humanize, int p_timing_ms,
+			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	// Talus physical-model percussion mailbox
+	void mailbox_set_talus_params(int p_track_id,
+			int p_strike_level, int p_strike_hardness, int p_strike_velocity, int p_noise_level, int p_noise_decay_ms, int p_noise_color_hz,
+			int p_tone_level, int p_tone_pitch_cents, int p_tone_shape, int p_tone_decay_ms, int p_variation, int p_model,
+			int p_tune_semitones, int p_fine_cents, int p_keytrack, int p_decay_ms, int p_damping, int p_position,
+			int p_stiffness, int p_low_cut_hz, int p_cut_hz, int p_cut_db, int p_tension_cents, int p_drive,
+			int p_wires_level, int p_wires_tension, int p_wires_tone_hz, int p_wires_decay_ms, int p_head, int p_direct,
+			int p_release_mode, int p_release_ms,
 			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// Guitar6 physical model mailbox
 	void mailbox_set_guitar6(int p_track_id,

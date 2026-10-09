@@ -17,6 +17,7 @@
 #include "chip/channels/siopm_channel_stream.h"
 #include "chip/channels/siopm_channel_monolith.h"
 #include "chip/channels/siopm_channel_iron.h"
+#include "chip/channels/siopm_channel_talus.h"
 #include "chip/siopm_sound_chip.h"
 
 using namespace godot;
@@ -36,6 +37,7 @@ void SiOPMChannelManager::initialize(SiOPMSoundChip *p_chip) {
 	_channel_managers[CHANNEL_STRATA]    = memnew(SiOPMChannelManager(CHANNEL_STRATA));
 	_channel_managers[CHANNEL_MONOLITH] = memnew(SiOPMChannelManager(CHANNEL_MONOLITH));
 	_channel_managers[CHANNEL_IRON] = memnew(SiOPMChannelManager(CHANNEL_IRON));
+	_channel_managers[CHANNEL_TALUS] = memnew(SiOPMChannelManager(CHANNEL_TALUS));
 }
 
 void SiOPMChannelManager::finalize() {
@@ -50,6 +52,7 @@ void SiOPMChannelManager::finalize() {
 	memdelete(_channel_managers[CHANNEL_STRATA]);
 	memdelete(_channel_managers[CHANNEL_MONOLITH]);
 	memdelete(_channel_managers[CHANNEL_IRON]);
+	memdelete(_channel_managers[CHANNEL_TALUS]);
 	_channel_managers.clear();
 }
 
@@ -113,6 +116,9 @@ SiOPMChannelBase *SiOPMChannelManager::_create_channel(SiOPMChannelBase *p_prev,
 		} break;
 		case CHANNEL_IRON: {
 			new_channel = memnew(SiOPMChannelIron(_sound_chip));
+		} break;
+		case CHANNEL_TALUS: {
+			new_channel = memnew(SiOPMChannelTalus(_sound_chip));
 		} break;
 
 		default: break; // Silences enum warnings.

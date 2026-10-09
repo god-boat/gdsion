@@ -14,6 +14,7 @@
 #include "chip/channels/siopm_channel_strata.h"
 #include "chip/channels/siopm_channel_monolith.h"
 #include "chip/channels/siopm_channel_iron.h"
+#include "chip/channels/siopm_channel_talus.h"
 #include "chip/channels/siopm_channel_guitar6.h"
 #include "chip/channels/siopm_channel_ks.h"
 #include "chip/channels/siopm_channel_base.h"
@@ -190,6 +191,17 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 			p_track->reset_volume_offset();
 		} break;
 
+		case SiONModuleType::MODULE_TALUS: {
+			SiOPMChannelTalus *talus_ch = dynamic_cast<SiOPMChannelTalus *>(existing_ch);
+			if (!talus_ch) {
+				p_track->set_channel_module_type(SiONModuleType::MODULE_TALUS, 0);
+				talus_ch = dynamic_cast<SiOPMChannelTalus *>(p_track->get_channel());
+			}
+			talus_ch->set_talus_params(talus);
+			talus_ch->set_channel_params(channel_params, update_volumes, true);
+			p_track->reset_volume_offset();
+		} break;
+
 		default: { // Other sound modules.
 			// For wave data, check if the wave's module type matches
 			if (wave_data.is_valid()) {
@@ -322,6 +334,7 @@ void SiMMLVoice::reset() {
 	strata_color = 0;
 
 	iron = IronParams();
+	talus = TalusParams();
 
 	default_gate_time = NAN;
 	default_gate_ticks = -1;
@@ -454,6 +467,7 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	monolith_sub_octave = p_source->monolith_sub_octave;
 
 	iron = p_source->iron;
+	talus = p_source->talus;
 
 	default_gate_time = p_source->default_gate_time;
 	default_gate_ticks = p_source->default_gate_ticks;

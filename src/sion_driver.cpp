@@ -55,6 +55,7 @@
 #include "chip/channels/siopm_channel_strata.h"
 #include "chip/channels/siopm_channel_monolith.h"
 #include "chip/channels/siopm_channel_iron.h"
+#include "chip/channels/siopm_channel_talus.h"
 #include "chip/channels/siopm_channel_ks.h"
 #include "chip/channels/siopm_channel_guitar6.h"
 #include "utils/fader_util.h"
@@ -1666,6 +1667,16 @@ void SiONDriver::_bind_methods() {
 			"cabinet", "mic", "humanize", "timing_ms",
 			"entity_scope_id", "slot_scope_id"),
 			&SiONDriver::mailbox_set_iron_params, DEFVAL(-1), DEFVAL(-1));
+	// Talus physical-model percussion
+	ClassDB::bind_method(D_METHOD("mailbox_set_talus_params", "track_id",
+			"strike_level", "strike_hardness", "strike_velocity", "noise_level", "noise_decay_ms", "noise_color_hz",
+			"tone_level", "tone_pitch_cents", "tone_shape", "tone_decay_ms", "variation", "model",
+			"tune_semitones", "fine_cents", "keytrack", "decay_ms", "damping", "position",
+			"stiffness", "low_cut_hz", "cut_hz", "cut_db", "tension_cents", "drive",
+			"wires_level", "wires_tension", "wires_tone_hz", "wires_decay_ms", "head", "direct",
+			"release_mode", "release_ms",
+			"entity_scope_id", "slot_scope_id"),
+			&SiONDriver::mailbox_set_talus_params, DEFVAL(-1), DEFVAL(-1));
 	// Guitar6 physical model
 	ClassDB::bind_method(D_METHOD("mailbox_set_guitar6", "track_id",
 			"character_seed", "character_variation",
@@ -1859,6 +1870,7 @@ void SiONDriver::_bind_methods() {
 	BIND_ENUM_CONSTANT(CHIP_STRATA);
 	BIND_ENUM_CONSTANT(CHIP_MONOLITH);
 	BIND_ENUM_CONSTANT(CHIP_IRON);
+	BIND_ENUM_CONSTANT(CHIP_TALUS);
 	BIND_ENUM_CONSTANT(CHIP_MAX);
 
 	BIND_ENUM_CONSTANT(MODULE_PSG);
@@ -1887,6 +1899,7 @@ void SiONDriver::_bind_methods() {
 	BIND_ENUM_CONSTANT(MODULE_STRATA);
 	BIND_ENUM_CONSTANT(MODULE_MONOLITH);
 	BIND_ENUM_CONSTANT(MODULE_IRON);
+	BIND_ENUM_CONSTANT(MODULE_TALUS);
 	BIND_ENUM_CONSTANT(MODULE_MAX);
 
 	BIND_ENUM_CONSTANT(PITCH_TABLE_OPM);
@@ -3019,6 +3032,29 @@ void SiONDriver::mailbox_set_iron_params(int p_track_id,
 	_push_command(u);
 }
 
+void SiONDriver::mailbox_set_talus_params(int p_track_id,
+			int p_strike_level, int p_strike_hardness, int p_strike_velocity, int p_noise_level, int p_noise_decay_ms, int p_noise_color_hz,
+			int p_tone_level, int p_tone_pitch_cents, int p_tone_shape, int p_tone_decay_ms, int p_variation, int p_model,
+			int p_tune_semitones, int p_fine_cents, int p_keytrack, int p_decay_ms, int p_damping, int p_position,
+			int p_stiffness, int p_low_cut_hz, int p_cut_hz, int p_cut_db, int p_tension_cents, int p_drive,
+			int p_wires_level, int p_wires_tension, int p_wires_tone_hz, int p_wires_decay_ms, int p_head, int p_direct,
+			int p_release_mode, int p_release_ms,
+		int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+	_DriverCommand u;
+	u.track_id = p_track_id;
+	u.entity_scope_id = p_entity_scope_id;
+	u.slot_scope_id = p_slot_scope_id;
+	u.has_talus = true;
+	u.talus = { {
+			p_strike_level, p_strike_hardness, p_strike_velocity, p_noise_level, p_noise_decay_ms, p_noise_color_hz,
+			p_tone_level, p_tone_pitch_cents, p_tone_shape, p_tone_decay_ms, p_variation, p_model,
+			p_tune_semitones, p_fine_cents, p_keytrack, p_decay_ms, p_damping, p_position,
+			p_stiffness, p_low_cut_hz, p_cut_hz, p_cut_db, p_tension_cents, p_drive,
+			p_wires_level, p_wires_tension, p_wires_tone_hz, p_wires_decay_ms, p_head, p_direct,
+			p_release_mode, p_release_ms } };
+	_push_command(u);
+}
+
 void SiONDriver::mailbox_set_guitar6(int p_track_id,
 		double p_character_seed, double p_character_variation,
 		double p_string_damp, double p_string_damp_variation,
@@ -3801,6 +3837,13 @@ void SiONDriver::_apply_track_update(const _DriverCommand &u) {
             SiOPMChannelIron *iron_ch = Object::cast_to<SiOPMChannelIron>(ch);
             if (iron_ch) {
                 iron_ch->set_iron_params(u.iron);
+            }
+        }
+        // Talus physical-model percussion updates
+        if (u.has_talus) {
+            SiOPMChannelTalus *talus_ch = Object::cast_to<SiOPMChannelTalus>(ch);
+            if (talus_ch) {
+                talus_ch->set_talus_params(u.talus);
             }
         }
         // FM operator updates and Analog-Like live params

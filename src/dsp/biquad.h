@@ -8,6 +8,7 @@
 #define SION_DSP_BIQUAD_H
 
 #include <cmath>
+#include <complex>
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/core/math_defs.hpp>
 
@@ -151,6 +152,14 @@ static inline BiquadCoeffs compute_biquad_coefficients(int p_type, double p_freq
 	c.a2 = raw_a2 * inv_a0;
 
 	return c;
+}
+
+// The response where z^-1 is p_z_inverse: std::polar(1, -w) on the unit circle.
+// A feedback loop subtracts its phase delay from the period and counts its
+// magnitude as loss.
+inline std::complex<double> biquad_response(const BiquadCoeffs &p_coeffs, std::complex<double> p_z_inverse) {
+	const std::complex<double> z2 = p_z_inverse * p_z_inverse;
+	return (p_coeffs.b0 + p_coeffs.b1 * p_z_inverse + p_coeffs.b2 * z2) / (1.0 + p_coeffs.a1 * p_z_inverse + p_coeffs.a2 * z2);
 }
 
 // Direct Form I history for one channel of one biquad. Channels and stages

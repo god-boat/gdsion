@@ -592,7 +592,10 @@
 		<constant name="CHIP_IRON" value="11" enum="SiONChipType">
 			Iron distorted electric guitar sound chip type.
 		</constant>
-		<constant name="CHIP_MAX" value="12" enum="SiONChipType">
+		<constant name="CHIP_TALUS" value="12" enum="SiONChipType">
+			Talus physical-model percussion sound chip type.
+		</constant>
+		<constant name="CHIP_MAX" value="13" enum="SiONChipType">
 			Total number of available chip types.
 		</constant>
 		<constant name="MODULE_PSG" value="0" enum="SiONModuleType">
@@ -673,7 +676,10 @@
 		<constant name="MODULE_IRON" value="25" enum="SiONModuleType">
 			Iron distorted electric guitar module type.
 		</constant>
-		<constant name="MODULE_MAX" value="26" enum="SiONModuleType">
+		<constant name="MODULE_TALUS" value="26" enum="SiONModuleType">
+			Talus physical-model percussion module type.
+		</constant>
+		<constant name="MODULE_MAX" value="27" enum="SiONModuleType">
 			Total number of available module types.
 		</constant>
 		<constant name="PITCH_TABLE_OPM" value="0" enum="SiONPitchTableType">

@@ -368,6 +368,14 @@ SiMMLRefTable::SiMMLRefTable() {
 			cs->set_suitable_for_fm_voice(false);
 		}
 
+		// Talus physical-model percussion settings.
+		channel_settings_map[SiONModuleType::MODULE_TALUS] = memnew(SiMMLChannelSettings(SiONModuleType::MODULE_TALUS, SiONPulseGeneratorType::PULSE_SINE, 1, 1, 1));
+		{
+			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_TALUS];
+			cs->set_channel_type(SiOPMChannelManager::CHANNEL_TALUS);
+			cs->set_suitable_for_fm_voice(false);
+		}
+
 		// Stream settings.
 		{
 			SiMMLChannelSettings *cs = channel_settings_map[SiONModuleType::MODULE_STREAM];
