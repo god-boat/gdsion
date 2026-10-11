@@ -2,11 +2,14 @@
 to out/renders/<name>.wav on the stub-compiled channel, for the by-ear A/B
 against reference recordings.
 
-Each render plays hits at velocity 1.0, 0.7, 0.4 and 0.2 (a ghost note), half
-a second apart, then a two-bar 16th-note roll at 120 BPM accenting every
-fourth hit, all on one channel: the way a re-strike voice plays a drum. The
-WAVs are the channel output before Inst Gain, so a full hit peaks near -7 dBFS.
-Prints each preset's peak and how long a full hit takes to idle.
+A drum (Keytrack 0) plays hits at velocity 1.0, 0.7, 0.4 and 0.2 (a ghost
+note), half a second apart, then a two-bar 16th-note roll at 120 BPM accenting
+every fourth hit, all on one channel: the way a re-strike voice plays a drum.
+A pitched preset plays a phrase from C2 to C6 and a chord, one channel per
+note, the way the voice pool plays it, each key held for 0.4 s. The WAVs are
+the channel output before Inst Gain and before any effects in the preset's
+rack, so a full hit peaks near -7 dBFS. Prints each preset's peak and how long
+a full hit takes to idle.
 
     python gdsion/tools/talus_dsp/render_presets.py
 """
@@ -54,14 +57,35 @@ def tuple_for(device: dict, slots: dict[str, int]) -> list[int]:
 	return values
 
 
-def pattern(params: list[int]) -> h.Job:
+HELD = 0.4
+RING = 4.0
+# (seconds, note, velocity): a rising phrase, four velocities on one key, then a chord.
+PHRASE = (
+	[(0.5 * i, note, 0.8) for i, note in enumerate((36, 43, 48, 55, 60, 64, 67, 72, 79, 84))]
+	+ [(5.5 + 0.6 * i, 60, velocity) for i, velocity in enumerate((1.0, 0.7, 0.4, 0.2))]
+	+ [(8.5 + 0.03 * i, note, 0.75) for i, note in enumerate((48, 55, 60, 64, 67))]
+)
+
+
+def pattern(params: list[int]) -> list[tuple[float, h.Job]]:
+	"""The jobs that play a preset, each with the time its output starts."""
+	if params[h.TALUS_SLOTS.index("KEYTRACK")] > 0:
+		return [(start, h.Job(rate=RATE, params=params).hit(note, velocity).render(HELD).off().render(RING)) for start, note, velocity in PHRASE]
 	job = h.Job(rate=RATE, params=params)
 	for velocity in (1.0, 0.7, 0.4, 0.2):
 		job.hit(NOTE, velocity).render(0.5)
 	sixteenth = 0.125
 	for i in range(32):
 		job.hit(NOTE, 0.9 if i % 4 == 0 else 0.45).render(sixteenth)
-	return job.render(1.5)
+	return [(0.0, job.render(1.5))]
+
+
+def mix(starts: list[float], outputs: list[np.ndarray]) -> np.ndarray:
+	offsets = [int(round(start * RATE)) for start in starts]
+	mixed = np.zeros(max(offset + len(y) for offset, y in zip(offsets, outputs)))
+	for offset, y in zip(offsets, outputs):
+		mixed[offset:offset + len(y)] += y
+	return mixed
 
 
 def write_wav(path: pathlib.Path, pipe: np.ndarray) -> None:
@@ -81,9 +105,10 @@ def main() -> None:
 		document = json.loads(path.read_text(encoding="utf-8"))
 		for name, device in talus_devices(document["deviceGraph"], []):
 			found.append((name, tuple_for(device, slots)))
-	jobs = [pattern(params) for _, params in found]
+	patterns = [pattern(params) for _, params in found]
 	idle_jobs = [h.Job(rate=RATE, params=params).hit(NOTE, 1.0).until_idle(30.0, 32) for _, params in found]
-	outputs = h.run(jobs)
+	rendered = iter(h.run([job for jobs in patterns for _, job in jobs]))
+	outputs = [mix([start for start, _ in jobs], [next(rendered) for _ in jobs]) for jobs in patterns]
 	_, lines = h.run_with_report(idle_jobs)
 	idle = [int(v) / RATE for v in h.report_values(lines, "IDLE")]
 	seen = set()

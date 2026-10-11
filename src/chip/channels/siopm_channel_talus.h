@@ -5,6 +5,7 @@
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/channels/siopm_talus_params.h"
 #include "dsp/allpass.h"
+#include "dsp/bar_modes.h"
 #include "dsp/biquad.h"
 #include "dsp/fractional_delay.h"
 #include "dsp/membrane_modes.h"
@@ -19,10 +20,11 @@ class SiOPMSoundChip;
 // Talus: physical-model percussion.
 //
 // An exciter (a half-sine stick pulse, a noise burst and a tone blip) drives a
-// tuned resonator sample by sample: a modal bank with circular-membrane ratios,
-// or a feedback delay loop tuned to the fundamental. Snare wires rattle off the
-// head's motion. Head, Direct and Wires mix the resonator, the exciter and the
-// wires into the output.
+// tuned resonator sample by sample: a modal bank with the ratios of a circular
+// membrane or of a bar, or a feedback delay loop tuned to the fundamental. On a
+// string the pulse is a pluck. Snare wires rattle off the head's motion, and a
+// body rings with it. Head, Direct, Wires and Body mix the resonator, the
+// exciter, the wires and the body into the output.
 //
 // Velocity sets only the strike force. A harder hit is brighter because its
 // contact time shortens, a loud hit glides down as head tension relaxes, and a
@@ -35,14 +37,26 @@ class SiOPMSoundChip;
 class SiOPMChannelTalus : public SiOPMChannelBase {
 	GDCLASS(SiOPMChannelTalus, SiOPMChannelBase)
 
-	static constexpr int MODE_MAX = sion::dsp::MEMBRANE_MODE_COUNT;
+	static constexpr int MODE_MAX = MAX(sion::dsp::MEMBRANE_MODE_COUNT, sion::dsp::BAR_MODE_COUNT);
+	static constexpr int BODY_MODE_COUNT = 6;
 	static constexpr int EXCITER_COUNT = 2;
 
 	enum Model {
 		MODEL_MEMBRANE,
 		MODEL_LOOP,
+		MODEL_BAR,
+		MODEL_TUNED_BAR,
+		MODEL_STRING, // The loop, plucked.
 		MODEL_COUNT,
 	};
+
+	// What a modal model rings at. The loop models have no table.
+	struct ModeTable {
+		const sion::dsp::ModeShape *modes = nullptr;
+		int count = 0;
+		double stiffness_max = 0.0; // The stiffness that puts the eighth partial a semitone sharp.
+	};
+	static const ModeTable MODE_TABLES[MODEL_COUNT];
 
 	enum ReleaseMode {
 		RELEASE_RING,
@@ -57,6 +71,11 @@ class SiOPMChannelTalus : public SiOPMChannelBase {
 		double pulse_step = 0.0; // 2 cos(w), for the sine recurrence.
 		double pulse = 0.0;
 		double pulse_previous = 0.0;
+		bool plucked = false; // The pulse reaches the string gathered over a few periods.
+		double pluck_coeff = 0.0;
+		double pluck_drain_coeff = 0.0;
+		sion::dsp::OnePole pluck;
+		sion::dsp::OnePole pluck_drain;
 		uint32_t noise_step = 0;
 		double noise_level = 0.0;
 		sion::dsp::BiquadState noise_band;
@@ -102,6 +121,8 @@ class SiOPMChannelTalus : public SiOPMChannelBase {
 	double _direct_level = 0.2;
 	int _release_mode = RELEASE_RING;
 	double _release_seconds = 0.08;
+	double _body_level = 0.0;
+	sion::dsp::ModalCoeffs<BODY_MODE_COUNT> _body;
 	double _output_gain = 1.0;
 	double _head_silence = 0.0;
 
@@ -127,11 +148,11 @@ class SiOPMChannelTalus : public SiOPMChannelBase {
 	int _update_countdown = 1;
 	Exciter _exciters[EXCITER_COUNT];
 
-	// Membrane.
+	// Membrane and the bars.
 	sion::dsp::ModalCoeffs<MODE_MAX> _modes;
 	sion::dsp::ModalState<MODE_MAX> _mode_state;
 
-	// Loop.
+	// Loop and String.
 	sion::dsp::FractionalDelay _loop;
 	sion::dsp::OnePole _loop_lowpass;
 	sion::dsp::OnePole _loop_highpass;
@@ -149,7 +170,7 @@ class SiOPMChannelTalus : public SiOPMChannelBase {
 	double _tap_fraction = 0.36;
 	int _loop_quiet_samples = 0;
 
-	// Tension, wires and direct.
+	// Tension, wires, body and direct.
 	double _tension_power = 0.0;
 	double _tension_release = 0.0;
 	sion::dsp::OnePole _wire_motion;
@@ -157,14 +178,16 @@ class SiOPMChannelTalus : public SiOPMChannelBase {
 	double _wire_envelope = 0.0;
 	sion::dsp::BiquadState _wire_band;
 	uint32_t _wire_step = 0;
+	sion::dsp::ModalState<BODY_MODE_COUNT> _body_state;
 	sion::dsp::OnePole _direct_highpass;
 
 	void _strike(double p_velocity);
 	static int _samples_above_floor(double p_level, double p_decay);
 	double _tick_exciter(Exciter &r_exciter);
 
+	bool _is_modal() const { return MODE_TABLES[_model].modes; }
 	void _retune();
-	void _retune_membrane();
+	void _retune_modes();
 	void _retune_loop();
 	double _loop_filter_delay(double p_w, double p_radius) const;
 	static double _allpass_delay(double p_coeff, double p_w, double p_radius);
@@ -176,9 +199,9 @@ class SiOPMChannelTalus : public SiOPMChannelBase {
 	bool _is_silent() const;
 	void _clear();
 
-	template <int MODEL, bool DRIVEN>
+	template <bool MODAL, bool DRIVEN>
 	double _tick_resonator(double p_input, bool p_excited);
-	template <int MODEL, bool DRIVEN>
+	template <bool MODAL, bool DRIVEN>
 	void _render(int p_length);
 	void _process_talus(int p_length);
 

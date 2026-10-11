@@ -524,14 +524,14 @@ void SiONVoice::set_talus(
 			int p_tune_semitones, int p_fine_cents, int p_keytrack, int p_decay_ms, int p_damping, int p_position,
 			int p_stiffness, int p_low_cut_hz, int p_cut_hz, int p_cut_db, int p_tension_cents, int p_drive,
 			int p_wires_level, int p_wires_tension, int p_wires_tone_hz, int p_wires_decay_ms, int p_head, int p_direct,
-			int p_release_mode, int p_release_ms) {
+			int p_release_mode, int p_release_ms, int p_body_level, int p_body_hz, int p_body_decay_ms) {
 	set_talus_params({ {
 			p_strike_level, p_strike_hardness, p_strike_velocity, p_noise_level, p_noise_decay_ms, p_noise_color_hz,
 			p_tone_level, p_tone_pitch_cents, p_tone_shape, p_tone_decay_ms, p_variation, p_model,
 			p_tune_semitones, p_fine_cents, p_keytrack, p_decay_ms, p_damping, p_position,
 			p_stiffness, p_low_cut_hz, p_cut_hz, p_cut_db, p_tension_cents, p_drive,
 			p_wires_level, p_wires_tension, p_wires_tone_hz, p_wires_decay_ms, p_head, p_direct,
-			p_release_mode, p_release_ms } });
+			p_release_mode, p_release_ms, p_body_level, p_body_hz, p_body_decay_ms } });
 }
 
 void SiONVoice::set_talus_params(const TalusParams &p_params) {
@@ -745,14 +745,14 @@ void SiONVoice::_bind_methods() {
 			"tune_semitones", "fine_cents", "keytrack", "decay_ms", "damping", "position",
 			"stiffness", "low_cut_hz", "cut_hz", "cut_db", "tension_cents", "drive",
 			"wires_level", "wires_tension", "wires_tone_hz", "wires_decay_ms", "head", "direct",
-			"release_mode", "release_ms"),
+			"release_mode", "release_ms", "body_level", "body_hz", "body_decay_ms"),
 			&SiONVoice::set_talus,
 			DEFVAL(t[0]), DEFVAL(t[1]), DEFVAL(t[2]), DEFVAL(t[3]), DEFVAL(t[4]), DEFVAL(t[5]),
 			DEFVAL(t[6]), DEFVAL(t[7]), DEFVAL(t[8]), DEFVAL(t[9]), DEFVAL(t[10]), DEFVAL(t[11]),
 			DEFVAL(t[12]), DEFVAL(t[13]), DEFVAL(t[14]), DEFVAL(t[15]), DEFVAL(t[16]), DEFVAL(t[17]),
 			DEFVAL(t[18]), DEFVAL(t[19]), DEFVAL(t[20]), DEFVAL(t[21]), DEFVAL(t[22]), DEFVAL(t[23]),
 			DEFVAL(t[24]), DEFVAL(t[25]), DEFVAL(t[26]), DEFVAL(t[27]), DEFVAL(t[28]), DEFVAL(t[29]),
-			DEFVAL(t[30]), DEFVAL(t[31]));
+			DEFVAL(t[30]), DEFVAL(t[31]), DEFVAL(t[32]), DEFVAL(t[33]), DEFVAL(t[34]));
 	ClassDB::bind_method(D_METHOD("set_analog_like", "connection_type", "wave_shape1", "wave_shape2", "balance", "pitch_difference"), &SiONVoice::set_analog_like, DEFVAL(1), DEFVAL(1), DEFVAL(0), DEFVAL(0));
 
 	ClassDB::bind_method(D_METHOD("set_envelope", "attack_rate", "decay_rate", "sustain_rate", "release_rate", "sustain_level", "total_level"), &SiONVoice::set_envelope);

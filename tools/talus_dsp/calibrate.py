@@ -4,6 +4,7 @@ full force, Variation 0, on the stub-compiled channel:
   NOISE_FORCE, TONE_FORCE   Noise or Tone at 100 % rings the head to the strike's peak.
   DIRECT_GAIN               Direct at 100 % peaks with the head.
   WIRES_GAIN                Saturated Wires at 100 % peak with the head.
+  BODY_GAIN                 Body at 100 % peaks with the head, on the String model.
   WIRE_HEAD_REFERENCE       The head motion's peak (the wire knee's 0 dB).
   TENSION_NORMAL            One over the head power's peak.
   OUTPUT_TRIM               The full output peaks at -7 dBFS, per model.
@@ -26,7 +27,9 @@ CHANNEL = h.GDSION / "src" / "chip" / "channels" / "siopm_channel_talus.cpp"
 TARGET_PEAK = h.PIPE_PEAK * 10 ** (-7 / 20)
 RATE = 48000
 F1 = 440.0 * 2 ** ((60 - 69) / 12)
-NAMES = ["NOISE_FORCE", "TONE_FORCE", "DIRECT_GAIN", "WIRES_GAIN", "WIRE_HEAD_REFERENCE", "TENSION_NORMAL"]
+NAMES = ["NOISE_FORCE", "TONE_FORCE", "DIRECT_GAIN", "WIRES_GAIN", "BODY_GAIN", "WIRE_HEAD_REFERENCE", "TENSION_NORMAL"]
+MODELS = ["membrane", "loop", "bar", "tuned_bar", "string"]
+STRING = MODELS.index("string")
 
 
 def read_constants(text: str) -> dict:
@@ -68,8 +71,9 @@ def main() -> None:
 		"head": voice(direct=0),
 		"direct": voice(head=0),
 		"wires": voice(head=0, direct=0, wires_level=100, wires_tension=0),
-		"membrane": voice(),
-		"loop": voice(model=1),
+		"string_head": voice(model=STRING, direct=0),
+		"body": voice(model=STRING, head=0, direct=0, body_level=100),
+		**{name: voice(model=index) for index, name in enumerate(MODELS)},
 	}
 	jobs = [h.Job(rate=RATE, params=params).hit(60, 1.0).render(1.0) for params in cases.values()]
 	outputs = dict(zip(cases, h.run(jobs)))
@@ -80,6 +84,7 @@ def main() -> None:
 	new["TONE_FORCE"] = old["TONE_FORCE"] * peak(outputs["strike"]) / peak(outputs["tone"])
 	new["DIRECT_GAIN"] = old["DIRECT_GAIN"] * peak(outputs["head"]) / peak(outputs["direct"])
 	new["WIRES_GAIN"] = old["WIRES_GAIN"] * peak(outputs["head"]) / peak(outputs["wires"])
+	new["BODY_GAIN"] = old["BODY_GAIN"] * peak(outputs["string_head"]) / peak(outputs["body"])
 
 	head = outputs["head"] / membrane_gain
 	motion = np.zeros_like(head)
@@ -95,10 +100,7 @@ def main() -> None:
 		power[i] = p
 	new["WIRE_HEAD_REFERENCE"] = peak(motion)
 	new["TENSION_NORMAL"] = 1.0 / power.max()
-	new["OUTPUT_TRIM"] = [
-		old["OUTPUT_TRIM"][0] * TARGET_PEAK / peak(outputs["membrane"]),
-		old["OUTPUT_TRIM"][1] * TARGET_PEAK / peak(outputs["loop"]),
-	]
+	new["OUTPUT_TRIM"] = [trim * TARGET_PEAK / peak(outputs[name]) for trim, name in zip(old["OUTPUT_TRIM"], MODELS)]
 
 	for name in NAMES + ["OUTPUT_TRIM"]:
 		print(f"{name:20s} {old[name]!s:>24} -> {new[name]}")

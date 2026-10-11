@@ -11,18 +11,22 @@
 #include "templates/singly_linked_list.h"
 
 using sion::dsp::allpass_response;
+using sion::dsp::BAR_MODE_COUNT;
+using sion::dsp::BAR_MODES;
 using sion::dsp::BIQUAD_BAND_PASS;
 using sion::dsp::BIQUAD_PEAK;
 using sion::dsp::biquad_response;
 using sion::dsp::compute_biquad_coefficients;
 using sion::dsp::fast_tanh;
 using sion::dsp::lfo_random;
+using sion::dsp::MEMBRANE_MODE_COUNT;
 using sion::dsp::MEMBRANE_MODES;
-using sion::dsp::MEMBRANE_POSITION_POINTS;
+using sion::dsp::MODE_POSITION_POINTS;
 using sion::dsp::one_pole_coeff;
 using sion::dsp::one_pole_coeff_for_magnitude;
 using sion::dsp::one_pole_magnitude;
 using sion::dsp::one_pole_response;
+using sion::dsp::TUNED_BAR_MODES;
 
 static constexpr double PIPE_PEAK = 8192.0;
 static constexpr double LN2_PER_CENT = 0.000577622650466621; // ln(2) / 1200
@@ -48,14 +52,20 @@ static constexpr double NOISE_Q = 0.7;
 static constexpr double TONE_DRIVE_SINE = 0.05;
 static constexpr double TONE_DRIVE_SQUARE = 3.0;
 static constexpr double EXCITER_FLOOR = 1e-6;
+// A pluck gathers the force through a one-pole at the first of these fractions of the
+// fundamental, and lets it drain away through one at the second.
+static constexpr double PLUCK_CORNER = 0.25;
+static constexpr double PLUCK_DRAIN = 0.0625;
 
 // Calibrated with tools/talus_dsp/calibrate.py on the default voice at C3:
 // Noise or Tone at 100 % rings the head as hard as the strike at 100 %, Direct at
 // 100 % peaks with the head, and saturated Wires at 100 % peak with the head.
+// Body at 100 % peaks with the head on the default String voice.
 static constexpr double NOISE_FORCE = 0.6278;
 static constexpr double TONE_FORCE = 0.05923;
 static constexpr double DIRECT_GAIN = 141.6;
 static constexpr double WIRES_GAIN = 2.729;
+static constexpr double BODY_GAIN = 8.992;
 
 // Variation, at 100 %.
 static constexpr double VARIATION_POSITION = 0.15;
@@ -72,9 +82,19 @@ static constexpr double CUT_Q = 1.4142135623730951; // One octave wide.
 // R sqrt((1 + B R^2) / (1 + B)) = R 2^(1/12) at the eighth ratio R.
 static constexpr double SEMITONE_SQUARED = 1.122462048309373; // 2^(1/6)
 static constexpr int STIFFNESS_PARTIAL = 8;
-static constexpr double MEMBRANE_STIFFNESS_MAX = (SEMITONE_SQUARED - 1.0) /
-		(MEMBRANE_MODES[STIFFNESS_PARTIAL - 1].ratio * MEMBRANE_MODES[STIFFNESS_PARTIAL - 1].ratio - SEMITONE_SQUARED);
-static constexpr double LOOP_STIFFNESS_MAX = (SEMITONE_SQUARED - 1.0) / (STIFFNESS_PARTIAL * STIFFNESS_PARTIAL - SEMITONE_SQUARED);
+static constexpr double stiffness_max(double p_eighth_ratio) {
+	return (SEMITONE_SQUARED - 1.0) / (p_eighth_ratio * p_eighth_ratio - SEMITONE_SQUARED);
+}
+static constexpr double LOOP_STIFFNESS_MAX = stiffness_max(STIFFNESS_PARTIAL);
+
+// In Model order.
+const SiOPMChannelTalus::ModeTable SiOPMChannelTalus::MODE_TABLES[MODEL_COUNT] = {
+	{ MEMBRANE_MODES, MEMBRANE_MODE_COUNT, stiffness_max(MEMBRANE_MODES[STIFFNESS_PARTIAL - 1].ratio) },
+	{}, // Loop.
+	{ BAR_MODES, BAR_MODE_COUNT, stiffness_max(BAR_MODES[STIFFNESS_PARTIAL - 1].ratio) },
+	{ TUNED_BAR_MODES, BAR_MODE_COUNT, stiffness_max(TUNED_BAR_MODES[STIFFNESS_PARTIAL - 1].ratio) },
+	{}, // String.
+};
 
 // Loop. Sized once for every sample rate, so nothing allocates after construction.
 static constexpr double DELAY_LINE_SAMPLES = 8191.0;
@@ -108,10 +128,14 @@ static constexpr double WIRE_KNEE_RANGE_DB = 36.0;
 static constexpr double WIRE_Q = 0.8;
 static constexpr double WIRE_ATTACK_SECONDS = 0.0003;
 
+// Body: loosely a guitar's air and top-plate resonances, over the lowest.
+static constexpr double BODY_RATIOS[] = { 1.0, 2.09, 2.6, 4.23, 5.37, 7.12 };
+static constexpr double BODY_WEIGHTS[] = { 1.0, 0.9, 0.5, 0.7, 0.5, 0.4 };
+
 // Output.
 static constexpr double DIRECT_HIGHPASS_HZ = 100.0;
-// Puts a full-force default hit's peak at Iron's single-note level, -7 dBFS.
-static constexpr double OUTPUT_TRIM[] = { 0.1138, 0.06415 };
+// Puts a full-force default hit's peak at Iron's single-note level, -7 dBFS. In Model order.
+static constexpr double OUTPUT_TRIM[] = { 0.1138, 0.06415, 0.1916, 0.1731, 0.08452 };
 // The channel idles once nothing it renders can reach this many pipe units.
 static constexpr double SILENCE_PIPE_UNITS = 0.25;
 
@@ -146,7 +170,20 @@ void SiOPMChannelTalus::_strike(double p_velocity) {
 	// The impulse, not the peak, follows the force, so a softer stick is no louder.
 	const double half_angle = 0.5 * exciter.pulse_samples * step;
 	const double area = std::sin(half_angle) * std::sin(half_angle) / std::sin(0.5 * step);
-	const double amplitude = _strike_level * force / (area * _resonator_input);
+	// A pluck lets go of a held string, so the string takes the force gathered over a few
+	// periods. Its partials fall as 1/n beside a strike's, and its fundamental rings as hard.
+	// What it gathered drains away again, so the pluck leaves no offset in the loop.
+	exciter.plucked = _model == MODEL_STRING;
+	double pluck_gain = 1.0;
+	if (exciter.plucked) {
+		exciter.pluck_coeff = one_pole_coeff(PLUCK_CORNER * _sample_rate / _period, _sample_rate);
+		exciter.pluck_drain_coeff = one_pole_coeff(PLUCK_DRAIN * _sample_rate / _period, _sample_rate);
+		const std::complex<double> circle = std::polar(1.0, -Math_TAU / _period);
+		pluck_gain = 1.0 / std::abs(one_pole_response(exciter.pluck_coeff, circle) - one_pole_response(exciter.pluck_drain_coeff, circle));
+	}
+	const double amplitude = pluck_gain * _strike_level * force / (area * _resonator_input);
+	const double impulse = amplitude * area;
+	const int pulse_tail = exciter.plucked ? MAX(_samples_above_floor(exciter.pluck_coeff * impulse, 1.0 - exciter.pluck_coeff), _samples_above_floor(exciter.pluck_drain_coeff * impulse, 1.0 - exciter.pluck_drain_coeff)) : 0;
 	exciter.pulse = amplitude * std::sin(0.5 * step);
 	exciter.pulse_previous = -exciter.pulse;
 	exciter.pulse_step = 2.0 * std::cos(step);
@@ -162,7 +199,7 @@ void SiOPMChannelTalus::_strike(double p_velocity) {
 	exciter.tone_level = _tone_level * force * TONE_FORCE;
 
 	// The hit's length is fixed now, so it ends on the same sample however the hits around it fall.
-	exciter.remaining = MAX(exciter.pulse_samples, MAX(_samples_above_floor(exciter.noise_level, _noise_decay), _samples_above_floor(exciter.tone_level, _tone_decay)));
+	exciter.remaining = MAX(exciter.pulse_samples + pulse_tail, MAX(_samples_above_floor(exciter.noise_level, _noise_decay), _samples_above_floor(exciter.tone_level, _tone_decay)));
 }
 
 // Samples until a level that falls by p_decay each sample drops below EXCITER_FLOOR.
@@ -179,6 +216,9 @@ double SiOPMChannelTalus::_tick_exciter(Exciter &r_exciter) {
 		r_exciter.pulse_previous = r_exciter.pulse;
 		r_exciter.pulse = next;
 		r_exciter.pulse_samples--;
+	}
+	if (r_exciter.plucked) {
+		value = r_exciter.pluck.lowpass(r_exciter.pluck_coeff, value) - r_exciter.pluck_drain.lowpass(r_exciter.pluck_drain_coeff, value);
 	}
 
 	value += r_exciter.noise_band.tick(_noise_band_coeffs, lfo_random(r_exciter.noise_step++)) * r_exciter.noise_level;
@@ -201,26 +241,27 @@ void SiOPMChannelTalus::_retune() {
 	_f1 = 440.0 * std::pow(2.0, (note - 69.0) / 12.0);
 	_wire_motion_coeff = one_pole_coeff(4.0 * _f1, _sample_rate);
 	_tension_release = 1.0 - std::exp(-1.0 / (MAX(TENSION_RELEASE_SECONDS, TENSION_RELEASE_PERIODS / _f1) * _sample_rate));
-	if (_model == MODEL_MEMBRANE) {
-		_retune_membrane();
+	if (_is_modal()) {
+		_retune_modes();
 	} else {
 		_retune_loop();
 	}
 	_apply_tension(_tension_applied);
 }
 
-void SiOPMChannelTalus::_retune_membrane() {
+void SiOPMChannelTalus::_retune_modes() {
+	const ModeTable &table = MODE_TABLES[_model];
 	// Leave out modes a full glide could push past the ceiling.
 	const double ceiling = MIN(MODE_CEILING_FRACTION * _sample_rate, MODE_CEILING_HZ) * std::exp(-TENSION_ENERGY_MAX * _tension_cents * LN2_PER_CENT);
-	const double stiffness = _stiffness * MEMBRANE_STIFFNESS_MAX;
+	const double stiffness = _stiffness * table.stiffness_max;
 	const double highpass_coeff = one_pole_coeff(_low_cut_hz, _sample_rate);
-	const double position = _hit_position * (MEMBRANE_POSITION_POINTS - 1);
-	const int position_index = MIN((int)position, MEMBRANE_POSITION_POINTS - 2);
+	const double position = _hit_position * (MODE_POSITION_POINTS - 1);
+	const int position_index = MIN((int)position, MODE_POSITION_POINTS - 2);
 	const double position_fraction = position - position_index;
 
 	int count = 0;
-	for (; count < MODE_MAX; count++) {
-		const sion::dsp::MembraneMode &mode = MEMBRANE_MODES[count];
+	for (; count < table.count; count++) {
+		const sion::dsp::ModeShape &mode = table.modes[count];
 		const double ratio = mode.ratio * std::sqrt((1.0 + stiffness * mode.ratio * mode.ratio) / (1.0 + stiffness));
 		const double hz = _f1 * ratio;
 		if (hz >= ceiling) {
@@ -347,16 +388,16 @@ double SiOPMChannelTalus::_fit_loop_allpass(double p_w1, double p_radius) const 
 void SiOPMChannelTalus::_apply_tension(double p_cents) {
 	_tension_applied = p_cents;
 	const double scale = std::exp(p_cents * LN2_PER_CENT);
-	if (_model == MODEL_MEMBRANE) {
+	if (_is_modal()) {
 		_modes.set_pitch_scale(scale);
 	} else {
 		_read_delay_target = MAX(MIN_READ_DELAY, _period / scale - _loop_phase_delay);
 	}
 }
 
-template <int MODEL, bool DRIVEN>
+template <bool MODAL, bool DRIVEN>
 double SiOPMChannelTalus::_tick_resonator(double p_input, bool p_excited) {
-	if constexpr (MODEL == MODEL_MEMBRANE) {
+	if constexpr (MODAL) {
 		return p_excited ? _mode_state.tick(_modes, p_input) : _mode_state.tick_free(_modes);
 	} else {
 		_read_delay += (_read_delay_target - _read_delay) * _delay_smoothing;
@@ -426,6 +467,19 @@ void SiOPMChannelTalus::set_talus_params(const TalusParams &p_params) {
 	_direct_level = CLAMP(values[TalusParams::DIRECT], 0, 100) * 0.01;
 	_release_mode = CLAMP(values[TalusParams::RELEASE_MODE], 0, 1);
 	_release_seconds = CLAMP(values[TalusParams::RELEASE_MS], 5, 2000) * 0.001;
+
+	_body_level = CLAMP(values[TalusParams::BODY_LEVEL], 0, 100) * 0.01;
+	const double body_hz = CLAMP(values[TalusParams::BODY_HZ], 40, 1000);
+	const double body_seconds = CLAMP(values[TalusParams::BODY_DECAY_MS], 20, 2000) * 0.001;
+	for (int k = 0; k < BODY_MODE_COUNT; k++) {
+		// The body's modes ring a like number of cycles, so the higher ones die sooner.
+		_body.w[k] = Math_TAU * body_hz * BODY_RATIOS[k] / _sample_rate;
+		_body.radius[k] = std::exp(-LN1000 * BODY_RATIOS[k] / (body_seconds * _sample_rate));
+		// A partial sitting on a resonance comes through at the mode's weight.
+		_body.gain[k] = 2.0 * (1.0 - _body.radius[k]) * BODY_WEIGHTS[k];
+	}
+	_body.count = BODY_MODE_COUNT;
+	_body.set_pitch_scale(1.0);
 
 	_output_gain = OUTPUT_TRIM[model] * PIPE_PEAK;
 	_head_silence = SILENCE_PIPE_UNITS / _output_gain;
@@ -540,10 +594,14 @@ bool SiOPMChannelTalus::_is_silent() const {
 			return false;
 		}
 	}
-	if (_wire_envelope * WIRES_GAIN > _head_silence) {
+	// A section that is turned off no longer runs, so what it held cannot keep the channel awake.
+	if (_wires_level > 0.0 && _wire_envelope * WIRES_GAIN > _head_silence) {
 		return false;
 	}
-	if (_model == MODEL_MEMBRANE) {
+	if (_body_level > 0.0 && _body_state.energy(BODY_MODE_COUNT) * BODY_GAIN * BODY_GAIN > _head_silence * _head_silence) {
+		return false;
+	}
+	if (_is_modal()) {
 		return _mode_state.energy(_modes.count) < _head_silence * _head_silence;
 	}
 	// The loop has been quiet for longer than it takes to go around.
@@ -569,10 +627,11 @@ void SiOPMChannelTalus::_clear() {
 	_wire_motion = {};
 	_wire_envelope = 0.0;
 	_wire_band = {};
+	_body_state.clear();
 	_direct_highpass = {};
 }
 
-template <int MODEL, bool DRIVEN>
+template <bool MODAL, bool DRIVEN>
 void SiOPMChannelTalus::_render(int p_length) {
 	SinglyLinkedList<int>::Element *in_pipe = _in_pipe->get();
 	SinglyLinkedList<int>::Element *base_pipe = _base_pipe->get();
@@ -596,11 +655,15 @@ void SiOPMChannelTalus::_render(int p_length) {
 				}
 			}
 
-			const double head = _tick_resonator<MODEL, DRIVEN>(excitation * _resonator_input, excited);
+			const double head = _tick_resonator<MODAL, DRIVEN>(excitation * _resonator_input, excited);
 			const double power = head * head;
 			_tension_power += (power - _tension_power) * (power > _tension_power ? _tension_attack : _tension_release);
 
 			double output = _head_level * head + _direct_level * DIRECT_GAIN * _direct_highpass.highpass(_direct_coeff, excitation);
+			if (_body_level > 0.0) {
+				// The body rings with the head and colours whichever partials land on its resonances.
+				output += _body_level * BODY_GAIN * _body_state.tick(_body, head);
+			}
 			if (_wires_level > 0.0) {
 				// The wires follow the head's motion and saturate, so a ghost note keeps much of
 				// its rattle. They buzz at the drum's pitch and ring as long as the head.
@@ -630,12 +693,12 @@ void SiOPMChannelTalus::_process_talus(int p_length) {
 		_pitch_changed = false;
 		_retune();
 	}
-	if (_model == MODEL_MEMBRANE) {
-		_render<MODEL_MEMBRANE, false>(p_length);
+	if (_is_modal()) {
+		_render<true, false>(p_length);
 	} else if (_drive > 0.0) {
-		_render<MODEL_LOOP, true>(p_length);
+		_render<false, true>(p_length);
 	} else {
-		_render<MODEL_LOOP, false>(p_length);
+		_render<false, false>(p_length);
 	}
 }
 

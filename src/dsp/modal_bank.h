@@ -85,6 +85,16 @@ struct ModalState {
 	}
 };
 
+// One mode of a struck resonator, as its generated tables list them: ratio is the
+// mode's frequency over the fundamental's, and weights[i] is how hard a strike
+// drives it at i / (MODE_POSITION_POINTS - 1) of the way from the center to the edge.
+constexpr int MODE_POSITION_POINTS = 33;
+
+struct ModeShape {
+	double ratio;
+	double weights[MODE_POSITION_POINTS];
+};
+
 } // namespace sion::dsp
 
 #endif // SION_DSP_MODAL_BANK_H

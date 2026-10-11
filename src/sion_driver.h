@@ -1070,7 +1070,7 @@ public:
 			int p_tune_semitones, int p_fine_cents, int p_keytrack, int p_decay_ms, int p_damping, int p_position,
 			int p_stiffness, int p_low_cut_hz, int p_cut_hz, int p_cut_db, int p_tension_cents, int p_drive,
 			int p_wires_level, int p_wires_tension, int p_wires_tone_hz, int p_wires_decay_ms, int p_head, int p_direct,
-			int p_release_mode, int p_release_ms,
+			int p_release_mode, int p_release_ms, int p_body_level, int p_body_hz, int p_body_decay_ms,
 			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// Guitar6 physical model mailbox
 	void mailbox_set_guitar6(int p_track_id,

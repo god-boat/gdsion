@@ -105,7 +105,7 @@ public:
 			int p_tune_semitones, int p_fine_cents, int p_keytrack, int p_decay_ms, int p_damping, int p_position,
 			int p_stiffness, int p_low_cut_hz, int p_cut_hz, int p_cut_db, int p_tension_cents, int p_drive,
 			int p_wires_level, int p_wires_tension, int p_wires_tone_hz, int p_wires_decay_ms, int p_head, int p_direct,
-			int p_release_mode, int p_release_ms);
+			int p_release_mode, int p_release_ms, int p_body_level, int p_body_hz, int p_body_decay_ms);
 	void set_talus_params(const TalusParams &p_params);
 	void set_analog_like(int p_connection_type, int p_wave_shape1 = 1, int p_wave_shape2 = 1, int p_balance = 0, int p_pitch_difference = 0);
 

@@ -23,7 +23,7 @@ struct TalusParams {
 		TONE_SHAPE, // Percent, sine to square.
 		TONE_DECAY_MS,
 		VARIATION, // Percent.
-		MODEL, // 0 Membrane, 1 Loop.
+		MODEL, // 0 Membrane, 1 Loop, 2 Bar, 3 Tuned Bar, 4 String.
 		TUNE_SEMITONES,
 		FINE_CENTS,
 		KEYTRACK, // Percent.
@@ -35,7 +35,7 @@ struct TalusParams {
 		CUT_HZ,
 		CUT_DB,
 		TENSION_CENTS,
-		DRIVE, // Percent.
+		DRIVE, // Percent. Loop and String only.
 		WIRES_LEVEL, // Percent.
 		WIRES_TENSION, // Percent, loose to tight.
 		WIRES_TONE_HZ,
@@ -44,6 +44,9 @@ struct TalusParams {
 		DIRECT, // Percent.
 		RELEASE_MODE, // 0 Ring, 1 Mute.
 		RELEASE_MS,
+		BODY_LEVEL, // Percent.
+		BODY_HZ, // The body's lowest resonance.
+		BODY_DECAY_MS, // T60 of that resonance.
 		SLOT_COUNT,
 	};
 
@@ -56,6 +59,7 @@ struct TalusParams {
 		0, 50, 5000, 120, // Wires.
 		100, 20, // Output.
 		0, 80, // Release.
+		0, 110, 250, // Body.
 	};
 };
 

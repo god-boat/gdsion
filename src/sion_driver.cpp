@@ -1674,7 +1674,7 @@ void SiONDriver::_bind_methods() {
 			"tune_semitones", "fine_cents", "keytrack", "decay_ms", "damping", "position",
 			"stiffness", "low_cut_hz", "cut_hz", "cut_db", "tension_cents", "drive",
 			"wires_level", "wires_tension", "wires_tone_hz", "wires_decay_ms", "head", "direct",
-			"release_mode", "release_ms",
+			"release_mode", "release_ms", "body_level", "body_hz", "body_decay_ms",
 			"entity_scope_id", "slot_scope_id"),
 			&SiONDriver::mailbox_set_talus_params, DEFVAL(-1), DEFVAL(-1));
 	// Guitar6 physical model
@@ -3038,7 +3038,7 @@ void SiONDriver::mailbox_set_talus_params(int p_track_id,
 			int p_tune_semitones, int p_fine_cents, int p_keytrack, int p_decay_ms, int p_damping, int p_position,
 			int p_stiffness, int p_low_cut_hz, int p_cut_hz, int p_cut_db, int p_tension_cents, int p_drive,
 			int p_wires_level, int p_wires_tension, int p_wires_tone_hz, int p_wires_decay_ms, int p_head, int p_direct,
-			int p_release_mode, int p_release_ms,
+			int p_release_mode, int p_release_ms, int p_body_level, int p_body_hz, int p_body_decay_ms,
 		int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_DriverCommand u;
 	u.track_id = p_track_id;
@@ -3051,7 +3051,7 @@ void SiONDriver::mailbox_set_talus_params(int p_track_id,
 			p_tune_semitones, p_fine_cents, p_keytrack, p_decay_ms, p_damping, p_position,
 			p_stiffness, p_low_cut_hz, p_cut_hz, p_cut_db, p_tension_cents, p_drive,
 			p_wires_level, p_wires_tension, p_wires_tone_hz, p_wires_decay_ms, p_head, p_direct,
-			p_release_mode, p_release_ms } };
+			p_release_mode, p_release_ms, p_body_level, p_body_hz, p_body_decay_ms } };
 	_push_command(u);
 }
 

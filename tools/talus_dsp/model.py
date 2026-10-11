@@ -16,9 +16,9 @@ import re
 import numpy as np
 
 import harness as h
+import mode_tables
 
 _SOURCE = (h.GDSION / "src" / "chip" / "channels" / "siopm_channel_talus.cpp").read_text(encoding="utf-8")
-_MODES_SOURCE = (h.GDSION / "src" / "dsp" / "membrane_modes.h").read_text(encoding="utf-8")
 
 
 def _constant(name: str) -> float:
@@ -36,20 +36,39 @@ C = {name: _constant(name) for name in [
 	"LOSS_FIT_RATIO", "ALLPASS_LIMIT", "ALLPASS_FIT_STEPS", "POLE_STEPS", "DELAY_SMOOTHING_SECONDS", "DRIVE_MAX",
 	"TENSION_NORMAL", "TENSION_ENERGY_MAX", "TENSION_ATTACK_SECONDS", "TENSION_RELEASE_SECONDS",
 	"TENSION_RELEASE_PERIODS", "TENSION_STEP_CENTS", "WIRE_HEAD_REFERENCE", "WIRE_KNEE_RANGE_DB", "WIRE_Q",
-	"WIRE_ATTACK_SECONDS", "DIRECT_HIGHPASS_HZ", "SILENCE_PIPE_UNITS",
+	"WIRE_ATTACK_SECONDS", "DIRECT_HIGHPASS_HZ", "SILENCE_PIPE_UNITS", "PLUCK_CORNER", "PLUCK_DRAIN", "BODY_GAIN",
 ]}
 C["HIT_STRIDE"] = 1 << 20
 C["LOSS_FIT_LIMIT"] = 0.9 * math.pi
-OUTPUT_TRIM = [float(v) for v in re.search(r"OUTPUT_TRIM\[\] = \{ ([^}]*) \}", _SOURCE).group(1).split(",")]
 
-MODES = []
-for ratio, m, n, weights in re.findall(r"\{ ([0-9.]+), (\d+), (\d+), \{ ([^}]*) \} \}", _MODES_SOURCE):
-	MODES.append((float(ratio), [float(w) for w in weights.split(",")]))
-POSITION_POINTS = len(MODES[0][1])
+
+def _constants(name: str) -> list[float]:
+	return [float(v) for v in re.search(rf"{name}\[\] = \{{ ([^}}]*) \}}", _SOURCE).group(1).split(",")]
+
+
+OUTPUT_TRIM = _constants("OUTPUT_TRIM")
+BODY_RATIOS = _constants("BODY_RATIOS")
+BODY_WEIGHTS = _constants("BODY_WEIGHTS")
+
+MEMBRANE, LOOP, BAR, TUNED_BAR, STRING = range(5)
+# Each modal model's (ratio, strike weights) rows. Loop and String ring a delay loop.
+MODE_TABLES = {
+	MEMBRANE: mode_tables.read_tables("membrane_modes.h")["MEMBRANE_MODES"],
+	BAR: mode_tables.read_tables("bar_modes.h")["BAR_MODES"],
+	TUNED_BAR: mode_tables.read_tables("bar_modes.h")["TUNED_BAR_MODES"],
+}
+MODES = MODE_TABLES[MEMBRANE]
+MODE_MAX = max(len(table) for table in MODE_TABLES.values())
+POSITION_POINTS = mode_tables.POSITION_POINTS
 STIFFNESS_PARTIAL = int(C["STIFFNESS_PARTIAL"])
-_R8 = MODES[STIFFNESS_PARTIAL - 1][0]
-MEMBRANE_STIFFNESS_MAX = (C["SEMITONE_SQUARED"] - 1.0) / (_R8 * _R8 - C["SEMITONE_SQUARED"])
-LOOP_STIFFNESS_MAX = (C["SEMITONE_SQUARED"] - 1.0) / (STIFFNESS_PARTIAL * STIFFNESS_PARTIAL - C["SEMITONE_SQUARED"])
+
+
+def stiffness_max(eighth_ratio: float) -> float:
+	"""The B that puts a partial of this ratio one semitone sharp."""
+	return (C["SEMITONE_SQUARED"] - 1.0) / (eighth_ratio * eighth_ratio - C["SEMITONE_SQUARED"])
+
+
+LOOP_STIFFNESS_MAX = stiffness_max(STIFFNESS_PARTIAL)
 
 S = {name: index for index, name in enumerate(h.TALUS_SLOTS)}
 
@@ -175,6 +194,9 @@ class Exciter:
 		self.pulse_step = 0.0
 		self.pulse = 0.0
 		self.pulse_previous = 0.0
+		self.plucked = False
+		self.pluck_coeff = self.pluck_drain_coeff = 0.0
+		self.pluck = self.pluck_drain = 0.0
 		self.noise_step = 0
 		self.noise_level = 0.0
 		self.noise_band = Biquad()
@@ -221,7 +243,8 @@ class Talus:
 
 	def clear(self):
 		self.exciters = [Exciter(), Exciter()]
-		self.state = np.zeros(len(MODES), dtype=complex)
+		self.state = np.zeros(MODE_MAX, dtype=complex)
+		self.body_state = np.zeros(len(BODY_RATIOS), dtype=complex)
 		self.loop.clear()
 		self.loop_lowpass = 0.0
 		self.loop_highpass = 0.0
@@ -252,7 +275,7 @@ class Talus:
 		self.tone_normal = 1.0 / fast_tanh(self.tone_drive)
 		self.tone_decay = math.exp(-C["LN1000"] / (v("TONE_DECAY_MS", 1, 200) * 0.001 * rate))
 		self.variation = v("VARIATION", 0, 100) * 0.01
-		model = v("MODEL", 0, 1)
+		model = v("MODEL", 0, STRING)
 		self.tune = v("TUNE_SEMITONES", -48, 48) + v("FINE_CENTS", -100, 100) * 0.01
 		self.keytrack = v("KEYTRACK", 0, 100) * 0.01
 		self.decay = v("DECAY_MS", 20, 10000) * 0.001
@@ -273,6 +296,13 @@ class Talus:
 		self.direct_level = v("DIRECT", 0, 100) * 0.01
 		self.release_mode = v("RELEASE_MODE", 0, 1)
 		self.release = v("RELEASE_MS", 5, 2000) * 0.001
+		# The body: resonances at fixed ratios of Body Hz, each ringing Body Decay over its
+		# ratio, each passing a partial that sits on it at the mode's weight.
+		self.body_level = v("BODY_LEVEL", 0, 100) * 0.01
+		body_w = 2.0 * math.pi * v("BODY_HZ", 40, 1000) * np.array(BODY_RATIOS) / rate
+		body_radius = np.exp(-C["LN1000"] * np.array(BODY_RATIOS) / (v("BODY_DECAY_MS", 20, 2000) * 0.001 * rate))
+		self.body_z = body_radius * np.exp(1j * body_w)
+		self.body_gain = 2.0 * (1.0 - body_radius) * np.array(BODY_WEIGHTS)
 		self.output_gain = OUTPUT_TRIM[model] * C["PIPE_PEAK"]
 		self.head_silence = C["SILENCE_PIPE_UNITS"] / self.output_gain
 		if model != self.model:
@@ -287,23 +317,28 @@ class Talus:
 		self.f1 = 440.0 * 2.0 ** ((note - 69.0) / 12.0)
 		self.motion_coeff = one_pole_coeff(4.0 * self.f1, self.rate)
 		self.tension_release = 1.0 - math.exp(-1.0 / (max(C["TENSION_RELEASE_SECONDS"], C["TENSION_RELEASE_PERIODS"] / self.f1) * self.rate))
-		if self.model == 0:
-			self.retune_membrane()
+		if self.modal:
+			self.retune_modes()
 		else:
 			self.retune_loop()
 		self.apply_tension(self.tension_applied)
 
-	def retune_membrane(self):
+	@property
+	def modal(self) -> bool:
+		return self.model in MODE_TABLES
+
+	def retune_modes(self):
 		"""Each mode: frequency from the ratio and stiffness, decay from Decay, Damping, Cut and Low Cut."""
 		rate = self.rate
+		table = MODE_TABLES[self.model]
 		ceiling = min(C["MODE_CEILING_FRACTION"] * rate, C["MODE_CEILING_HZ"]) * 2.0 ** (-C["TENSION_ENERGY_MAX"] * self.tension_cents / 1200.0)
-		b = self.stiffness * MEMBRANE_STIFFNESS_MAX
+		b = self.stiffness * stiffness_max(table[STIFFNESS_PARTIAL - 1][0])
 		highpass = one_pole_coeff(self.low_cut, rate)
 		x = self.hit_position * (POSITION_POINTS - 1)
 		index = min(int(x), POSITION_POINTS - 2)
 		fraction = x - index
 		w, radius, gain = [], [], []
-		for ratio0, weights in MODES:
+		for ratio0, weights in table:
 			ratio = ratio0 * math.sqrt((1.0 + b * ratio0 * ratio0) / (1.0 + b))
 			hz = self.f1 * ratio
 			if hz >= ceiling:
@@ -392,7 +427,7 @@ class Talus:
 	def apply_tension(self, cents: float):
 		self.tension_applied = cents
 		scale = math.exp(cents * C["LN2_PER_CENT"])
-		if self.model == 0:
+		if self.modal:
 			angle = self.mode_w * scale
 			self.mode_z = self.mode_radius * np.cos(angle) + 1j * (self.mode_radius * np.sin(angle))
 		else:
@@ -434,6 +469,19 @@ class Talus:
 		exciter.pulse_samples = math.ceil(samples - 0.5)
 		area = sum(math.sin(step * (n + 0.5)) for n in range(exciter.pulse_samples))
 		amplitude = self.strike_level * force / (area * self.resonator_input)
+		# String: a pluck is the strike's force gathered by a one-pole whose corner is
+		# PLUCK_CORNER of the loop's fundamental, less the same force gathered at
+		# PLUCK_DRAIN: a band-pass with no gain at DC and a 1/f fall above the fundamental,
+		# which is brought back to the strike's level. The pulse lasts until both sums
+		# have fallen to the floor.
+		exciter.plucked = self.model == STRING
+		pulse_tail = 0
+		if exciter.plucked:
+			w1 = 2.0 * math.pi / self.period
+			exciter.pluck_coeff = 1.0 - math.exp(-C["PLUCK_CORNER"] * w1)
+			exciter.pluck_drain_coeff = 1.0 - math.exp(-C["PLUCK_DRAIN"] * w1)
+			amplitude /= abs(lowpass_response(exciter.pluck_coeff, w1) - lowpass_response(exciter.pluck_drain_coeff, w1))
+			pulse_tail = max(self.samples_above_floor(coeff * amplitude * area, 1.0 - coeff) for coeff in (exciter.pluck_coeff, exciter.pluck_drain_coeff))
 		exciter.pulse = amplitude * math.sin(0.5 * step)
 		exciter.pulse_previous = -exciter.pulse
 		exciter.pulse_step = 2.0 * math.cos(step)
@@ -445,7 +493,7 @@ class Talus:
 		exciter.tone_cos, exciter.tone_sin = math.cos(tone_w), math.sin(tone_w)
 		exciter.tone_re, exciter.tone_im = 1.0, 0.0
 		exciter.tone_level = self.tone_level * force * C["TONE_FORCE"]
-		exciter.remaining = max(exciter.pulse_samples, self.samples_above_floor(exciter.noise_level, self.noise_decay), self.samples_above_floor(exciter.tone_level, self.tone_decay))
+		exciter.remaining = max(exciter.pulse_samples + pulse_tail, self.samples_above_floor(exciter.noise_level, self.noise_decay), self.samples_above_floor(exciter.tone_level, self.tone_decay))
 
 	@staticmethod
 	def samples_above_floor(level: float, decay: float) -> int:
@@ -459,6 +507,10 @@ class Talus:
 			value = e.pulse
 			e.pulse, e.pulse_previous = e.pulse_step * e.pulse - e.pulse_previous, e.pulse
 			e.pulse_samples -= 1
+		if e.plucked:
+			e.pluck += e.pluck_coeff * (value - e.pluck)
+			e.pluck_drain += e.pluck_drain_coeff * (value - e.pluck_drain)
+			value = e.pluck - e.pluck_drain
 		value += e.noise_band.tick(self.noise_band, lfo_random(e.noise_step)) * e.noise_level
 		e.noise_step = (e.noise_step + 1) & 0xFFFFFFFF
 		e.noise_level *= self.noise_decay
@@ -484,9 +536,12 @@ class Talus:
 	def silent(self) -> bool:
 		if any(e.remaining > 0 for e in self.exciters):
 			return False
-		if self.wire_envelope * C["WIRES_GAIN"] > self.head_silence:
+		# Wires and body count while they are on; one that is off has stopped running.
+		if self.wires_level > 0.0 and self.wire_envelope * C["WIRES_GAIN"] > self.head_silence:
 			return False
-		if self.model == 0:
+		if self.body_level > 0.0 and C["BODY_GAIN"] * math.sqrt(float(np.sum(np.abs(self.body_state) ** 2))) > self.head_silence:
+			return False
+		if self.modal:
 			count = len(self.mode_w)
 			return float(np.sum(np.abs(self.state[:count]) ** 2)) < self.head_silence * self.head_silence
 		return self.quiet > self.read_delay + C["MIN_READ_DELAY"]
@@ -519,20 +574,20 @@ class Talus:
 		if self.pitch_changed:
 			self.pitch_changed = False
 			self.retune()
-		count = len(self.mode_w) if self.model == 0 else 0
+		count = len(self.mode_w) if self.modal else 0
 		for i in range(length):
 			self.countdown -= 1
 			if self.countdown == 0:
 				self.countdown = int(C["UPDATE_INTERVAL"])
 				if self.update():
 					break
-				count = len(self.mode_w) if self.model == 0 else 0
+				count = len(self.mode_w) if self.modal else 0
 			excitation = 0.0
 			for e in self.exciters:
 				if e.remaining > 0:
 					excitation += self.tick_exciter(e)
 			x = excitation * self.resonator_input
-			if self.model == 0:
+			if self.modal:
 				state = self.mode_z * self.state[:count] + self.mode_gain * x
 				self.state[:count] = state
 				head = float(np.sum(state.imag))
@@ -543,6 +598,9 @@ class Talus:
 				self.power += (power - self.power) * (self.tension_attack if power > self.power else self.tension_release)
 			self.direct_highpass += self.direct_coeff * (excitation - self.direct_highpass)
 			output = self.head_level * head + self.direct_level * C["DIRECT_GAIN"] * (excitation - self.direct_highpass)
+			if self.body_level > 0.0:
+				self.body_state = self.body_z * self.body_state + self.body_gain * head
+				output += self.body_level * C["BODY_GAIN"] * float(np.sum(self.body_state.imag))
 			if self.wires_level > 0.0:
 				self.motion += self.motion_coeff * (head - self.motion)
 				drive = abs(self.motion) * self.wire_inverse_knee

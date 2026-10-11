@@ -1,4 +1,4 @@
-"""Talus verification: the cases T1-T14 from docs/TalusPhysicalModelDesign.md,
+"""Talus verification: the cases T1-T17 from docs/TalusPhysicalModelDesign.md,
 plus T0 (the C++ matches the model) and IRON (sharing DSP blocks left Iron's
 output bit-identical to --iron-rev in build.py).
 
@@ -22,6 +22,9 @@ import model
 
 RATE = 48000
 CENTS_PER_OCTAVE = 1200.0
+MEMBRANE, LOOP, BAR, TUNED_BAR, STRING = range(5)
+MODELS = ["membrane", "loop", "bar", "tuned bar", "string"]
+MODAL = [MEMBRANE, BAR, TUNED_BAR]
 
 
 class Engine:
@@ -153,6 +156,11 @@ def t0_model_match(engine: Engine):
 		h.Job(params=voice(release_mode=1, release_ms=40)).hit(62, 0.7).render(0.1).off().render(0.1).pitch(67).render(0.05).hit(55, 0.4).render(0.2),
 		h.Job(params=voice(model=1, release_mode=1, stiffness=40)).hit(48, 0.9).render(0.15, blocks=[5, 77]).off().render(0.05).hit(60, 0.5).render(0.2),
 		hit(voice(decay_ms=60, noise_decay_ms=200), seconds=0.6),
+		hit(voice(model=BAR, stiffness=40, damping=20, position=60, tone_level=30), note=55, seconds=0.4),
+		hit(voice(model=TUNED_BAR, tension_cents=200, wires_level=30, body_level=60, body_hz=180, body_decay_ms=400), note=48, seconds=0.4, rate=44100),
+		hit(voice(model=STRING, body_level=80, noise_level=40, stiffness=30, drive=20, damping=60), note=40, seconds=0.4),
+		h.Job(params=voice(model=STRING, release_mode=1, body_level=50, strike_hardness=20, position=70)).hit(52, 0.8).render(0.15, blocks=[9, 130]).off().render(0.05).pitch(55).hit(55, 0.5).render(0.2),
+		hit(voice(model=STRING, decay_ms=40, body_level=100, body_hz=90, body_decay_ms=900, head=0), note=33, seconds=0.6),
 	]
 	cpp = h.run(jobs)
 	reference = model.run(jobs)
@@ -161,14 +169,14 @@ def t0_model_match(engine: Engine):
 
 
 def t1_tuning(engine: Engine):
-	"""Fundamental within 1 cent: both models, 44.1 and 48 kHz, filters at their extremes.
+	"""Fundamental within 1 cent: every model, 44.1 and 48 kHz, filters at their extremes.
 
 	Cut and Low Cut take their loss once per period, so at the fundamental they end the
 	note within a few periods. Their extremes here are the strongest settings that still
 	ring: Low Cut on the fundamental (the most phase lead), and the deepest Cut three
 	octaves up. The measurement starts 2 ms after the hit, past the strike. A center
-	hit leaves only the m = 0 modes, so a fundamental that dies early is not masked by
-	the (1,1) mode outliving it.
+	hit leaves only the m = 0 modes (on a bar, the odd ones), so a fundamental that dies
+	early is not masked by the next mode outliving it.
 	"""
 	def extremes(note):
 		f1 = note_hz(note)
@@ -184,7 +192,7 @@ def t1_tuning(engine: Engine):
 		}
 	cases = []
 	jobs = []
-	for model_index in (0, 1):
+	for model_index in range(len(MODELS)):
 		for rate in (44100, 48000):
 			for note in engine.notes:
 				for name, overrides in extremes(note).items():
@@ -196,24 +204,29 @@ def t1_tuning(engine: Engine):
 		error = cents(frequency(y, case[1], note_hz(case[2]), start=0.002, periods=2.0), note_hz(case[2]))
 		if abs(error) > abs(worst[0]):
 			worst = (error, case)
-	return abs(worst[0]) <= 1.0, f"{len(jobs)} renders, worst {worst[0]:+.3f} cents at model {worst[1][0]}, {worst[1][1]} Hz, note {worst[1][2]}, {worst[1][3]}"
+	return abs(worst[0]) <= 1.0, f"{len(jobs)} renders, worst {worst[0]:+.3f} cents at {MODELS[worst[1][0]]}, {worst[1][1]} Hz, note {worst[1][2]}, {worst[1][3]}"
 
 
-def t2_membrane_ratios(engine: Engine):
-	"""The first 8 mode peaks within 0.5 % of the Bessel table."""
-	f1 = note_hz(60)
-	y = renders(engine, [hit(voice(position=80, damping=0, decay_ms=4000, noise_level=0, direct=0), seconds=1.2)])[0]
-	worst = 0.0
-	for ratio, _ in model.MODES[:8]:
-		measured = spectral_peak(y, RATE, ratio * f1, 0.008) / f1
-		worst = max(worst, abs(measured / ratio - 1))
-	return worst <= 0.005, f"worst ratio error {100 * worst:.3f} %"
+def t2_mode_ratios(engine: Engine):
+	"""The first 8 mode peaks within 0.5 % of each modal model's table: Bessel, bar and tuned bar.
+
+	The bars are hit near an end, where no mode has a node, an octave down so the tuned
+	bar's eighth mode stays under the ceiling.
+	"""
+	cases = [(MEMBRANE, 60, 80), (BAR, 48, 100), (TUNED_BAR, 48, 100)]
+	outputs = renders(engine, [hit(voice(model=m, position=position, damping=0, decay_ms=4000, noise_level=0, direct=0), note=note, seconds=1.2) for m, note, position in cases])
+	worst = {}
+	for (model_index, note, _), y in zip(cases, outputs):
+		f1 = note_hz(note)
+		errors = [abs(spectral_peak(y, RATE, ratio * f1, 0.008) / (ratio * f1) - 1) for ratio, _ in model.MODE_TABLES[model_index][:8]]
+		worst[MODELS[model_index]] = max(errors)
+	return max(worst.values()) <= 0.005, "worst ratio error " + ", ".join(f"{name} {100 * error:.3f} %" for name, error in worst.items())
 
 
 def t3_decay(engine: Engine):
-	"""The fundamental's T60 within 10 % of Decay, notes 36-84, both models."""
+	"""The fundamental's T60 within 10 % of Decay, notes 36-84, every model."""
 	jobs, cases = [], []
-	for model_index in (0, 1):
+	for model_index in range(len(MODELS)):
 		for note in engine.notes[::4] if engine is CPP else engine.notes:
 			jobs.append(hit(voice(model=model_index, noise_level=0, direct=0), note=note, seconds=1.2))
 			cases.append((model_index, note))
@@ -222,7 +235,7 @@ def t3_decay(engine: Engine):
 		error = t60(y, RATE, note_hz(case[1])) / 0.8 - 1
 		if abs(error) > abs(worst[0]):
 			worst = (error, case)
-	return abs(worst[0]) <= 0.10, f"{len(jobs)} renders, worst {100 * worst[0]:+.1f} % at model {worst[1][0]}, note {worst[1][1]}"
+	return abs(worst[0]) <= 0.10, f"{len(jobs)} renders, worst {100 * worst[0]:+.1f} % at {MODELS[worst[1][0]]}, note {worst[1][1]}"
 
 
 def t4_passivity(engine: Engine):
@@ -250,7 +263,7 @@ def t4_passivity(engine: Engine):
 								gain = talus.loop_gain * np.abs(c / (1 - q * z1) * hp * cut)
 								worst = max(worst, float(gain.max()))
 								corners += 1
-	jobs = [h.Job(params=voice(model=m, decay_ms=10000, damping=0)).hit(60).until_idle(30.0, 480) for m in (0, 1)]
+	jobs = [h.Job(params=voice(model=m, decay_ms=10000, damping=0)).hit(60).until_idle(30.0, 480) for m in range(len(MODELS))]
 	if engine is CPP:
 		outputs, lines = h.run_with_report(jobs)
 		idle = [int(v) / RATE for v in h.report_values(lines, "IDLE")]
@@ -311,10 +324,13 @@ def t8_tension(engine: Engine):
 
 
 def t9_restrike(engine: Engine):
-	"""With Tension and Wires off, two hits equal the sum of each alone (a zero-force hit keeps the second's place)."""
+	"""With Tension and Wires off, two hits equal the sum of each alone (a zero-force hit keeps the second's place).
+
+	Every model, with the body on: it is linear too.
+	"""
 	worst = 0.0
-	for model_index in (0, 1):
-		params = voice(model=model_index, strike_velocity=100, tone_level=40)
+	for model_index in range(len(MODELS)):
+		params = voice(model=model_index, strike_velocity=100, tone_level=40, body_level=40)
 		gap = int(0.15 * RATE)
 		both, first, second = renders(engine, [
 			h.Job(params=params).hit(60, 0.8).render(samples=gap).hit(60, 0.6).render(0.5),
@@ -360,12 +376,12 @@ def t10_sample_rate(engine: Engine):
 def t11_segments(engine: Engine):
 	"""Blocks of [1, 7, 64, 333, rest] render bit-identically to one block."""
 	def job(model_index, blocks):
-		params = voice(model=model_index, wires_level=50, tension_cents=300, decay_ms=150, variation=40, drive=30, release_mode=1)
+		params = voice(model=model_index, wires_level=50, tension_cents=300, decay_ms=150, variation=40, drive=30, release_mode=1, body_level=30)
 		return (h.Job(params=params).hit(60, 0.9).render(0.2, blocks=blocks).hit(64, 0.5).render(0.1, blocks=blocks)
 			.off().render(0.6, blocks=blocks).hit(57, 0.7).render(0.3, blocks=blocks))
-	pairs = renders(engine, [job(m, b) for m in (0, 1) for b in (None, [1, 7, 64, 333])])
-	identical = [np.array_equal(pairs[i], pairs[i + 1]) for i in (0, 2)]
-	return all(identical), f"membrane {identical[0]}, loop {identical[1]}"
+	pairs = renders(engine, [job(m, b) for m in range(len(MODELS)) for b in (None, [1, 7, 64, 333])])
+	identical = [np.array_equal(pairs[2 * m], pairs[2 * m + 1]) for m in range(len(MODELS))]
+	return all(identical), ", ".join(f"{name} {same}" for name, same in zip(MODELS, identical))
 
 
 def t12_determinism(engine: Engine):
@@ -377,27 +393,87 @@ def t12_determinism(engine: Engine):
 
 def t13_level(engine: Engine):
 	"""A default full-force hit peaks within 1 dB of Iron's single-note level, -7 dBFS."""
-	peaks = [20 * math.log10(np.abs(y).max() / h.PIPE_PEAK) for y in renders(engine, [hit(voice(model=m), seconds=0.5) for m in (0, 1)])]
-	return all(abs(p + 7) <= 1 for p in peaks), f"membrane {peaks[0]:.2f} dBFS, loop {peaks[1]:.2f} dBFS"
+	peaks = [20 * math.log10(np.abs(y).max() / h.PIPE_PEAK) for y in renders(engine, [hit(voice(model=m), seconds=0.5) for m in range(len(MODELS))])]
+	return all(abs(p + 7) <= 1 for p in peaks), ", ".join(f"{name} {peak:.2f} dBFS" for name, peak in zip(MODELS, peaks))
 
 
 def t14_cpu(engine: Engine):
-	"""A 48-mode Membrane voice and a Loop voice each cost no more than an Iron voice.
+	"""No voice costs more than an Iron voice: a 48-mode Membrane, a Loop, a Bar, and a String with its body.
 
-	Timing on a laptop is noisy, so the three voices run interleaved and each keeps its
+	Timing on a laptop is noisy, so the voices run interleaved and each keeps its
 	best of five runs.
 	"""
 	timings = {}
 	for _ in range(5):
 		measured = h.run_timing([
 			h.Job(params=voice(decay_ms=10000)).hit(60).time("membrane", 10.0),
-			h.Job(params=voice(model=1, decay_ms=10000)).hit(60).time("loop", 10.0),
+			h.Job(params=voice(model=LOOP, decay_ms=10000)).hit(60).time("loop", 10.0),
+			h.Job(params=voice(model=BAR, decay_ms=10000)).hit(36).time("bar", 10.0),
+			h.Job(params=voice(model=STRING, decay_ms=10000, body_level=100)).hit(60).time("string", 10.0),
 			h.Job("iron").hit(40).time("iron", 10.0),
 		])
 		for label, value in measured.items():
 			timings[label] = min(timings.get(label, value), value)
-	passed = timings["membrane"] <= timings["iron"] and timings["loop"] <= timings["iron"]
+	passed = all(ns <= timings["iron"] for ns in timings.values())
 	return passed, ", ".join(f"{label} {ns:.0f} ns/sample ({100 * ns * RATE / 1e9:.2f} % of a core)" for label, ns in timings.items())
+
+
+def t15_bar_position(engine: Engine):
+	"""Bar, center hit: modes 2 and 4 below -60 dB re the fundamental. At Position 40 within 20 dB.
+
+	Damping 0 and the hardest stick, so every mode is struck and rings alike: the default
+	stick's contact pulse has its first null on the fourth mode.
+	"""
+	f1 = note_hz(60)
+	ratios = [mode[0] for mode in model.MODE_TABLES[BAR][:4]]
+	center, outer = renders(engine, [hit(voice(model=BAR, position=p, damping=0, strike_hardness=100, noise_level=0, direct=0, decay_ms=2000), seconds=0.6) for p in (0, 40)])
+	def levels(y):
+		base = mode_level(y, RATE, f1)
+		return [20 * math.log10(mode_level(y, RATE, ratios[k] * f1) / base + 1e-30) for k in (1, 3)]
+	at_center, at_outer = levels(center), levels(outer)
+	passed = max(at_center) < -60 and min(at_outer) > -20
+	return passed, f"center {at_center[0]:.0f}/{at_center[1]:.0f} dB, position 40 {at_outer[0]:.1f}/{at_outer[1]:.1f} dB"
+
+
+def t16_pluck(engine: Engine):
+	"""String against Loop, the same voice: the fundamentals within 0.5 dB, and partial n at 1/n of the Loop's within 0.5 dB, n = 2-8.
+
+	Damping 0 so every partial rings alike, and a hit near the end of the string, where
+	the strike position cancels none of the first eight. Levels are the head's, before
+	each model's output trim.
+	"""
+	f1 = note_hz(48)
+	def partials(model_index):
+		y = renders(engine, [hit(voice(model=model_index, damping=0, position=100, strike_hardness=100, decay_ms=4000, noise_level=0, direct=0), note=48, seconds=0.6)])[0]
+		return np.array([mode_level(y, RATE, n * f1) for n in range(1, 9)]) / model.OUTPUT_TRIM[model_index]
+	string, loop = partials(STRING), partials(LOOP)
+	fundamental = 20 * math.log10(string[0] / loop[0])
+	fall = 20 * np.log10(string / loop * loop[0] / string[0] * np.arange(1, 9))
+	passed = abs(fundamental) <= 0.5 and float(np.abs(fall).max()) <= 0.5
+	return passed, f"fundamental {fundamental:+.2f} dB; partials 2-8 against 1/n " + " ".join(f"{d:+.2f}" for d in fall[1:]) + " dB"
+
+
+def t17_body(engine: Engine):
+	"""The body rings at Body Hz and its ratios, its lowest mode for Body Decay, and at 100 % peaks with the head.
+
+	A string muted after 0.3 s (Mute Time 5 ms) leaves the body ringing on its own: its
+	first three modes sit within 0.5 % of the table, and the lowest one's T60 within 10 %
+	of Body Decay. The default String voice with only its body peaks within 1 dB of the
+	same voice with only its head.
+	"""
+	body_hz, decay = 147.0, 1.5
+	muted = voice(model=STRING, release_mode=1, release_ms=5, decay_ms=4000, head=0, direct=0, noise_level=0, body_level=100, body_hz=body_hz, body_decay_ms=1000 * decay)
+	ringing, body_only, head_only = renders(engine, [
+		h.Job(params=muted).hit(50).render(0.3).off().render(1.5),
+		hit(voice(model=STRING, head=0, direct=0, body_level=100), seconds=0.5),
+		hit(voice(model=STRING, direct=0), seconds=0.5),
+	])
+	free = ringing[int(0.35 * RATE):]
+	ratio_error = max(abs(spectral_peak(free, RATE, ratio * body_hz, 0.02, start=0.0) / (ratio * body_hz) - 1) for ratio in model.BODY_RATIOS[:3])
+	decay_error = t60(free, RATE, body_hz) / decay - 1
+	level = 20 * math.log10(np.abs(body_only).max() / np.abs(head_only).max())
+	passed = ratio_error <= 0.005 and abs(decay_error) <= 0.10 and abs(level) <= 1
+	return passed, f"mode ratios within {100 * ratio_error:.3f} %, lowest mode T60 {100 * decay_error:+.1f} %, body against head {level:+.2f} dB"
 
 
 def iron_identity(engine: Engine):
@@ -416,7 +492,7 @@ def iron_identity(engine: Engine):
 CASES = {
 	"T0": (t0_model_match, ("cpp",)),
 	"T1": (t1_tuning, ("cpp", "model")),
-	"T2": (t2_membrane_ratios, ("cpp", "model")),
+	"T2": (t2_mode_ratios, ("cpp", "model")),
 	"T3": (t3_decay, ("cpp", "model")),
 	"T4": (t4_passivity, ("cpp", "model")),
 	"T5": (t5_position, ("cpp", "model")),
@@ -429,6 +505,9 @@ CASES = {
 	"T12": (t12_determinism, ("cpp", "model")),
 	"T13": (t13_level, ("cpp", "model")),
 	"T14": (t14_cpu, ("cpp",)),
+	"T15": (t15_bar_position, ("cpp", "model")),
+	"T16": (t16_pluck, ("cpp", "model")),
+	"T17": (t17_body, ("cpp", "model")),
 	"IRON": (iron_identity, ("cpp",)),
 }
 
