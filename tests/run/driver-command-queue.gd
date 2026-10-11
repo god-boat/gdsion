@@ -21,6 +21,8 @@ const OVERFLOW_PUSHES := 4096
 
 func run(scene_tree: SceneTree) -> void:
 	await _run_case(scene_tree, "note start", _case_note_start)
+	await _run_case(scene_tree, "persistent timed clicks", _case_timed_clicks)
+	await _run_case(scene_tree, "timed note retrigger", _case_timed_retrigger)
 	await _run_case(scene_tree, "overflow keeps queued work", _case_overflow)
 	await _run_case(scene_tree, "retirement", _case_retirement)
 	await _run_case(scene_tree, "reset with sounding and queued notes", _case_reset.bind(true))
@@ -91,6 +93,47 @@ func _case_note_start(label: String, driver: SiONDriver, renderer: SiONOfflineRe
 	# Synchronous setup precedes the queued key-on, so the first block sounds.
 	_start_note(driver, 1)
 	_assert_equal("%s: first block sounds" % label, _peak(renderer.render_block()) > 0.0, true)
+
+
+func _case_timed_clicks(label: String, driver: SiONDriver, renderer: SiONOfflineRenderer) -> void:
+	driver.set_bpm(120)
+	var track := driver.create_user_controllable_track(0xFFFF)
+	_make_voice().update_track_voice(track)
+	var beat_frames := int(round(driver.get_sample_rate() * 0.5))
+	var beat_blocks := ceili(float(beat_frames) / BUFFER_SIZE)
+	var click_length := driver.convert_event_length(1.0)
+	var click_frames := int(round(float(beat_frames) / 16.0))
+
+	# Keep the same native track through four bars, then eight idle bars.
+	for beat in range(17):
+		if beat == 16:
+			for i in range(beat_blocks * 32):
+				renderer.render_block()
+		var click_label := "%s: beat %d" % [label, beat]
+		driver.mailbox_key_on(0xFFFF, 86 if beat % 4 == 0 else 94, click_length, -1, -1, track.get_instance_id())
+		_assert_equal("%s sounds immediately" % click_label, _peak(renderer.render_block()) > 0.0, true)
+		var blocks := _render_until(renderer, func() -> bool: return track.is_finished())
+		var duration_ok := blocks >= 0 and absi((blocks + 1) * BUFFER_SIZE - click_frames) <= BUFFER_SIZE * 8
+		_assert_equal("%s keeps its duration" % click_label, duration_ok, true)
+		for i in range(beat_blocks - blocks - 1):
+			renderer.render_block()
+
+
+func _case_timed_retrigger(label: String, driver: SiONDriver, renderer: SiONOfflineRenderer) -> void:
+	driver.set_bpm(120)
+	var track := driver.create_user_controllable_track(1)
+	_make_voice().update_track_voice(track)
+	driver.mailbox_key_on(1, 60, driver.convert_event_length(16.0), -1, -1, track.get_instance_id())
+	renderer.render_block()
+	_assert_equal("%s: previous note is still playing" % label, track.is_finished(), false)
+
+	# The short replacement must not inherit the long note's remaining samples.
+	driver.mailbox_key_on(1, 72, driver.convert_event_length(1.0), -1, -1, track.get_instance_id())
+	_assert_equal("%s: replacement sounds immediately" % label, _peak(renderer.render_block()) > 0.0, true)
+	var blocks := _render_until(renderer, func() -> bool: return track.is_finished())
+	var expected_frames := int(round(driver.get_sample_rate() * 0.5 / 16.0))
+	var duration_ok := blocks >= 0 and absi((blocks + 1) * BUFFER_SIZE - expected_frames) <= BUFFER_SIZE * 8
+	_assert_equal("%s: replacement keeps its duration" % label, duration_ok, true)
 
 
 func _case_overflow(label: String, driver: SiONDriver, renderer: SiONOfflineRenderer) -> void:

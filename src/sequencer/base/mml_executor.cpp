@@ -48,18 +48,14 @@ void MMLExecutor::stop() {
 }
 
 void MMLExecutor::execute_single_note(int p_note, int p_tick_length) {
+	// A new note starts its own clock, including when this executor was idle
+	// or still had samples left to process for the previous note.
+	clear();
+
 	_note_event->set_next(nullptr);
 	_note_event->set_data(p_note);
 	_note_event->set_length(p_tick_length);
 	_pointer = _note_event;
-
-	_sequence = nullptr;
-
-	_repeat_end_counter = 0;
-	_repeat_point = nullptr;
-
-	_repeat_counters->clear();
-	_current_tick_count = 0;
 }
 
 void MMLExecutor::bend_single_note(int p_to_note, int p_tick_length) {
