@@ -62,12 +62,7 @@ class SiFilterVowel : public SiEffectBase {
 	};
 
 	// Tap matrix.
-	FormantTap _tap0;
-	FormantTap _tap1;
-	FormantTap _tap2;
-	FormantTap _tap3;
-	FormantTap _tap4;
-	FormantTap _tap5;
+	FormantTap _taps[2][FORMANT_COUNT];
 
 	// Event chain.
 
@@ -94,7 +89,7 @@ class SiFilterVowel : public SiEffectBase {
 
 	//
 
-	double _process_lfo_formant(Formant p_formant, FormantTap p_tap, double *r_input);
+	double _process_lfo_formant(const Formant &p_formant, FormantTap &r_tap, double p_input);
 	void _process_lfo(Vector<double> *r_buffer, int p_start_index, int p_length);
 
 protected:
@@ -113,8 +108,8 @@ public:
 
 	//
 
-	virtual int prepare_process() override;
-	virtual int process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
+	virtual void prepare_process() override;
+	virtual void process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) override;
 
 	virtual void set_by_mml(Vector<double> p_args) override;
 

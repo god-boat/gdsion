@@ -80,8 +80,8 @@ public:
 	void set_band_params(int p_band, int p_type, bool p_enabled, double p_freq_hz, double p_gain_db, double p_q);
 	void set_output_gain_db(double p_gain_db);
 
-	virtual int prepare_process() override;
-	virtual int process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
+	virtual void prepare_process() override;
+	virtual void process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) override;
 
 	virtual void set_by_mml(Vector<double> p_args) override;
 	virtual bool set_arg(int p_arg_index, double p_value) override;

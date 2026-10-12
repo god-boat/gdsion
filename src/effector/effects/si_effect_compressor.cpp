@@ -35,17 +35,16 @@ bool SiEffectCompressor::set_arg(int p_arg_index, double p_value) {
 	}
 }
 
-int SiEffectCompressor::prepare_process() {
+void SiEffectCompressor::prepare_process() {
 	_rms_env = 0.0;
 	_gain_db = 0.0;
 	_current_gr_db.store(0.0f, std::memory_order_relaxed);
-	return 2;
 }
 
-int SiEffectCompressor::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectCompressor::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	double sample_rate = _get_sampling_rate();
 	if (sample_rate <= 0.0) {
-		return p_channels;
+		return;
 	}
 
 	// Handle RT-safe state reset request from main thread.
@@ -108,8 +107,6 @@ int SiEffectCompressor::process(const ProcessContext &p_context, int p_channels,
 
 	// Publish metering (positive value for UI).
 	_current_gr_db.store((float)(-_gain_db), std::memory_order_relaxed);
-
-	return p_channels;
 }
 
 void SiEffectCompressor::set_by_mml(Vector<double> p_args) {

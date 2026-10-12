@@ -21,12 +21,10 @@ void SiEffectStereoChorus::set_params(double p_delay_time, double p_feedback, do
 	_calculate_constant_power_gains(p_wet, _dry_gain, _wet_gain);
 }
 
-int SiEffectStereoChorus::prepare_process() {
+void SiEffectStereoChorus::prepare_process() {
 	_delay_left.clear();
 	_delay_right.clear();
 	_lfo.reset();
-
-	return 2;
 }
 
 double SiEffectStereoChorus::_process_channel(FractionalDelay &r_delay, double p_input, double p_delay_samples) {
@@ -35,7 +33,7 @@ double SiEffectStereoChorus::_process_channel(FractionalDelay &r_delay, double p
 	return p_input * _dry_gain + delayed * _wet_gain;
 }
 
-int SiEffectStereoChorus::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectStereoChorus::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	double *buffer = r_buffer->ptrw();
 	const int end = (p_start_index + p_length) << 1;
 	for (int i = p_start_index << 1; i < end; i += 2) {
@@ -43,8 +41,6 @@ int SiEffectStereoChorus::process(const ProcessContext &p_context, int p_channel
 		buffer[i] = _process_channel(_delay_left, buffer[i], _center_delay - swing);
 		buffer[i + 1] = _process_channel(_delay_right, buffer[i + 1], _center_delay - swing * _phase_invert);
 	}
-
-	return p_channels;
 }
 
 void SiEffectStereoChorus::set_by_mml(Vector<double> p_args) {

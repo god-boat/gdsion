@@ -35,8 +35,8 @@ public:
 	void set_slot_effects(int p_slot, Vector<Ref<SiEffectBase>> p_effects);
 	void set_slot_levels(int p_slot, double p_send_level, double p_mix_level);
 
-	virtual int prepare_process() override;
-	virtual int process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
+	virtual void prepare_process() override;
+	virtual void process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) override;
 
 	virtual void reset() override;
 

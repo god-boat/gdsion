@@ -153,8 +153,8 @@ public:
 			double p_tone = 0.6, double p_body = 0.5, double p_width = 0.5,
 			double p_shear = 0.15, double p_mix = 1.0);
 
-	virtual int prepare_process() override;
-	virtual int process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
+	virtual void prepare_process() override;
+	virtual void process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) override;
 	virtual void set_by_mml(Vector<double> p_args) override;
 	virtual bool set_arg(int p_arg_index, double p_value) override;
 	virtual void reset() override;

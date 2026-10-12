@@ -32,11 +32,7 @@ void SiEffectStereoExpander::set_params(double p_stereo_width, double p_rotation
 	}
 }
 
-int SiEffectStereoExpander::prepare_process() {
-	return 2;
-}
-
-int SiEffectStereoExpander::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectStereoExpander::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
@@ -49,7 +45,7 @@ int SiEffectStereoExpander::process(const ProcessContext &p_context, int p_chann
 			r_buffer->write[i + 1] = value;
 		}
 
-		return 1;
+		return;
 	}
 
 	for (int i = start_index; i < (start_index + length); i += 2) {
@@ -59,8 +55,6 @@ int SiEffectStereoExpander::process(const ProcessContext &p_context, int p_chann
 		r_buffer->write[i]     = value_left * _left_to_left + value_right * _right_to_left;
 		r_buffer->write[i + 1] = value_left * _left_to_right + value_right * _right_to_right;
 	}
-
-	return 2;
 }
 
 void SiEffectStereoExpander::set_by_mml(Vector<double> p_args) {

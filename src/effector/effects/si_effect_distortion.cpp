@@ -24,46 +24,34 @@ void SiEffectDistortion::set_params(double p_pre_gain, double p_post_gain, doubl
 		double alp = sin * Math::sinh(ang); // log(2)*0.5
 		double ia0 = 1.0 / (1.0 + alp);
 
-		_a1 = -2 * cos * ia0;
-		_a2 = (1 - alp) * ia0;
-		_b1 = (1 - cos) * ia0;
-		_b0 = _b1 * 0.5;
-		_b2 = _b1 * 0.5;
+		_lpf_coeffs.a1 = -2 * cos * ia0;
+		_lpf_coeffs.a2 = (1 - alp) * ia0;
+		_lpf_coeffs.b1 = (1 - cos) * ia0;
+		_lpf_coeffs.b0 = _lpf_coeffs.b1 * 0.5;
+		_lpf_coeffs.b2 = _lpf_coeffs.b1 * 0.5;
 	}
 }
 
-int SiEffectDistortion::prepare_process() {
-	return 1;
-}
-
-int SiEffectDistortion::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectDistortion::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
-	for (int i = start_index; i < (start_index + length); i += 2) {
+	for (int i = start_index; i < (start_index + length); i++) {
 		double value = CLAMP((*r_buffer)[i] * _pre_scale, -_limit, _limit);
 
 		double output = value;
 		if (_filter_enabled) {
-			if (Math::abs(_out1) < THRESHOLD) {
-				_out1 = 0;
-				_out2 = 0;
+			sion::dsp::BiquadState &state = _lpf_state[i & 1];
+			if (Math::abs(state.y1) < THRESHOLD) {
+				state.y1 = 0;
+				state.y2 = 0;
 			}
 
-			output = _b0 * value + _b1 * _in1 + _b2 * _in2 - _a1 * _out1 - _a2 * _out2;
-
-			_in2  = _in1;
-			_in1  = value;
-
-			_out2 = _out1;
-			_out1 = output;
+			output = state.tick(_lpf_coeffs, value);
 		}
 
 		r_buffer->write[i] = output;
-		r_buffer->write[i + 1] = output;
 	}
-
-	return 1;
 }
 
 void SiEffectDistortion::set_by_mml(Vector<double> p_args) {
@@ -76,10 +64,9 @@ void SiEffectDistortion::set_by_mml(Vector<double> p_args) {
 }
 
 void SiEffectDistortion::reset() {
-	_in1 = 0;
-	_in2 = 0;
-	_out1 = 0;
-	_out2 = 0;
+	for (sion::dsp::BiquadState &state : _lpf_state) {
+		state = {};
+	}
 	set_params();
 }
 

@@ -67,15 +67,11 @@ public:
 	void set_free(bool p_free) { _is_free = p_free; }
 	void refresh_sampling_rate() { _refresh_sampling_rate_cache(); }
 
-	// Returns the requested channel count.
-	virtual int prepare_process() { return 1; }
+	virtual void prepare_process() {}
 
-	// Process the effect to the stream buffer.
-	// When called as mono, same data is expected in buffer[i*2] and buffer[i*2+1]. I.e. the buffer
-	// is always in stereo. The order in the buffer is the same as wave format ([L0,R0,L1,R1,L2,R2 ... ]).
-	// Start index and length must be adjusted internally to account for the stereo nature of the buffer.
-	// Returns the output channel count.
-	virtual int process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) { return p_channels; }
+	// Process an interleaved stereo buffer in place ([L0,R0,L1,R1,L2,R2 ...]).
+	// Start index and length are measured in frames.
+	virtual void process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {}
 
 	virtual void set_by_mml(Vector<double> p_args) {}
 	// Sparse single-arg update. Returns true if the effect handled it, false to

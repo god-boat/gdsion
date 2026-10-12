@@ -13,10 +13,6 @@ void SiEffectDownsampler::set_params(int p_frequency_shift, int p_bitrate, int p
 	_channel_count = p_channel_count;
 }
 
-int SiEffectDownsampler::prepare_process() {
-	return 2;
-}
-
 void SiEffectDownsampler::_process_mono(Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int sample_size = 2 << _frequency_shift;
 	double bc0 = _bit_conv0 / sample_size;
@@ -57,7 +53,7 @@ void SiEffectDownsampler::_process_stereo(Vector<double> *r_buffer, int p_start_
 	}
 }
 
-int SiEffectDownsampler::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectDownsampler::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
@@ -66,8 +62,6 @@ int SiEffectDownsampler::process(const ProcessContext &p_context, int p_channels
 	} else {
 		_process_stereo(r_buffer, start_index, length);
 	}
-
-	return _channel_count;
 }
 
 void SiEffectDownsampler::set_by_mml(Vector<double> p_args) {

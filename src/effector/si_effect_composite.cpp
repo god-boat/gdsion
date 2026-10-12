@@ -29,17 +29,17 @@ void SiEffectComposite::set_slot_levels(int p_slot, double p_send_level, double 
 	_slots[p_slot].mix_level = p_mix_level;
 }
 
-int SiEffectComposite::prepare_process() {
+void SiEffectComposite::prepare_process() {
 	for (int i = 0; i < SLOTS_MAX; i++) {
 		for (Ref<SiEffectBase> effect : _slots[i].effects) {
 			effect->prepare_process();
 		}
 	}
-
-	return 2;
 }
 
-int SiEffectComposite::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectComposite::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
+	const int start_index = p_start_index << 1;
+	const int end_index = (p_start_index + p_length) << 1;
 	for (int i = 1; i < SLOTS_MAX; i++) {
 		if (_slots[i].effects.is_empty()) {
 			continue;
@@ -50,12 +50,12 @@ int SiEffectComposite::process(const ProcessContext &p_context, int p_channels, 
 			slot_buffer->resize_zeroed(r_buffer->size());
 		}
 
-		for (int j = p_start_index; j < (p_start_index + p_length); j++) {
+		for (int j = start_index; j < end_index; j++) {
 			slot_buffer->write[j] = (*r_buffer)[j] * _slots[i].send_level;
 		}
 	}
 
-	for (int j = p_start_index; j < (p_start_index + p_length); j++) {
+	for (int j = start_index; j < end_index; j++) {
 		r_buffer->write[j] *= _slots[0].send_level;
 	}
 
@@ -64,30 +64,26 @@ int SiEffectComposite::process(const ProcessContext &p_context, int p_channels, 
 			continue;
 		}
 
-		int channel_num = p_channels;
 		for (Ref<SiEffectBase> effect : _slots[i].effects) {
-			channel_num = effect->process(p_context, channel_num, &_slots[i].buffer, p_start_index, p_length);
+			effect->process(p_context, &_slots[i].buffer, p_start_index, p_length);
 		}
 
-		for (int j = p_start_index; j < (p_start_index + p_length); j++) {
+		for (int j = start_index; j < end_index; j++) {
 			r_buffer->write[j] += _slots[i].buffer[j] * _slots[i].mix_level;
 		}
 	}
 
-	int out_channels = p_channels;
 	if (!_slots[0].effects.is_empty()) {
 		for (Ref<SiEffectBase> effect : _slots[0].effects) {
-			out_channels = effect->process(p_context, out_channels, r_buffer, p_start_index, p_length);
+			effect->process(p_context, r_buffer, p_start_index, p_length);
 		}
 
 		if (_slots[0].mix_level != 1) {
-			for (int j = p_start_index; j < (p_start_index + p_length); j++) {
+			for (int j = start_index; j < end_index; j++) {
 				r_buffer->write[j] *= _slots[0].mix_level;
 			}
 		}
 	}
-
-	return out_channels;
 }
 
 void SiEffectComposite::reset() {

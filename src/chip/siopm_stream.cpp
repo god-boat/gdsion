@@ -67,33 +67,22 @@ void SiOPMStream::write(SinglyLinkedList<int>::Element *p_data_start, int p_offs
 
 	double *dst = buffer.ptrw();
 
-	if (channels == 2) { // stereo
-		double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
-		double volume_left = volume;
-		double volume_right = volume;
-		if (p_pan != PAN_NONE) {
-			const int pan = CLAMP(p_pan, 0, 128);
-			volume_left = pan_table[128 - pan] * volume;
-			volume_right = pan_table[pan] * volume;
-		}
+	double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
+	double volume_left = volume;
+	double volume_right = volume;
+	if (p_pan != PAN_NONE) {
+		const int pan = CLAMP(p_pan, 0, 128);
+		volume_left = pan_table[128 - pan] * volume;
+		volume_right = pan_table[pan] * volume;
+	}
 
-		SinglyLinkedList<int>::Element *current = p_data_start;
-		for (int i = start_index; i < buffer_size;) {
-			const double sample = current->value;
-			dst[i++] += sample * volume_left;
-			dst[i++] += sample * volume_right;
+	SinglyLinkedList<int>::Element *current = p_data_start;
+	for (int i = start_index; i < buffer_size;) {
+		const double sample = current->value;
+		dst[i++] += sample * volume_left;
+		dst[i++] += sample * volume_right;
 
-			current = current->next();
-		}
-	} else if (channels == 1) { // mono
-		SinglyLinkedList<int>::Element *current = p_data_start;
-		for (int i = start_index; i < buffer_size;) {
-			const double sample = current->value * volume;
-			dst[i++] += sample;
-			dst[i++] += sample;
-
-			current = current->next();
-		}
+		current = current->next();
 	}
 }
 
@@ -116,40 +105,24 @@ void SiOPMStream::write_stereo(SinglyLinkedList<int>::Element *p_left_start, Sin
 
 	double *dst = buffer.ptrw();
 
-	if (channels == 2) { // stereo
-		double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
-		double volume_left = volume;
-		double volume_right = volume;
-		if (p_pan != PAN_NONE) {
-			const int pan = CLAMP(p_pan, 0, 128);
-			volume_left = pan_table[128 - pan] * volume;
-			volume_right = pan_table[pan] * volume;
-		}
+	double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
+	double volume_left = volume;
+	double volume_right = volume;
+	if (p_pan != PAN_NONE) {
+		const int pan = CLAMP(p_pan, 0, 128);
+		volume_left = pan_table[128 - pan] * volume;
+		volume_right = pan_table[pan] * volume;
+	}
 
-		SinglyLinkedList<int>::Element *current_left = p_left_start;
-		SinglyLinkedList<int>::Element *current_right = p_right_start;
+	SinglyLinkedList<int>::Element *current_left = p_left_start;
+	SinglyLinkedList<int>::Element *current_right = p_right_start;
 
-		for (int i = start_index; i < buffer_size;) {
-			dst[i++] += current_left->value * volume_left;
-			dst[i++] += current_right->value * volume_right;
+	for (int i = start_index; i < buffer_size;) {
+		dst[i++] += current_left->value * volume_left;
+		dst[i++] += current_right->value * volume_right;
 
-			current_left = current_left->next();
-			current_right = current_right->next();
-		}
-	} else if (channels == 1) { // mono
-		volume *= 0.5;
-
-		SinglyLinkedList<int>::Element *current_left = p_left_start;
-		SinglyLinkedList<int>::Element *current_right = p_right_start;
-
-		for (int i = start_index; i < buffer_size;) {
-			const double sample = (current_left->value + current_right->value) * volume;
-			dst[i++] += sample;
-			dst[i++] += sample;
-
-			current_left = current_left->next();
-			current_right = current_right->next();
-		}
+		current_left = current_left->next();
+		current_right = current_right->next();
 	}
 }
 
@@ -189,42 +162,23 @@ void SiOPMStream::write_from_vector(Vector<double> *p_data, int p_start_data, in
 	const double *src = p_data->ptr();
 	double *dst = buffer.ptrw();
 
-	int channels = this->channels;
-	if (channels == 2) {
-		double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
+	double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
 
-		if (p_sample_channel_count == 2) { // stereo data to stereo buffer
-			double volume_left = pan_table[128 - pan] * volume;
-			double volume_right = pan_table[pan] * volume;
+	if (p_sample_channel_count == 2) { // stereo source
+		double volume_left = pan_table[128 - pan] * volume;
+		double volume_right = pan_table[pan] * volume;
 
-			for (int j = p_start_data << 1, i = p_start_buffer << 1; j < (p_start_data + p_length) << 1;) {
-				dst[i++] += src[j++] * volume_left;
-				dst[i++] += src[j++] * volume_right;
-			}
-		} else { // mono data to stereo buffer
-			double volume_left = pan_table[128 - pan] * volume * 0.707;
-			double volume_right = pan_table[pan] * volume * 0.707;
-			for (int j = p_start_data, i = p_start_buffer << 1; j < p_start_data + p_length; j++) {
-				const double sample = src[j];
-				dst[i++] += sample * volume_left;
-				dst[i++] += sample * volume_right;
-			}
+		for (int j = p_start_data << 1, i = p_start_buffer << 1; j < (p_start_data + p_length) << 1;) {
+			dst[i++] += src[j++] * volume_left;
+			dst[i++] += src[j++] * volume_right;
 		}
-	} else if (channels == 1) {
-		if (p_sample_channel_count == 2) { // stereo data to mono buffer
-			volume *= 0.5;
-			for (int j = p_start_data << 1, i = p_start_buffer << 1; j < (p_start_data + p_length) << 1;) {
-				const double sample = (src[j] + src[j + 1]) * volume;
-				dst[i++] += sample;
-				dst[i++] += sample;
-				j += 2;
-			}
-		} else { // mono data to mono buffer
-			for (int j = p_start_data, i = p_start_buffer << 1; j < p_start_data + p_length; j++) {
-				const double sample = src[j] * volume;
-				dst[i++] += sample;
-				dst[i++] += sample;
-			}
+	} else { // mono source
+		double volume_left = pan_table[128 - pan] * volume * 0.707;
+		double volume_right = pan_table[pan] * volume * 0.707;
+		for (int j = p_start_data, i = p_start_buffer << 1; j < p_start_data + p_length; j++) {
+			const double sample = src[j];
+			dst[i++] += sample * volume_left;
+			dst[i++] += sample * volume_right;
 		}
 	}
 }

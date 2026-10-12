@@ -16,35 +16,18 @@ void SiEffectWaveShaper::set_params(double p_distortion, double p_output_level) 
 	_output_level = p_output_level;
 }
 
-int SiEffectWaveShaper::prepare_process() {
-	return 2;
-}
-
-int SiEffectWaveShaper::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectWaveShaper::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
 	double coef = (1 + _coefficient) * _output_level;
 
-	if (p_channels == 2) {
-		for (int i = start_index; i < (start_index + length); i++) {
-			double value = (*r_buffer)[i];
-			value = coef * value / (1 + _coefficient * ABS(value));
+	for (int i = start_index; i < (start_index + length); i++) {
+		double value = (*r_buffer)[i];
+		value = coef * value / (1 + _coefficient * ABS(value));
 
-			r_buffer->write[i] = value;
-		}
-	} else {
-		for (int i = start_index; i < (start_index + length); i += 2) {
-			double value = (*r_buffer)[i];
-			value = coef * value / (1 + _coefficient * ABS(value));
-
-			r_buffer->write[i] = value;
-			r_buffer->write[i + 1] = value;
-
-		}
+		r_buffer->write[i] = value;
 	}
-
-	return p_channels;
 }
 
 void SiEffectWaveShaper::set_by_mml(Vector<double> p_args) {

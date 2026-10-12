@@ -295,23 +295,17 @@ void SiEffectMultibandCompressor::_snapshot_bands(const BlockSettings &p_block, 
 // -----------------------------------------------------------------------------
 
 // Splits an interleaved block at one crossover. p_high may alias p_input,
-// because each frame is read before either output is written. A mono block
-// carries the same signal in both channels, so only the left filter runs.
-void SiEffectMultibandCompressor::_split(int p_channels, const sion::dsp::LinkwitzRiley4Coeffs &p_coeffs, sion::dsp::LinkwitzRiley4 *r_filter, const double *p_input, double *p_low, double *p_high, int p_length) {
+// because each frame is read before either output is written.
+void SiEffectMultibandCompressor::_split(const sion::dsp::LinkwitzRiley4Coeffs &p_coeffs, sion::dsp::LinkwitzRiley4 *r_filter, const double *p_input, double *p_low, double *p_high, int p_length) {
 	int interleaved = p_length << 1;
 	for (int i = 0; i < interleaved; i += 2) {
 		double right = p_input[i + 1];
 		r_filter[0].split(p_coeffs, p_input[i], p_low[i], p_high[i]);
-		if (p_channels == 1) {
-			p_low[i + 1] = p_low[i];
-			p_high[i + 1] = p_high[i];
-		} else {
-			r_filter[1].split(p_coeffs, right, p_low[i + 1], p_high[i + 1]);
-		}
+		r_filter[1].split(p_coeffs, right, p_low[i + 1], p_high[i + 1]);
 	}
 }
 
-void SiEffectMultibandCompressor::_process_multiband(int p_channels, double *p_audio, int p_length, double p_sample_rate, const BandSettings *p_bands) {
+void SiEffectMultibandCompressor::_process_multiband(double *p_audio, int p_length, double p_sample_rate, const BandSettings *p_bands) {
 	int interleaved = p_length << 1;
 	double *low = _low_buffer.ptrw();
 	double *mid = _mid_buffer.ptrw();
@@ -319,15 +313,15 @@ void SiEffectMultibandCompressor::_process_multiband(int p_channels, double *p_a
 	double *scratch = _scratch_buffer.ptrw();
 
 	// Split at the low/mid crossover, then split everything above it again.
-	_split(p_channels, _lm_coeffs, _lm_filter, p_audio, low, scratch, p_length);
-	_split(p_channels, _mh_coeffs, _mh_filter, scratch, mid, high, p_length);
+	_split(_lm_coeffs, _lm_filter, p_audio, low, scratch, p_length);
+	_split(_mh_coeffs, _mh_filter, scratch, mid, high, p_length);
 
 	// The mid and high bands have picked up the phase of the mid/high crossover
 	// and the low band has not, so the three would not sum flat. Run the low
 	// band through a matched splitter and recombine both halves: that is the
 	// same allpass, applied to the band that would otherwise skip it. The high
 	// half lands back in low in place, which _split allows.
-	_split(p_channels, _mh_coeffs, _low_compensation_filter, low, scratch, low, p_length);
+	_split(_mh_coeffs, _low_compensation_filter, low, scratch, low, p_length);
 	for (int i = 0; i < interleaved; ++i) {
 		low[i] += scratch[i];
 	}
@@ -341,7 +335,7 @@ void SiEffectMultibandCompressor::_process_multiband(int p_channels, double *p_a
 	}
 }
 
-void SiEffectMultibandCompressor::_process_low_band(int p_channels, double *p_audio, int p_length, double p_sample_rate, const BandSettings &p_low) {
+void SiEffectMultibandCompressor::_process_low_band(double *p_audio, int p_length, double p_sample_rate, const BandSettings &p_low) {
 	int interleaved = p_length << 1;
 	double *low = _low_buffer.ptrw();
 	double *rest = _scratch_buffer.ptrw();
@@ -350,7 +344,7 @@ void SiEffectMultibandCompressor::_process_low_band(int p_channels, double *p_au
 	// untouched and is summed back, so this narrows what is compressed rather
 	// than what is heard. Dry/wet applies to the low band alone, inside the
 	// compressor, where it blends against a phase-matched dry.
-	_split(p_channels, _lm_coeffs, _lm_filter, p_audio, low, rest, p_length);
+	_split(_lm_coeffs, _lm_filter, p_audio, low, rest, p_length);
 	_low_compressor.process(low, p_length, p_low, p_sample_rate);
 
 	for (int i = 0; i < interleaved; ++i) {
@@ -358,14 +352,14 @@ void SiEffectMultibandCompressor::_process_low_band(int p_channels, double *p_au
 	}
 }
 
-void SiEffectMultibandCompressor::_process_high_band(int p_channels, double *p_audio, int p_length, double p_sample_rate, const BandSettings &p_high) {
+void SiEffectMultibandCompressor::_process_high_band(double *p_audio, int p_length, double p_sample_rate, const BandSettings &p_high) {
 	int interleaved = p_length << 1;
 	double *rest = _scratch_buffer.ptrw();
 	double *high = _high_buffer.ptrw();
 
 	// Same deal in the other direction: everything below the split is summed
 	// back in untouched.
-	_split(p_channels, _mh_coeffs, _mh_filter, p_audio, rest, high, p_length);
+	_split(_mh_coeffs, _mh_filter, p_audio, rest, high, p_length);
 	_high_compressor.process(high, p_length, p_high, p_sample_rate);
 
 	for (int i = 0; i < interleaved; ++i) {
@@ -383,24 +377,22 @@ void SiEffectMultibandCompressor::_process_full_range(double *p_audio, int p_len
 // Processing
 // -----------------------------------------------------------------------------
 
-int SiEffectMultibandCompressor::prepare_process() {
+void SiEffectMultibandCompressor::prepare_process() {
 	_reset_dsp_state();
 	_active_mode = -1;
 	// Forces a filter retune on the next block, which is also how a changed
 	// sampling rate reaches the crossovers.
 	_active_sample_rate = 0.0;
-
-	return 2;
 }
 
-int SiEffectMultibandCompressor::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectMultibandCompressor::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	if (p_length <= 0) {
-		return p_channels;
+		return;
 	}
 
 	double sample_rate = _get_sampling_rate();
 	if (sample_rate <= 0.0) {
-		return p_channels;
+		return;
 	}
 
 	if (_reset_state_requested.exchange(false, std::memory_order_acq_rel)) {
@@ -411,7 +403,7 @@ int SiEffectMultibandCompressor::process(const ProcessContext &p_context, int p_
 	// this never fires. Passing the block through untouched beats resizing four
 	// vectors on the audio thread if it somehow ever does.
 	if (p_length > MAX_BLOCK_FRAMES) {
-		return p_channels;
+		return;
 	}
 
 	// Snapshot the atomic parameter store once per block. Nothing below this
@@ -465,20 +457,18 @@ int SiEffectMultibandCompressor::process(const ProcessContext &p_context, int p_
 
 	switch (mode) {
 		case BAND_LOW:
-			_process_low_band(p_channels, audio, p_length, sample_rate, bands[BAND_LOW_INDEX]);
+			_process_low_band(audio, p_length, sample_rate, bands[BAND_LOW_INDEX]);
 			break;
 		case BAND_HIGH:
-			_process_high_band(p_channels, audio, p_length, sample_rate, bands[BAND_HIGH_INDEX]);
+			_process_high_band(audio, p_length, sample_rate, bands[BAND_HIGH_INDEX]);
 			break;
 		case BAND_FULL_RANGE:
 			_process_full_range(audio, p_length, sample_rate, bands[BAND_MID_INDEX]);
 			break;
 		default:
-			_process_multiband(p_channels, audio, p_length, sample_rate, bands);
+			_process_multiband(audio, p_length, sample_rate, bands);
 			break;
 	}
-
-	return p_channels;
 }
 
 // -----------------------------------------------------------------------------

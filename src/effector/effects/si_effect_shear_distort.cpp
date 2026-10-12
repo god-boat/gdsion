@@ -226,13 +226,12 @@ void SiEffectShearDistort::set_params(double p_drive, double p_shape, double p_b
 
 // --- SiEffectBase overrides -----------------------------------------------------
 
-int SiEffectShearDistort::prepare_process() {
+void SiEffectShearDistort::prepare_process() {
 	_update_derived();
 	_update_filters();
 	_snap_smoothers();
 	_left.clear();
 	_right.clear();
-	return 2;
 }
 
 double SiEffectShearDistort::_process_channel(ChannelState &p_ch, double p_input, double p_drive, double p_bias,
@@ -288,12 +287,12 @@ double SiEffectShearDistort::_process_channel(ChannelState &p_ch, double p_input
 	return dist + low_out;
 }
 
-int SiEffectShearDistort::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectShearDistort::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
 	if (length <= 0) {
-		return p_channels;
+		return;
 	}
 
 	// The shear LFOs tick once per block (rate ≈ 0.03 Hz, negligible intra-block change).
@@ -307,7 +306,6 @@ int SiEffectShearDistort::process(const ProcessContext &p_context, int p_channel
 	double drive_skew_r = 1.0 - shear_mod * 0.12;
 	double bias_skew = shear_mod * 0.18;
 
-	bool stereo = (p_channels >= 2);
 	double smooth = _smooth_coeff;
 
 	for (int i = start_index; i < start_index + length; i += 2) {
@@ -324,7 +322,7 @@ int SiEffectShearDistort::process(const ProcessContext &p_context, int p_channel
 		double mix = _sm_mix.tick(smooth);
 
 		double dry_l = (*r_buffer)[i];
-		double dry_r = stereo ? (*r_buffer)[i + 1] : dry_l;
+		double dry_r = (*r_buffer)[i + 1];
 
 		// Mid/side for width control.
 		double mid = (dry_l + dry_r) * 0.5;
@@ -354,8 +352,6 @@ int SiEffectShearDistort::process(const ProcessContext &p_context, int p_channel
 	_sm_tilt_post.flush_denormals();
 	_sm_tone_g.flush_denormals();
 	_sm_mix.flush_denormals();
-
-	return 2;
 }
 
 bool SiEffectShearDistort::set_arg(int p_arg_index, double p_value) {

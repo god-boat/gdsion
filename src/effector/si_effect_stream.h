@@ -76,8 +76,8 @@ public:
 	void connect(SiOPMStream *p_output = nullptr);
 	void set_post_fader_gain(double p_gain);
 	void set_post_pan(int p_pan);
-	int prepare_process();
-	int process(int p_start_idx, int p_length, bool p_write_in_stream = true);
+	void prepare_process();
+	void process(int p_start_idx, int p_length, bool p_write_in_stream = true);
 
 	//
 

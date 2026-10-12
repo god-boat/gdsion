@@ -324,20 +324,18 @@ double SiEffectBloomReverb::_process_air_side(
 	return stage_a;
 }
 
-int SiEffectBloomReverb::prepare_process() {
+void SiEffectBloomReverb::prepare_process() {
 	_ensure_delay_buffers();
 	_reset_signal_state();
-	return 2;
 }
 
-int SiEffectBloomReverb::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectBloomReverb::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	if (p_length <= 0) {
-		return 2;
+		return;
 	}
 
 	_begin_block_smoothing(p_length);
 
-	const bool stereo = (p_channels == 2);
 	const int start_index = p_start_index << 1;
 	int processed = 0;
 
@@ -360,7 +358,7 @@ int SiEffectBloomReverb::process(const ProcessContext &p_context, int p_channels
 			int frame_index = processed + sample;
 			int buffer_index = start_index + (frame_index << 1);
 			double dry_l = (*r_buffer)[buffer_index];
-			double dry_r = stereo ? (*r_buffer)[buffer_index + 1] : dry_l;
+			double dry_r = (*r_buffer)[buffer_index + 1];
 
 			double conditioned_l = _input_hp_left.highpass(params.input_hp_coeff, dry_l);
 			double conditioned_r = _input_hp_right.highpass(params.input_hp_coeff, dry_r);
@@ -467,7 +465,6 @@ int SiEffectBloomReverb::process(const ProcessContext &p_context, int p_channels
 	}
 
 	_copy_params(_current_params, _target_params);
-	return 2;
 }
 
 void SiEffectBloomReverb::set_by_mml(Vector<double> p_args) {

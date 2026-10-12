@@ -239,8 +239,8 @@ void SiEffector::prepare_process() {
 		_sound_chip->set_stream_slot(i, nullptr); // Reset sound chip's stream slot.
 
 		if (_global_effects[i] != nullptr) {
-			int channel_count = _global_effects[i]->prepare_process();
-			if (channel_count > 0) {
+			_global_effects[i]->prepare_process();
+			if (_global_effects[i]->get_effect_count() > 0) {
 				_sound_chip->set_stream_slot(i, _global_effects[i]->get_stream());
 				_global_effect_count++;
 			}

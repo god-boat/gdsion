@@ -51,7 +51,6 @@ public:
 
 	SiOPMStream *get_output_stream() const { return output_stream; }
 	Vector<double> *get_output_buffer_ptr();
-	int get_channel_count() const;
 
 	SiOPMStream *get_stream_slot(int p_slot) const { return stream_slot[p_slot]; }
 	void set_stream_slot(int p_slot, SiOPMStream *p_value) { stream_slot.write[p_slot] = p_value; }

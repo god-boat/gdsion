@@ -13,16 +13,14 @@ void SiEffectSpeakerSimulator::set_params(double p_hardness) {
 	}
 }
 
-int SiEffectSpeakerSimulator::prepare_process() {
+void SiEffectSpeakerSimulator::prepare_process() {
 	_diaphragm_pos_left = 0;
 	_diaphragm_pos_right = 0;
 	_previous_left = 0;
 	_previous_right = 0;
-
-	return 2;
 }
 
-int SiEffectSpeakerSimulator::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectSpeakerSimulator::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
@@ -41,8 +39,6 @@ int SiEffectSpeakerSimulator::process(const ProcessContext &p_context, int p_cha
 		_previous_right = (*r_buffer)[i + 1];
 		r_buffer->write[i + 1] = _diaphragm_pos_right;
 	}
-
-	return p_channels;
 }
 
 void SiEffectSpeakerSimulator::set_by_mml(Vector<double> p_args) {

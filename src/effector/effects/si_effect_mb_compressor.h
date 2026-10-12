@@ -269,10 +269,10 @@ class SiEffectMultibandCompressor : public SiEffectBase {
 	void _reset_dsp_state();
 	void _snapshot_bands(const BlockSettings &p_block, BandSettings r_bands[BAND_COUNT]) const;
 
-	static void _split(int p_channels, const sion::dsp::LinkwitzRiley4Coeffs &p_coeffs, sion::dsp::LinkwitzRiley4 *r_filter, const double *p_input, double *p_low, double *p_high, int p_length);
-	void _process_multiband(int p_channels, double *p_audio, int p_length, double p_sample_rate, const BandSettings *p_bands);
-	void _process_low_band(int p_channels, double *p_audio, int p_length, double p_sample_rate, const BandSettings &p_low);
-	void _process_high_band(int p_channels, double *p_audio, int p_length, double p_sample_rate, const BandSettings &p_high);
+	static void _split(const sion::dsp::LinkwitzRiley4Coeffs &p_coeffs, sion::dsp::LinkwitzRiley4 *r_filter, const double *p_input, double *p_low, double *p_high, int p_length);
+	void _process_multiband(double *p_audio, int p_length, double p_sample_rate, const BandSettings *p_bands);
+	void _process_low_band(double *p_audio, int p_length, double p_sample_rate, const BandSettings &p_low);
+	void _process_high_band(double *p_audio, int p_length, double p_sample_rate, const BandSettings &p_high);
 	void _process_full_range(double *p_audio, int p_length, double p_sample_rate, const BandSettings &p_mid);
 
 	const BandCompressor *_get_band_compressor(int p_band) const;
@@ -318,8 +318,8 @@ public:
 			double p_mh_frequency = DEFAULT_MH_FREQUENCY,
 			double p_knee_db = DEFAULT_KNEE);
 
-	virtual int prepare_process() override;
-	virtual int process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
+	virtual void prepare_process() override;
+	virtual void process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) override;
 	virtual bool set_arg(int p_arg_index, double p_value) override;
 
 	virtual void set_by_mml(Vector<double> p_args) override;

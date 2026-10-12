@@ -12,11 +12,7 @@ void SiEffectLinkwitzRileyFilter::set_params(double p_cutoff_frequency, int p_ou
 	_coeffs.set_cutoff(_cutoff, _get_sampling_rate());
 }
 
-int SiEffectLinkwitzRileyFilter::prepare_process() {
-	return 2;
-}
-
-int SiEffectLinkwitzRileyFilter::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectLinkwitzRileyFilter::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int length = p_length << 1;
 	double *buffer = r_buffer->ptrw() + (p_start_index << 1);
 	const bool output_low = _output_mode == 0;
@@ -27,16 +23,9 @@ int SiEffectLinkwitzRileyFilter::process(const ProcessContext &p_context, int p_
 		_left.split(_coeffs, buffer[i], low, high);
 		buffer[i] = output_low ? low : high;
 
-		// A mono buffer carries the same signal in both channels.
-		if (p_channels == 1) {
-			buffer[i + 1] = buffer[i];
-		} else {
-			_right.split(_coeffs, buffer[i + 1], low, high);
-			buffer[i + 1] = output_low ? low : high;
-		}
+		_right.split(_coeffs, buffer[i + 1], low, high);
+		buffer[i + 1] = output_low ? low : high;
 	}
-
-	return p_channels;
 }
 
 void SiEffectLinkwitzRileyFilter::set_by_mml(Vector<double> p_args) {

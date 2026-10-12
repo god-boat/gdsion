@@ -160,29 +160,25 @@ int SiFilterVowel::_update_event(int p_time) {
 
 //
 
-int SiFilterVowel::prepare_process() {
-	_tap0.clear();
-	_tap1.clear();
-	_tap2.clear();
-	_tap3.clear();
-	_tap4.clear();
-	_tap5.clear();
-
-	return 1;
+void SiFilterVowel::prepare_process() {
+	for (auto &channel : _taps) {
+		for (FormantTap &tap : channel) {
+			tap.clear();
+		}
+	}
 }
 
-double SiFilterVowel::_process_lfo_formant(Formant p_formant, FormantTap p_tap, double *r_input) {
+double SiFilterVowel::_process_lfo_formant(const Formant &p_formant, FormantTap &r_tap, double p_input) {
 	double fab1 = p_formant.ab1;
 	double fa2 = p_formant.a2;
 	double fb0 = p_formant.b0;
 	double fb2 = p_formant.b2;
 
-	double output = fb0 * (*r_input) + fab1 * p_tap.in0 + fb2 * p_tap.in1 - fab1 * p_tap.out0 - fa2 * p_tap.out1;
-	p_tap.in1 = p_tap.in0;
-	p_tap.in0 = (*r_input);
-	p_tap.out1 = p_tap.out0;
-	p_tap.out0 = output;
-	*r_input = output;
+	double output = fb0 * p_input + fab1 * r_tap.in0 + fb2 * r_tap.in1 - fab1 * r_tap.out0 - fa2 * r_tap.out1;
+	r_tap.in1 = r_tap.in0;
+	r_tap.in0 = p_input;
+	r_tap.out1 = r_tap.out0;
+	r_tap.out0 = output;
 
 	return output;
 }
@@ -191,24 +187,18 @@ void SiFilterVowel::_process_lfo(Vector<double> *r_buffer, int p_start_index, in
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
-	for (int i = start_index; i < (start_index + length); i += 2) {
+	for (int i = start_index; i < (start_index + length); i++) {
 		double input = (*r_buffer)[i];
 
-		_process_lfo_formant(_formants[0], _tap0, &input);
-		_process_lfo_formant(_formants[1], _tap1, &input);
-		_process_lfo_formant(_formants[2], _tap2, &input);
-		_process_lfo_formant(_formants[3], _tap3, &input);
-		_process_lfo_formant(_formants[4], _tap4, &input);
+		for (int formant = 0; formant < FORMANT_COUNT; formant++) {
+			input = _process_lfo_formant(_formants[formant], _taps[i & 1][formant], input);
+		}
 
-		double output = _process_lfo_formant(_formants[5], _tap5, &input);
-		output = CLAMP(output * _output_level, -1, 1);
-
-		r_buffer->write[i] = output;
-		r_buffer->write[i + 1] = output;
+		r_buffer->write[i] = CLAMP(input * _output_level, -1, 1);
 	}
 }
 
-int SiFilterVowel::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiFilterVowel::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int length = p_length;
 	for (int i = p_start_index; i < (p_start_index + p_length); ) {
 		int step = _update_event(length);
@@ -217,8 +207,6 @@ int SiFilterVowel::process(const ProcessContext &p_context, int p_channels, Vect
 		i += step;
 		length -= step;
 	}
-
-	return 1;
 }
 
 void SiFilterVowel::set_by_mml(Vector<double> p_args) {

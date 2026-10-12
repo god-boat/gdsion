@@ -17,10 +17,6 @@ Vector<double> *SiOPMSoundChip::get_output_buffer_ptr() {
 	return output_stream->get_buffer_ptr();
 }
 
-int SiOPMSoundChip::get_channel_count() const {
-	return output_stream->get_channel_count();
-}
-
 SinglyLinkedList<int> *SiOPMSoundChip::get_pipe(int p_pipe_num, int p_index) {
 	ERR_FAIL_INDEX_V(p_pipe_num, _pipe_buffers.size(), nullptr);
 

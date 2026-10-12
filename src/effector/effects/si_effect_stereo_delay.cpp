@@ -44,11 +44,9 @@ void SiEffectStereoDelay::set_params(double p_delay_time, double p_feedback, boo
 	_calculate_constant_power_gains(_wet, _dry_gain, _wet_gain);
 }
 
-int SiEffectStereoDelay::prepare_process() {
+void SiEffectStereoDelay::prepare_process() {
 	_delay_buffer_left.fill(0);
 	_delay_buffer_right.fill(0);
-
-	return 2;
 }
 
 void SiEffectStereoDelay::_process_channel(Vector<double> *r_buffer, int p_buffer_index, Vector<double> *p_read_buffer, Vector<double> *r_write_buffer) {
@@ -66,7 +64,7 @@ void SiEffectStereoDelay::_process_channel(Vector<double> *r_buffer, int p_buffe
 	r_buffer->write[p_buffer_index] = (*r_buffer)[p_buffer_index] * _dry_gain + value * _wet_gain;
 }
 
-int SiEffectStereoDelay::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectStereoDelay::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
@@ -103,8 +101,6 @@ int SiEffectStereoDelay::process(const ProcessContext &p_context, int p_channels
 			_pointer_read = (_pointer_read + 1) & DELAY_BUFFER_FILTER;
 		}
 	}
-
-	return p_channels;
 }
 
 void SiEffectStereoDelay::set_by_mml(Vector<double> p_args) {

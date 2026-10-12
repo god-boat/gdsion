@@ -103,20 +103,19 @@ void SiEffectGraphicEqualizer8::set_output_gain_db(double p_gain_db) {
 
 // --- SiEffectBase overrides ---
 
-int SiEffectGraphicEqualizer8::prepare_process() {
+void SiEffectGraphicEqualizer8::prepare_process() {
 	for (int i = 0; i < NUM_BANDS; i++) {
 		_bands[i].left = {};
 		_bands[i].right = {};
 	}
-	return 2;
 }
 
-int SiEffectGraphicEqualizer8::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectGraphicEqualizer8::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
 	if (length <= 0) {
-		return p_channels;
+		return;
 	}
 
 	int block_samples = p_length;
@@ -139,11 +138,9 @@ int SiEffectGraphicEqualizer8::process(const ProcessContext &p_context, int p_ch
 	}
 
 	// Process samples.
-	bool stereo = (p_channels == 2);
-
 	for (int i = start_index; i < start_index + length; i += 2) {
 		double left = (*r_buffer)[i];
-		double right = stereo ? (*r_buffer)[i + 1] : left;
+		double right = (*r_buffer)[i + 1];
 
 		for (int b = 0; b < NUM_BANDS; b++) {
 			Band &band = _bands[b];
@@ -190,8 +187,6 @@ int SiEffectGraphicEqualizer8::process(const ProcessContext &p_context, int p_ch
 		_output_gain_dirty = false;
 		_output_gain_step = 0.0;
 	}
-
-	return 2;
 }
 
 bool SiEffectGraphicEqualizer8::set_arg(int p_arg_index, double p_value) {

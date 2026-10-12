@@ -61,17 +61,15 @@ void SiControllableFilterBase::set_resonance(double p_value) {
 
 //
 
-int SiControllableFilterBase::prepare_process() {
+void SiControllableFilterBase::prepare_process() {
 	_lfo_residue_step = 0;
 	_p0_left = 0;
 	_p1_left = 0;
 	_p0_right = 0;
 	_p1_right = 0;
-
-	return 2;
 }
 
-int SiControllableFilterBase::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiControllableFilterBase::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	int start_index = p_start_index << 1;
 	int length = p_length << 1;
 
@@ -97,8 +95,6 @@ int SiControllableFilterBase::process(const ProcessContext &p_context, int p_cha
 
 	_process_lfo(r_buffer, i, max - i);
 	_lfo_residue_step = step - (max - i);
-
-	return p_channels;
 }
 
 void SiControllableFilterBase::set_by_mml(Vector<double> p_args) {

@@ -7,6 +7,7 @@
 #ifndef SI_EFFECT_DISTORTION_H
 #define SI_EFFECT_DISTORTION_H
 
+#include "dsp/biquad.h"
 #include "effector/si_effect_base.h"
 
 class SiEffectDistortion : public SiEffectBase {
@@ -18,16 +19,8 @@ class SiEffectDistortion : public SiEffectBase {
 	double _pre_scale = 0;
 	double _limit = 0;
 
-	double _a1 = 0;
-	double _a2 = 0;
-	double _b0 = 0;
-	double _b1 = 0;
-	double _b2 = 0;
-
-	double _in1 = 0;
-	double _in2 = 0;
-	double _out1 = 0;
-	double _out2 = 0;
+	sion::dsp::BiquadCoeffs _lpf_coeffs;
+	sion::dsp::BiquadState _lpf_state[2];
 
 protected:
 	static void _bind_methods();
@@ -37,8 +30,7 @@ public:
 
 	//
 
-	virtual int prepare_process() override;
-	virtual int process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) override;
+	virtual void process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) override;
 
 	virtual void set_by_mml(Vector<double> p_args) override;
 	virtual void reset() override;

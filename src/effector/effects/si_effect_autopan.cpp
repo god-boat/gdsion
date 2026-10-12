@@ -26,10 +26,6 @@ void SiEffectAutopan::set_params(double p_frequency, double p_stereo_width, int 
 	_width_offset = width_offset;
 }
 
-int SiEffectAutopan::prepare_process() {
-	return 2;
-}
-
 template <LfoShape SHAPE>
 void SiEffectAutopan::_process(sion::dsp::LfoShapeTag<SHAPE>, double *r_buffer, int p_begin, int p_end) {
 	sion::dsp::Lfo lfo = _lfo;
@@ -44,7 +40,7 @@ void SiEffectAutopan::_process(sion::dsp::LfoShapeTag<SHAPE>, double *r_buffer, 
 	_lfo = lfo;
 }
 
-int SiEffectAutopan::process(const ProcessContext &p_context, int p_channels, Vector<double> *r_buffer, int p_start_index, int p_length) {
+void SiEffectAutopan::process(const ProcessContext &p_context, Vector<double> *r_buffer, int p_start_index, int p_length) {
 	const double resolved_hz = _rate.hz_at(p_context.bpm);
 	if (_resolved_hz >= 0.0 && resolved_hz != _resolved_hz) {
 		_transition_pending = true;
@@ -65,8 +61,6 @@ int SiEffectAutopan::process(const ProcessContext &p_context, int p_channels, Ve
 	sion::dsp::with_lfo_shape(_shape, [&](auto p_shape) {
 		_process(p_shape, buffer, begin, end);
 	});
-
-	return 2;
 }
 
 void SiEffectAutopan::set_by_mml(Vector<double> p_args) {
