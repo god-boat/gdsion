@@ -165,7 +165,6 @@ private:
 	Vector<SinglyLinkedList<int>::Element *> _setting_envelope_pitch;
 	Vector<SinglyLinkedList<int>::Element *> _setting_envelope_filter;
 
-	bool _setting_exp_offset[2] = {};
 	// PNS (pitch, note, sweep)
 	bool _setting_pns_or[2] = {};
 
@@ -228,7 +227,13 @@ private:
 	int _sweep_step = 0;
 	int _sweep_end = 0;
 	int _sweep_pitch = 0;
-	int _envelope_exp_offset = 0;
+	// Expression and filter envelopes add to the value the channel held when
+	// their phase began (_base). _value is what the channel holds now, which the
+	// next phase captures. Pitch does the same through _sweep_pitch.
+	int _envelope_exp_base = 0;
+	int _envelope_exp_value = 128;
+	int _envelope_filter_base = 0;
+	int _envelope_filter_value = 0;
 	bool _envelope_pitch_active = false;
 
 	// Residue of the previous envelope process
@@ -318,6 +323,8 @@ private:
 
 	void _enable_envelope_mode(int p_note_on);
 	void _disable_envelope_mode(int p_note_on);
+	void _apply_expression(int p_expression);
+	void _apply_filter_offset(int p_offset);
 	void _process_envelope_tick();
 	int _buffer_envelope(int p_length, int p_step);
 	void _process_buffer(int p_length);
@@ -484,7 +491,7 @@ public:
 	void set_release_sweep(int p_sweep);
 	void set_modulation_envelope(bool p_is_pitch_mod, int p_depth, int p_end_depth, int p_delay, int p_term);
 	void set_tone_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
-	void set_amplitude_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, bool p_offset = false, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
+	void set_amplitude_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
 	void set_filter_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
 	void set_pitch_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);
 	void set_note_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode = ENVELOPE_TIME_FREE, int p_time_value = ENVELOPE_BEAT_1_BEAT);

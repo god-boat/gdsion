@@ -1104,7 +1104,7 @@ MMLEvent *SiMMLSequencer::_on_mml_amplitude_envelope_tsscp(MMLEvent *p_event) {
 		env_table = SiMMLRefTable::get_instance()->get_envelope_table(idx);
 	}
 
-	_current_track->set_amplitude_envelope(1, env_table, step, true);
+	_current_track->set_amplitude_envelope(1, env_table, step);
 	return next_event->get_next();
 }
 

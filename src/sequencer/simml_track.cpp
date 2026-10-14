@@ -105,12 +105,12 @@ void SiMMLTrack::set_expression_mode(int p_mode) {
 
 void SiMMLTrack::set_velocity(int p_value) {
 	_velocity = CLAMP(p_value, 0, 512);
-	_channel->offset_volume(_expression, _velocity);
+	_apply_expression(_expression);
 }
 
 void SiMMLTrack::set_expression(int p_value) {
 	_expression = CLAMP(p_value, 0, 128);
-	_channel->offset_volume(_expression, _velocity);
+	_apply_expression(_expression);
 }
 
 double SiMMLTrack::get_output_level() const {
@@ -155,7 +155,7 @@ void SiMMLTrack::set_channel_module_type(SiONModuleType p_type, int p_channel_nu
 }
 
 void SiMMLTrack::reset_volume_offset() {
-	_channel->offset_volume(_expression, _velocity);
+	_apply_expression(_expression);
 }
 
 int SiMMLTrack::get_master_volume() const {
@@ -510,7 +510,7 @@ void SiMMLTrack::set_tone_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> 
 	}
 }
 
-void SiMMLTrack::set_amplitude_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, bool p_offset, int p_time_mode, int p_time_value) {
+void SiMMLTrack::set_amplitude_envelope(int p_note_on, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode, int p_time_value) {
 	_store_envelope_clock(_setting_clock_exp, p_note_on, p_table, p_step, p_time_mode, p_time_value);
 	if (p_table.is_null() || p_step == 0) {
 		_setting_envelope_exp.write[p_note_on] = nullptr;
@@ -518,7 +518,6 @@ void SiMMLTrack::set_amplitude_envelope(int p_note_on, const Ref<SiMMLEnvelopeTa
 	} else {
 		_setting_envelope_exp.write[p_note_on] = p_table->get_head();
 		_setting_counter_exp[p_note_on] = _resolve_envelope_counter(_setting_clock_exp[p_note_on]);
-		_setting_exp_offset[p_note_on] = p_offset;
 		_enable_envelope_mode(p_note_on);
 	}
 }
@@ -615,7 +614,7 @@ void SiMMLTrack::_set_note_envelope_sink_phase(NoteEnvelopeSink p_sink, int p_ph
 			set_filter_envelope(p_phase, p_table, p_step, p_time_mode, p_time_value);
 			break;
 		case NE_SINK_AMPLITUDE:
-			set_amplitude_envelope(p_phase, p_table, p_step, true, p_time_mode, p_time_value);
+			set_amplitude_envelope(p_phase, p_table, p_step, p_time_mode, p_time_value);
 			break;
 		case NE_SINK_NOTE:
 			set_note_envelope(p_phase, p_table, p_step, p_time_mode, p_time_value);
@@ -853,6 +852,21 @@ int SiMMLTrack::prepare_buffer(int p_buffer_length) {
 	return length;
 }
 
+// Every write of the channel's expression and filter offset goes through these
+// two, so the track knows the value an envelope phase starts from.
+
+void SiMMLTrack::_apply_expression(int p_expression) {
+	_envelope_exp_value = p_expression;
+	_channel->offset_volume(p_expression, _velocity);
+}
+
+// The channel takes its filter offset biased by 128. Envelope values carry no
+// bias, so this is the only place that adds it.
+void SiMMLTrack::_apply_filter_offset(int p_offset) {
+	_envelope_filter_value = p_offset;
+	_channel->offset_filter(128 + p_offset);
+}
+
 void SiMMLTrack::_process_envelope_tick() {
 	// Advance all envelope counters.
 	if (_runtime_clock_exp.counter > 0) {
@@ -873,8 +887,7 @@ void SiMMLTrack::_process_envelope_tick() {
 
 	// Update expression.
 	if (_envelope_exp && _runtime_clock_exp.counter == 0) {
-		int expression = CLAMP(_envelope_exp_offset + _envelope_exp->value, 0, 128);
-		_channel->offset_volume(expression, _velocity);
+		_apply_expression(CLAMP(_envelope_exp_base + _envelope_exp->value, 0, 128));
 
 		_envelope_exp = _envelope_exp->next();
 		_advance_envelope_runtime_clock(_runtime_clock_exp, _setting_clock_exp[_active_envelope_phase]);
@@ -917,7 +930,7 @@ void SiMMLTrack::_process_envelope_tick() {
 
 	// Update filter.
 	if (_envelope_filter && _runtime_clock_filter.counter == 0) {
-		_channel->offset_filter(_envelope_filter->value);
+		_apply_filter_offset(CLAMP(_envelope_filter_base + _envelope_filter->value, -128, 128));
 
 		_envelope_filter = _envelope_filter->next();
 		_advance_envelope_runtime_clock(_runtime_clock_filter, _setting_clock_filter[_active_envelope_phase]);
@@ -1103,12 +1116,13 @@ void SiMMLTrack::_key_on() {
 		// Try to set envelope off.
 		_disable_envelope_mode(1);
 	} else {
-		// Reset previous envelope.
+		// Reset previous envelope. A note-on phase starts from the unmodulated
+		// expression and filter, whichever phase last moved them.
 		if (_process_mode == ProcessMode::ENVELOPE) {
-			_channel->offset_volume(_expression, _velocity);
 			_channel_settings->select_tone(this, _voice_index);
-			_channel->offset_filter(128);
 		}
+		_apply_expression(_expression);
+		_apply_filter_offset(0);
 
 		// Previous note off.
 		if (_channel->is_note_on()) {
@@ -1232,8 +1246,9 @@ void SiMMLTrack::_update_process(int p_key_on) {
 	_sweep_end  = (p_key_on == 1 ? 0 : _setting_sweep_end[p_key_on]);
 	_sweep_pitch = _channel->get_pitch() << FIXED_BITS;
 
-	// Set pitch values.
-	_envelope_exp_offset   = (_setting_exp_offset[p_key_on] ? _expression : 0);
+	// Capture the baselines this phase offsets. Pitch captured its own above.
+	_envelope_exp_base     = _envelope_exp_value;
+	_envelope_filter_base  = _envelope_filter_value;
 	_envelope_pitch_active = _setting_pns_or[p_key_on];
 
 	// Activate filter.
@@ -1445,7 +1460,10 @@ void SiMMLTrack::reset(int p_buffer_index) {
 	_portament_sync_division = 0;
 
 	_envelope_pitch_active = false;
-	_envelope_exp_offset = 0;
+	_envelope_exp_base = 0;
+	_envelope_exp_value = _expression;
+	_envelope_filter_base = 0;
+	_envelope_filter_value = 0;
 	_active_envelope_phase = -1;
 	_runtime_clock_exp = EnvelopeRuntimeClock();
 	_runtime_clock_voice = EnvelopeRuntimeClock();
@@ -1479,7 +1497,6 @@ void SiMMLTrack::reset(int p_buffer_index) {
 		_setting_envelope_filter.write[i] = nullptr;
 
 		_setting_pns_or[i]     = false;
-		_setting_exp_offset[i] = false;
 
 		_setting_counter_exp[i]    = 1;
 		_setting_counter_voice[i]  = 1;
@@ -1559,7 +1576,7 @@ void SiMMLTrack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_release_sweep", "sweep"), &SiMMLTrack::set_release_sweep);
 	ClassDB::bind_method(D_METHOD("set_modulation_envelope", "is_pitch_mod", "depth", "end_depth", "delay", "term"), &SiMMLTrack::set_modulation_envelope);
 	ClassDB::bind_method(D_METHOD("set_tone_envelope", "note_on", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_tone_envelope, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
-	ClassDB::bind_method(D_METHOD("set_amplitude_envelope", "note_on", "table", "step", "offset", "time_mode", "time_value"), &SiMMLTrack::set_amplitude_envelope, DEFVAL(false), DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
+	ClassDB::bind_method(D_METHOD("set_amplitude_envelope", "note_on", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_amplitude_envelope, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
 	ClassDB::bind_method(D_METHOD("set_filter_envelope", "note_on", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_filter_envelope, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
 	ClassDB::bind_method(D_METHOD("set_pitch_envelope", "note_on", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_pitch_envelope, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
 	ClassDB::bind_method(D_METHOD("set_note_envelope", "note_on", "table", "step", "time_mode", "time_value"), &SiMMLTrack::set_note_envelope, DEFVAL(ENVELOPE_TIME_FREE), DEFVAL(ENVELOPE_BEAT_1_BEAT));
