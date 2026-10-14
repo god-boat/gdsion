@@ -31,6 +31,14 @@
 				Creates a new instance of [SiONVoice]. Prefer using this method instead of the class constructor.
 			</description>
 		</method>
+		<method name="create_engine" qualifiers="static">
+			<return type="SiONVoice" />
+			<param index="0" name="module_type" type="int" enum="SiONModuleType" />
+			<param index="1" name="chip_type" type="int" enum="SiONChipType" />
+			<description>
+				Creates native engine structure without looking up a preset. The voice starts with reset parameters; apply authored values through the normal voice, channel and operator setters. Use [constant SiONDriver.CHIP_AUTO] for engines identified only by their module. Analog-like voices start with two operators; other modules start with one.
+			</description>
+		</method>
 		<method name="get_mml" qualifiers="const">
 			<return type="String" />
 			<param index="0" name="index" type="int" />

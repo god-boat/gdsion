@@ -865,8 +865,7 @@ void SiONVoicePresetUtil::_generate_template_voices() {
 	// Template init presets — one per voice/chip type.
 	// These are minimal "blank canvas" voices used as starting points for each synthesis engine.
 	// Users can select them from the TEMPLATES category in the instrument browser.
-	// The runtime build system uses them as init presets when constructing instruments
-	// from voiceParams (voiceType -> init preset -> apply voiceParams on top).
+	// Runtime instruments are constructed independently through SiONVoice::create_engine.
 
 	_begin_category("template");
 

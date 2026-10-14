@@ -662,10 +662,26 @@ Ref<SiONVoice> SiONVoice::create(SiONModuleType p_module_type, int p_channel_num
 	return memnew(SiONVoice(p_module_type, p_channel_num, p_attack_rate, p_release_rate, p_pitch_shift, p_connection_type, p_wave_shape2, p_pitch_shift2));
 }
 
+Ref<SiONVoice> SiONVoice::create_engine(SiONModuleType p_module_type, SiONChipType p_chip_type) {
+	ERR_FAIL_COND_V_MSG(p_module_type >= SiONModuleType::MODULE_MAX, Ref<SiONVoice>(), "Unknown engine module type.");
+	ERR_FAIL_COND_V_MSG(p_chip_type < SiONChipType::CHIP_AUTO || p_chip_type >= SiONChipType::CHIP_MAX, Ref<SiONVoice>(), "Unknown engine chip type.");
+
+	const int channel = p_module_type == SiONModuleType::MODULE_KS ? 1 : 0;
+	Ref<SiONVoice> voice = memnew(SiONVoice(p_module_type, channel));
+	if (p_chip_type != SiONChipType::CHIP_AUTO) {
+		voice->chip_type = p_chip_type;
+	}
+	if (p_chip_type == SiONChipType::CHIP_ANALOG_LIKE) {
+		voice->set_analog_like(0, 0, 0, 0, 0);
+	}
+	return voice;
+}
+
 void SiONVoice::_bind_methods() {
 	// Factory.
 
 	ClassDB::bind_static_method("SiONVoice", D_METHOD("create", "module_type", "channel_num", "attack_rate", "release_rate", "pitch_shift", "connection_type", "wave_shape2", "pitch_shift2"), &SiONVoice::create, DEFVAL(SiONModuleType::MODULE_GENERIC_PG), DEFVAL(0), DEFVAL(58), DEFVAL(63), DEFVAL(0), DEFVAL(-1), DEFVAL(0), DEFVAL(0));
+	ClassDB::bind_static_method("SiONVoice", D_METHOD("create_engine", "module_type", "chip_type"), &SiONVoice::create_engine);
 
 	// Public API.
 
