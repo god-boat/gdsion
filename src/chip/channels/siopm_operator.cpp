@@ -234,6 +234,7 @@ void SiOPMOperator::set_pitch_table_type(SiONPitchTableType p_type) {
 	_wave_phase_step_shift = (SiOPMRefTable::PHASE_BITS - _wave_fixed_bits) & _table->phase_step_shift_filter[p_type];
 	_pitch_table = _table->pitch_table[p_type];
 	_pitch_table_filter = _pitch_table.size() - 1;
+	_update_pitch();
 }
 
 int SiOPMOperator::get_wave_value(int p_index) const {
