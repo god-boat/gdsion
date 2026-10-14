@@ -28,6 +28,12 @@ class SiOPMSoundChip;
 // lands each pick a few random ms late and strums the voicing strings. Draws
 // hash a per-channel step counter, so a channel repeats its sequence.
 //
+// The hands make noise too. Scrape drags the pick over the windings before it
+// lets go, which holds the note back by the time the drag takes. Pick Bend is
+// how sharp a hard pick stretches the string, settling as it rings down. Fret
+// Noise is the fretting hand: the string buzzing on the fret as a finger lifts
+// or a slur lands, and fingers dragging off the windings after a release.
+//
 // Renders into the standard SiON integer pipe, so the base class buffer()
 // provides the SV filter, kill fade and stream routing.
 class SiOPMChannelIron : public SiOPMChannelBase {
@@ -41,13 +47,17 @@ class SiOPMChannelIron : public SiOPMChannelBase {
 	// A pick queued on a string until its humanized onset.
 	struct Pick {
 		int semitones = 0;
-		double level = 1.0;
+		double amplitude = 0.5;
 		double velocity = 1.0;
 		double mute_offset = 0.0;
 		double position = 0.1; // Fraction of the string length from the bridge.
 		double hardness = 0.5;
 		double cents = 0.0;
 		double bloom_cents = 0.0;
+		// The drag over the windings that leads the pick in.
+		int contact_samples = 0;
+		double scrape_level = 0.0;
+		double scrape_delay = 1.0; // Round trip of the string between the pick and the bridge.
 	};
 
 	struct GuitarString {
@@ -74,17 +84,33 @@ class SiOPMChannelIron : public SiOPMChannelBase {
 		double loop_gain_target = 0.0;
 		double allpass_coeff = 0.0;
 		double bloom_cents = 0.0;
+		double bloom_decay = 0.0;
 
 		double fade = 1.0;
 		double fade_step = 0.0;
 		int quiet_samples = 0;
 
+		// The pick's noise, through one highpass: the drag over the windings, then the click as it lets go.
 		double click_level = 0.0;
 		double click_amplitude = 0.0;
 		sion::dsp::OnePole click_lowpass;
+		sion::dsp::FractionalDelay scrape_comb;
+		double ridge_phase = 0.0;
+		// How hard the string buzzes on the fret under a finger that just moved.
+		double rattle = 0.0;
 
 		int pending_samples = -1; // Samples until the queued pick lands; -1 when none is queued.
 		Pick pending;
+	};
+
+	// The fretting hand dragging along the windings as it leaves a note.
+	struct FretDrag {
+		int samples = 0; // Left to run.
+		int length = 1;
+		double level = 0.0;
+		double ridge_rate = 0.0; // Ridges per sample at the hand's top speed.
+		double ridge_phase = 0.0;
+		sion::dsp::BiquadState resonance;
 	};
 
 	struct AmpStage {
@@ -107,20 +133,26 @@ class SiOPMChannelIron : public SiOPMChannelBase {
 	double _pickup_position = 0.06;
 	double _humanize = 0.35;
 	double _timing_seconds = 0.004;
+	double _pick_scrape = 0.5;
+	double _pick_bend_cents = 20.0;
+	double _fret_noise = 0.16;
 	double _output_trim = 1.0;
 
 	// Sample-rate-derived values.
 	double _sample_rate = 48000.0;
 	double _delay_smoothing = 0.0;
 	double _loop_smoothing = 0.0;
-	double _bloom_decay = 0.0;
 	double _click_decay = 0.0;
 	double _click_lowpass_coeff = 0.0;
+	double _scrape_ridge_rate = 0.0;
+	double _rattle_decay = 0.0;
+	sion::dsp::BiquadCoeffs _drag_coeffs;
 	double _dc_coeff = 0.0;
 	int _retrigger_fade_samples = 1;
 	int _attack_fade_samples = 1;
 
 	GuitarString _strings[STRING_COUNT];
+	FretDrag _drag;
 
 	sion::dsp::BiquadCoeffs _pickup_coeffs;
 	sion::dsp::BiquadCoeffs _tight_coeffs;
@@ -154,9 +186,15 @@ class SiOPMChannelIron : public SiOPMChannelBase {
 	double _random();
 	double _random_unit();
 
+	double _note_period(double p_note) const;
 	void _tune_string(GuitarString &r_string);
+	void _release_string(GuitarString &r_string);
 	void _pluck(GuitarString &r_string);
 	double _tick_string(GuitarString &r_string);
+	double _tick_ridges(double &r_phase, double p_rate);
+	double _tick_scrape(GuitarString &r_string);
+	void _drag_off();
+	double _tick_drag();
 	double _tick_stages(double p_input);
 	double _tick_amp(double p_input);
 	void _clear_amp();

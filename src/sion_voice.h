@@ -97,7 +97,8 @@ public:
 	void set_iron(int p_voicing, int p_pick_attack, int p_pick_position, int p_palm_mute, int p_mute_velocity,
 			int p_sustain_ms, int p_release_ms, int p_stiffness, int p_pickup_position,
 			int p_gain, int p_tight_hz, int p_bass_db, int p_mid_db, int p_treble_db,
-			int p_cabinet, int p_mic, int p_humanize, int p_timing_ms);
+			int p_cabinet, int p_mic, int p_humanize, int p_timing_ms,
+			int p_pick_scrape, int p_pick_bend_cents, int p_fret_noise);
 	void set_iron_params(const IronParams &p_params);
 	void set_talus(
 			int p_strike_level, int p_strike_hardness, int p_strike_velocity, int p_noise_level, int p_noise_decay_ms, int p_noise_color_hz,

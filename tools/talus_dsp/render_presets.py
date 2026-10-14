@@ -31,8 +31,8 @@ RATE = 48000
 NOTE = 60
 
 
-def spec_slots() -> dict[str, int]:
-	text = SPECS.read_text(encoding="utf-8")
+def spec_slots(specs: pathlib.Path = SPECS) -> dict[str, int]:
+	text = specs.read_text(encoding="utf-8")
 	slots = {}
 	for block in text.split("[sub_resource")[1:]:
 		param_id = re.search(r'^id = "([^"]+)"', block, re.M).group(1)

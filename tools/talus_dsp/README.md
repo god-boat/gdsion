@@ -41,6 +41,11 @@ root with its venv:
   peak and idle time. A drum plays a velocity ladder and a roll on one channel.
   A pitched preset plays a phrase and a chord, one channel per note. The WAVs
   are dry: a rack's effects are not rendered.
+- `iron_tests.py` runs I1-I13 on Iron's handling noise: Scrape, Pick Bend and
+  Fret Noise, and the channel contract they must keep (idle, segments,
+  determinism, level). C++ only: Iron has no reference model.
+- `render_iron.py` plays one riff through every shipped Iron preset, on this
+  build and on the baseline, to `out/renders/Iron - *.wav` for the by-ear A/B.
 - `gen_membrane_modes.py` writes `src/dsp/membrane_modes.h`: the Bessel ratios
   and strike-position weights, computed with numpy alone.
 - `gen_bar_modes.py` writes `src/dsp/bar_modes.h`: the free-free bar's ratios
@@ -72,3 +77,10 @@ project never imports the renders.
 - A quiet tail cannot be measured on the C++ output: truncation to whole units
   shortens a decay fitted below about 16 units. Drive the thing harder (T17
   mutes a held string so the body rings from a high level).
+- IRON fails while Iron's own source differs from `--iron-rev`. That is the
+  case measuring a change to Iron; it passes again once the change is committed.
+- A channel only idles on a render call that was silent throughout, so a case
+  that needs an idle channel renders in short blocks (I12).
+- To see one Iron noise by subtracting a render without it, nothing else may be
+  random: Humanize, Timing, Pick Attack and Scrape at 0, and Voicing Single (the
+  strum between a chord's strings takes a draw that Humanize does not scale).

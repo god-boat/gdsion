@@ -1665,6 +1665,7 @@ void SiONDriver::_bind_methods() {
 			"sustain_ms", "release_ms", "stiffness", "pickup_position",
 			"gain", "tight_hz", "bass_db", "mid_db", "treble_db",
 			"cabinet", "mic", "humanize", "timing_ms",
+			"pick_scrape", "pick_bend_cents", "fret_noise",
 			"entity_scope_id", "slot_scope_id"),
 			&SiONDriver::mailbox_set_iron_params, DEFVAL(-1), DEFVAL(-1));
 	// Talus physical-model percussion
@@ -3019,6 +3020,7 @@ void SiONDriver::mailbox_set_iron_params(int p_track_id,
 		int p_sustain_ms, int p_release_ms, int p_stiffness, int p_pickup_position,
 		int p_gain, int p_tight_hz, int p_bass_db, int p_mid_db, int p_treble_db,
 		int p_cabinet, int p_mic, int p_humanize, int p_timing_ms,
+		int p_pick_scrape, int p_pick_bend_cents, int p_fret_noise,
 		int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_DriverCommand u;
 	u.track_id = p_track_id;
@@ -3028,7 +3030,8 @@ void SiONDriver::mailbox_set_iron_params(int p_track_id,
 	u.iron = { { p_voicing, p_pick_attack, p_pick_position, p_palm_mute, p_mute_velocity,
 			p_sustain_ms, p_release_ms, p_stiffness, p_pickup_position,
 			p_gain, p_tight_hz, p_bass_db, p_mid_db, p_treble_db,
-			p_cabinet, p_mic, p_humanize, p_timing_ms } };
+			p_cabinet, p_mic, p_humanize, p_timing_ms,
+			p_pick_scrape, p_pick_bend_cents, p_fret_noise } };
 	_push_command(u);
 }
 

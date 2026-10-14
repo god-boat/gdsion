@@ -10,6 +10,7 @@
 #include "templates/singly_linked_list.h"
 
 using sion::dsp::allpass_phase_delay;
+using sion::dsp::BIQUAD_BAND_PASS;
 using sion::dsp::BIQUAD_HIGH_PASS;
 using sion::dsp::BIQUAD_HIGH_SHELF;
 using sion::dsp::BIQUAD_LOW_PASS;
@@ -37,10 +38,30 @@ static constexpr double RETRIGGER_FADE_SECONDS = 0.003;
 static constexpr double ATTACK_FADE_SECONDS = 0.0005;
 static constexpr double DELAY_SMOOTHING_SECONDS = 0.002;
 static constexpr double LOOP_SMOOTHING_SECONDS = 0.003;
-static constexpr double BLOOM_SECONDS = 0.06;
 static constexpr double STRUM_SECONDS = 0.0008;
 
-static constexpr double PICK_SCRAPE = 0.12;
+// Scrape, at 100 %: the noise it leaves in the pluck, and the drag that leads the pick in.
+static constexpr double PLUCK_ROUGHNESS = 0.24;
+static constexpr double SCRAPE_SECONDS = 0.012;
+static constexpr double SCRAPE_LEVEL = 0.25;
+static constexpr double SCRAPE_RIDGE_HZ = 1400.0;
+static constexpr double SCRAPE_HISS = 0.15;
+// The pick is a soft end for the stretch of string it holds against the bridge.
+static constexpr double SCRAPE_FEEDBACK = 0.8;
+static constexpr double SCRAPE_COMB_SAMPLES = 1023.0;
+
+// Fret Noise, at 100 %.
+static constexpr double RATTLE_LEVEL = 0.6;
+static constexpr double RATTLE_SECONDS = 0.008;
+// A pitch change this large in one step is a hammer-on or a pull-off, not a bend.
+static constexpr double SLUR_SEMITONES = 0.75;
+static constexpr double DRAG_LEVEL = 0.075;
+static constexpr double DRAG_SECONDS = 0.15;
+static constexpr double DRAG_RIDGE_HZ = 1800.0;
+// The string's lengthwise ring, which a sliding finger excites whatever note is fretted.
+static constexpr double DRAG_RESONANCE_HZ = 2200.0;
+static constexpr double DRAG_RESONANCE_Q = 2.5;
+
 static constexpr double STRING_REFERENCE_HZ = 82.4068892282175; // Open low E (MIDI 40).
 static constexpr double PICK_SOFT_HZ = 900.0;
 static constexpr double PICK_HARD_RATIO = 14.0;
@@ -107,6 +128,11 @@ static double pick_velocity(double p_phase, double p_position) {
 	return x < p_position ? 1.0 - p_position : -p_position;
 }
 
+// Wound strings give a pick or a fingertip ridges to drag over; the plain ones, from about G3 up, far fewer.
+static double winding(double p_note) {
+	return 0.2 + 0.8 * CLAMP((64.0 - p_note) / 12.0, 0.0, 1.0);
+}
+
 // ---------------------------------------------------------------------------
 // Randomness
 // ---------------------------------------------------------------------------
@@ -123,10 +149,14 @@ double SiOPMChannelIron::_random_unit() {
 // Strings
 // ---------------------------------------------------------------------------
 
+double SiOPMChannelIron::_note_period(double p_note) const {
+	return _sample_rate / (440.0 * std::pow(2.0, (p_note - 69.0) / 12.0));
+}
+
 void SiOPMChannelIron::_tune_string(GuitarString &r_string) {
 	const double note = r_string.note + r_string.semitones + r_string.cents * 0.01;
 	const double longest_period = (r_string.delay.mask - 4) / PICKUP_REACH;
-	r_string.period = CLAMP(_sample_rate / (440.0 * std::pow(2.0, (note - 69.0) / 12.0)), SHORTEST_PERIOD, longest_period);
+	r_string.period = CLAMP(_note_period(note), SHORTEST_PERIOD, longest_period);
 	const double w0 = Math_TAU / r_string.period;
 
 	// Thinner strings, higher up, are brighter and die sooner.
@@ -156,6 +186,8 @@ void SiOPMChannelIron::_tune_string(GuitarString &r_string) {
 	const double lowpass_coeff = one_pole_coeff_for_magnitude(lowpass_magnitude, w0);
 	r_string.loop_lowpass_coeff_target = lowpass_coeff;
 	r_string.loop_gain_target = decay / one_pole_magnitude(lowpass_coeff, w0);
+	// The stretch a hard pick gives the string follows its energy, the square of its amplitude.
+	r_string.bloom_decay = std::pow(decay, 2.0 / r_string.period);
 
 	// Stiffness: two allpasses whose phase delay falls across the first partials, so the upper ones run sharp.
 	double allpass_coeff = 0.0;
@@ -166,6 +198,13 @@ void SiOPMChannelIron::_tune_string(GuitarString &r_string) {
 
 	r_string.read_delay_target = r_string.period - one_pole_phase_delay(lowpass_coeff, w0) - 2.0 * allpass_phase_delay(allpass_coeff, w0);
 	r_string.pickup_delay = _pickup_position * r_string.period;
+}
+
+// The fretting finger lets go: the loop damps toward the release time, and the string buzzes on the fret as it lifts.
+void SiOPMChannelIron::_release_string(GuitarString &r_string) {
+	r_string.released = true;
+	r_string.rattle = 1.0;
+	_tune_string(r_string);
 }
 
 void SiOPMChannelIron::_pluck(GuitarString &r_string) {
@@ -188,19 +227,19 @@ void SiOPMChannelIron::_pluck(GuitarString &r_string) {
 
 	// A magnetic pickup senses velocity, so seed the waveguide with the derivative
 	// of the mirrored triangular displacement. Differentiation commutes with the
-	// linear string loop; the scrape stays in velocity units as well.
+	// linear string loop; the roughness a scraping pick leaves stays in velocity units as well.
 	sion::dsp::FractionalDelay &delay = r_string.delay;
 	delay.clear();
 	double *buffer = delay.buffer.data();
 	const int mask = delay.mask;
 	const int length = (int)(r_string.read_delay + r_string.pickup_delay) + 4;
 	const int start = delay.write_index - length;
-	const double scrape = PICK_SCRAPE * pick.hardness;
+	const double roughness = PLUCK_ROUGHNESS * _pick_scrape * pick.hardness;
 	for (int i = 0; i < length; i++) {
 		double phase = (i - length + r_string.read_delay) / r_string.period;
 		phase -= std::floor(phase);
 		const double shape = pick_velocity(phase, pick.position);
-		buffer[(start + i) & mask] = shape + scrape * _random();
+		buffer[(start + i) & mask] = shape + roughness * _random();
 	}
 
 	// A softer pick rounds the corners. Warm the filter on the original excitation
@@ -217,15 +256,14 @@ void SiOPMChannelIron::_pluck(GuitarString &r_string) {
 		sum += sample;
 	}
 	const double mean = sum / length;
-	const double amplitude = 0.5 * (0.35 + 0.65 * pick.velocity) * pick.level;
 	for (int i = 0; i < length; i++) {
 		double &sample = buffer[(start + i) & mask];
-		sample = (sample - mean) * amplitude;
+		sample = (sample - mean) * pick.amplitude;
 	}
 
 	r_string.click_level = 1.0;
-	r_string.click_amplitude = 0.12 * pick.hardness * pick.velocity * amplitude;
-	r_string.click_lowpass = {};
+	r_string.click_amplitude = 0.12 * pick.hardness * pick.velocity * pick.amplitude;
+	r_string.rattle = 0.0;
 	r_string.fade = 0.0;
 	r_string.fade_step = 1.0 / _attack_fade_samples;
 	r_string.quiet_samples = 0;
@@ -236,14 +274,20 @@ double SiOPMChannelIron::_tick_string(GuitarString &r_string) {
 	r_string.read_delay += (r_string.read_delay_target - r_string.read_delay) * _delay_smoothing;
 	r_string.loop_lowpass_coeff += (r_string.loop_lowpass_coeff_target - r_string.loop_lowpass_coeff) * _loop_smoothing;
 	r_string.loop_gain += (r_string.loop_gain_target - r_string.loop_gain) * _loop_smoothing;
-	r_string.bloom_cents *= _bloom_decay;
+	r_string.bloom_cents *= r_string.bloom_decay;
 
 	// A hard pick stretches the string sharp; the bloom shortens the period by 2^(-cents/1200)
-	// to first order, within 0.2 cents at full bloom.
+	// to first order, which reads 3 cents over at the full 100.
 	const double read_delay = r_string.read_delay * (1.0 - r_string.bloom_cents * LN2_PER_CENT);
 	const double bridge = r_string.delay.read_cubic(read_delay);
 	// The pickup hears the wave minus its reflection: a comb notching the harmonics its position nodes.
 	double pickup = bridge - r_string.delay.read_cubic(read_delay + r_string.pickup_delay);
+
+	if (r_string.rattle > CLICK_FLOOR) {
+		// The buzz is the string hitting the fret, so it is as loud as the string is.
+		pickup += _fret_noise * RATTLE_LEVEL * r_string.rattle * std::abs(bridge) * _random();
+		r_string.rattle *= _rattle_decay;
+	}
 
 	double loop = r_string.loop_lowpass.lowpass(r_string.loop_lowpass_coeff, bridge);
 	for (sion::dsp::Allpass &allpass : r_string.allpasses) {
@@ -282,6 +326,57 @@ double SiOPMChannelIron::_tick_string(GuitarString &r_string) {
 	}
 
 	return pickup * r_string.fade;
+}
+
+// ---------------------------------------------------------------------------
+// Handling noise
+// ---------------------------------------------------------------------------
+
+// One pulse per ridge of the winding, each a little different, as something drags across them.
+double SiOPMChannelIron::_tick_ridges(double &r_phase, double p_rate) {
+	r_phase += p_rate;
+	if (r_phase < 1.0) {
+		return 0.0;
+	}
+	r_phase -= 1.0;
+	return 0.7 + 0.3 * _random();
+}
+
+// The pick drags over the windings before it lets go, pressing harder and slipping faster toward the release.
+double SiOPMChannelIron::_tick_scrape(GuitarString &r_string) {
+	const Pick &pick = r_string.pending;
+	const double progress = 1.0 - (double)r_string.pending_samples / pick.contact_samples;
+	const double ridge = _tick_ridges(r_string.ridge_phase, _scrape_ridge_rate * (0.5 + progress));
+	const double hiss = SCRAPE_HISS * _random();
+	const double force = r_string.click_lowpass.highpass(_click_lowpass_coeff, (ridge + hiss) * progress * pick.scrape_level);
+	// While the pick holds the string, the stretch between it and the bridge rings at its own, higher pitch.
+	const double ring = force + SCRAPE_FEEDBACK * r_string.scrape_comb.read(pick.scrape_delay);
+	r_string.scrape_comb.write(ring);
+	return ring;
+}
+
+// Letting a note go, the fretting hand may drag along the windings on its way to the next position.
+void SiOPMChannelIron::_drag_off() {
+	// Half the releases lift clean. Most of the rest barely drag, and about one in ten slides far enough to squeak.
+	const double reach = MAX(0.0, _random());
+	const double pace = _random_unit();
+	const double travel = reach * reach;
+	_drag.length = (int)(DRAG_SECONDS * travel * travel * _sample_rate);
+	_drag.samples = _drag.length;
+	_drag.level = DRAG_LEVEL * _fret_noise * winding(_current_pitch / 64.0) * travel;
+	_drag.ridge_rate = DRAG_RIDGE_HZ * (0.6 + 0.8 * pace) / _sample_rate;
+	_drag.ridge_phase = 0.0;
+	// A note held until its strings rang out left the channel idling.
+	_is_source_idling = false;
+}
+
+double SiOPMChannelIron::_tick_drag() {
+	// The hand speeds up and slows again; the ridges pass, and sound, as fast as it moves.
+	const double travelled = 1.0 - (double)_drag.samples / _drag.length;
+	const double speed = 4.0 * travelled * (1.0 - travelled);
+	_drag.samples--;
+	const double ridge = _tick_ridges(_drag.ridge_phase, _drag.ridge_rate * speed);
+	return _drag.resonance.tick(_drag_coeffs, ridge * speed * _drag.level);
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +454,11 @@ void SiOPMChannelIron::set_iron_params(const IronParams &p_params) {
 	_pickup_position = 0.06 + 0.22 * CLAMP(values[IronParams::PICKUP_POSITION], 0, 100) * 0.01;
 	_humanize = CLAMP(values[IronParams::HUMANIZE], 0, 100) * 0.01;
 	_timing_seconds = CLAMP(values[IronParams::TIMING_MS], 0, 30) * 0.001;
+	_pick_scrape = CLAMP(values[IronParams::PICK_SCRAPE], 0, 100) * 0.01;
+	_pick_bend_cents = CLAMP(values[IronParams::PICK_BEND_CENTS], 0, 100);
+	// Squared: a high-gain amp brings these noises up to the level of the notes, so the low end of the range needs the room.
+	const double fret_noise = CLAMP(values[IronParams::FRET_NOISE], 0, 100) * 0.01;
+	_fret_noise = fret_noise * fret_noise;
 
 	// Gain spreads over the four stages. The trim keeps a single note's peaks near -7 dBFS
 	// across the range, with the compressed high-gain end near -18 dBFS RMS.
@@ -470,24 +570,34 @@ void SiOPMChannelIron::note_on() {
 			// A string the voicing leaves out is let go, like a hand moving to a new shape.
 			string.pending_samples = -1;
 			if (string.active) {
-				string.released = true;
-				_tune_string(string);
+				_release_string(string);
 			}
 			continue;
 		}
 
 		Pick &pick = string.pending;
 		pick.semitones = voicing.strings[i].semitones;
-		pick.level = voicing.strings[i].level;
+		pick.amplitude = 0.5 * (0.35 + 0.65 * velocity) * voicing.strings[i].level;
 		pick.velocity = velocity;
 		pick.mute_offset = mute_offset;
 		pick.position = CLAMP(_pick_position * (1.0 + _humanize * 0.35 * _random()), 0.02, 0.45);
 		pick.hardness = CLAMP(_pick_attack * (0.55 + 0.45 * velocity) + _humanize * 0.12 * _random(), 0.0, 1.0);
 		pick.cents = _humanize * HUMANIZE_DETUNE_CENTS * _random() + PALM_MUTE_SHARP_CENTS * mute;
-		pick.bloom_cents = (3.0 + 12.0 * velocity * velocity) * (0.4 + 0.6 * _pick_attack) * (1.0 - 0.6 * mute) * (1.0 + 0.5 * _humanize * _random());
+		pick.bloom_cents = _pick_bend_cents * velocity * velocity * (1.0 - 0.6 * mute) * (1.0 + 0.5 * _humanize * _random());
+
+		// The pick drags before it lets go, and a hard one lets go sooner.
+		const double note = _current_pitch / 64.0 + pick.semitones;
+		pick.contact_samples = (int)(SCRAPE_SECONDS * _pick_scrape * (1.3 - 0.6 * velocity) * _sample_rate);
+		pick.scrape_level = SCRAPE_LEVEL * _pick_scrape * pick.hardness * winding(note) * pick.amplitude;
+		pick.scrape_delay = CLAMP(pick.position * _note_period(note), 1.0, SCRAPE_COMB_SAMPLES);
+		// The pick lands on the string, which ends whatever noise the last one left.
+		string.scrape_comb.clear();
+		string.ridge_phase = 0.0;
+		string.click_level = 0.0;
+		string.click_lowpass = {};
 
 		// A ringing string fades out before the new pick replaces it.
-		const int onset_samples = (int)((onset + i * strum) * _sample_rate);
+		const int onset_samples = (int)((onset + i * strum) * _sample_rate) + pick.contact_samples;
 		string.pending_samples = string.active ? MAX(onset_samples, _retrigger_fade_samples) : onset_samples;
 	}
 
@@ -498,9 +608,11 @@ void SiOPMChannelIron::note_on() {
 void SiOPMChannelIron::note_off() {
 	for (GuitarString &string : _strings) {
 		if (string.active) {
-			string.released = true;
-			_tune_string(string);
+			_release_string(string);
 		}
+	}
+	if (_is_note_on && _fret_noise > 0.0) {
+		_drag_off();
 	}
 	SiOPMChannelBase::note_off();
 }
@@ -518,9 +630,14 @@ void SiOPMChannelIron::_process_iron(int p_length) {
 		_pitch_changed = false;
 		// Bends, glides and legato slurs move the held strings. A string waiting on a new pick
 		// keeps its old note while it fades.
+		const double note = _current_pitch / 64.0;
 		for (GuitarString &string : _strings) {
 			if (string.active && !string.released && string.pending_samples < 0) {
-				string.note = _current_pitch / 64.0;
+				// A slur lands in one step: the string buzzes as the finger hammers on or pulls off.
+				if (std::abs(note - string.note) >= SLUR_SEMITONES) {
+					string.rattle = 1.0;
+				}
+				string.note = note;
 				_tune_string(string);
 			}
 		}
@@ -537,11 +654,17 @@ void SiOPMChannelIron::_process_iron(int p_length) {
 				if (string.active && string.fade_step >= 0.0 && string.pending_samples <= _retrigger_fade_samples) {
 					string.fade_step = -string.fade / string.pending_samples;
 				}
+				if (string.pending_samples <= string.pending.contact_samples) {
+					pickup += _tick_scrape(string);
+				}
 				string.pending_samples--;
 			}
 			if (string.active) {
 				pickup += _tick_string(string);
 			}
+		}
+		if (_drag.samples > 0) {
+			pickup += _tick_drag();
 		}
 
 		const double output = _tick_amp(pickup);
@@ -558,7 +681,7 @@ void SiOPMChannelIron::_process_iron(int p_length) {
 	_out_pipe->set(out_pipe);
 
 	// Once every string has rung out, the amp's filters settle within a few ms of silence.
-	if (peak < SILENCE_LEVEL) {
+	if (peak < SILENCE_LEVEL && _drag.samples == 0) {
 		for (const GuitarString &string : _strings) {
 			if (string.active || string.pending_samples >= 0) {
 				return;
@@ -579,9 +702,11 @@ void SiOPMChannelIron::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) 
 	_sample_rate = _table->sampling_rate;
 	_delay_smoothing = 1.0 - std::exp(-1.0 / (DELAY_SMOOTHING_SECONDS * _sample_rate));
 	_loop_smoothing = 1.0 - std::exp(-1.0 / (LOOP_SMOOTHING_SECONDS * _sample_rate));
-	_bloom_decay = std::exp(-1.0 / (BLOOM_SECONDS * _sample_rate));
 	_click_decay = std::exp(-1.0 / (CLICK_SECONDS * _sample_rate));
 	_click_lowpass_coeff = one_pole_coeff(CLICK_HIGHPASS_HZ, _sample_rate);
+	_scrape_ridge_rate = SCRAPE_RIDGE_HZ / _sample_rate;
+	_rattle_decay = std::exp(-1.0 / (RATTLE_SECONDS * _sample_rate));
+	_drag_coeffs = compute_biquad_coefficients(BIQUAD_BAND_PASS, DRAG_RESONANCE_HZ, DRAG_RESONANCE_Q, 0.0, _sample_rate);
 	_dc_coeff = one_pole_coeff(DC_BLOCK_HZ, _sample_rate);
 	_retrigger_fade_samples = (int)(RETRIGGER_FADE_SECONDS * _sample_rate);
 	_attack_fade_samples = (int)(ATTACK_FADE_SECONDS * _sample_rate);
@@ -617,7 +742,9 @@ void SiOPMChannelIron::reset() {
 		string.active = false;
 		string.pending_samples = -1;
 		string.click_level = 0.0;
+		string.rattle = 0.0;
 	}
+	_drag = {};
 	_clear_amp();
 
 	SiOPMChannelBase::reset();
@@ -647,6 +774,7 @@ SiOPMChannelIron::SiOPMChannelIron(SiOPMSoundChip *p_chip) :
 
 	for (GuitarString &string : _strings) {
 		string.delay.prepare(DELAY_LINE_SAMPLES);
+		string.scrape_comb.prepare(SCRAPE_COMB_SAMPLES);
 	}
 	_process_function = Callable(this, "_process_iron");
 }

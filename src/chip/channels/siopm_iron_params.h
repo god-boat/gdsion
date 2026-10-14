@@ -30,10 +30,13 @@ struct IronParams {
 		MIC, // Percent, from on-axis toward off-axis.
 		HUMANIZE, // Percent.
 		TIMING_MS,
+		PICK_SCRAPE, // Percent: how long and how hard the pick drags over the windings before it lets go.
+		PICK_BEND_CENTS, // How sharp a full-velocity pick stretches the string.
+		FRET_NOISE, // Percent: fret buzz and finger squeaks from the fretting hand.
 		SLOT_COUNT,
 	};
 
-	int values[SLOT_COUNT] = { 0, 60, 20, 0, 0, 4000, 40, 30, 0, 70, 400, 0, 0, 0, 0, 30, 35, 4 };
+	int values[SLOT_COUNT] = { 0, 60, 20, 0, 0, 4000, 40, 30, 0, 70, 400, 0, 0, 0, 0, 30, 35, 4, 50, 20, 40 };
 };
 
 #endif // SIOPM_IRON_PARAMS_H

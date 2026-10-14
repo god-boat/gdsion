@@ -504,11 +504,13 @@ void SiONVoice::set_monolith(
 void SiONVoice::set_iron(int p_voicing, int p_pick_attack, int p_pick_position, int p_palm_mute, int p_mute_velocity,
 		int p_sustain_ms, int p_release_ms, int p_stiffness, int p_pickup_position,
 		int p_gain, int p_tight_hz, int p_bass_db, int p_mid_db, int p_treble_db,
-		int p_cabinet, int p_mic, int p_humanize, int p_timing_ms) {
+		int p_cabinet, int p_mic, int p_humanize, int p_timing_ms,
+		int p_pick_scrape, int p_pick_bend_cents, int p_fret_noise) {
 	set_iron_params({ { p_voicing, p_pick_attack, p_pick_position, p_palm_mute, p_mute_velocity,
 			p_sustain_ms, p_release_ms, p_stiffness, p_pickup_position,
 			p_gain, p_tight_hz, p_bass_db, p_mid_db, p_treble_db,
-			p_cabinet, p_mic, p_humanize, p_timing_ms } });
+			p_cabinet, p_mic, p_humanize, p_timing_ms,
+			p_pick_scrape, p_pick_bend_cents, p_fret_noise } });
 }
 
 void SiONVoice::set_iron_params(const IronParams &p_params) {
@@ -731,12 +733,14 @@ void SiONVoice::_bind_methods() {
 			"voicing", "pick_attack", "pick_position", "palm_mute", "mute_velocity",
 			"sustain_ms", "release_ms", "stiffness", "pickup_position",
 			"gain", "tight_hz", "bass_db", "mid_db", "treble_db",
-			"cabinet", "mic", "humanize", "timing_ms"),
+			"cabinet", "mic", "humanize", "timing_ms",
+			"pick_scrape", "pick_bend_cents", "fret_noise"),
 			&SiONVoice::set_iron,
 			DEFVAL(d[0]), DEFVAL(d[1]), DEFVAL(d[2]), DEFVAL(d[3]), DEFVAL(d[4]),
 			DEFVAL(d[5]), DEFVAL(d[6]), DEFVAL(d[7]), DEFVAL(d[8]),
 			DEFVAL(d[9]), DEFVAL(d[10]), DEFVAL(d[11]), DEFVAL(d[12]), DEFVAL(d[13]),
-			DEFVAL(d[14]), DEFVAL(d[15]), DEFVAL(d[16]), DEFVAL(d[17]));
+			DEFVAL(d[14]), DEFVAL(d[15]), DEFVAL(d[16]), DEFVAL(d[17]),
+			DEFVAL(d[18]), DEFVAL(d[19]), DEFVAL(d[20]));
 	const TalusParams talus_defaults;
 	const int *t = talus_defaults.values;
 	ClassDB::bind_method(D_METHOD("set_talus",

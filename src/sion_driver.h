@@ -1062,6 +1062,7 @@ public:
 			int p_sustain_ms, int p_release_ms, int p_stiffness, int p_pickup_position,
 			int p_gain, int p_tight_hz, int p_bass_db, int p_mid_db, int p_treble_db,
 			int p_cabinet, int p_mic, int p_humanize, int p_timing_ms,
+			int p_pick_scrape, int p_pick_bend_cents, int p_fret_noise,
 			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// Talus physical-model percussion mailbox
 	void mailbox_set_talus_params(int p_track_id,
