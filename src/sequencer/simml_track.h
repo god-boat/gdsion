@@ -13,6 +13,7 @@
 #include <godot_cpp/templates/vector.hpp>
 #include <cstdint>
 #include "sion_enums.h"
+#include "engine_params.h"
 #include "sequencer/base/beats_per_minute.h"
 #include "sequencer/simml_data.h"
 #include "sequencer/simml_envelope_table.h"
@@ -86,6 +87,7 @@ private:
 
 	// Sound module's channel controlled by this track.
 	SiOPMChannelBase *_channel = nullptr;
+	int _engine_kind_id = -1;
 	MMLExecutor *_executor = nullptr;
 	SiMMLChannelSettings *_channel_settings = nullptr;
 
@@ -103,28 +105,6 @@ private:
 	// Exact live note-instance token, unique across overlapping notes on the
 	// same resolved entity. Default -1 means unscoped.
 	int64_t _slot_scope_id = -1;
-
-public:
-	// Per-track cached filter state for merging partial mailbox updates.
-	// Embedded directly so scoped updates never bleed between sibling
-	// entities or sibling slots that share the same logical track_id.
-	struct FilterState {
-		bool initialized = false;
-		int type = 0;
-		int cutoff = 128;
-		int resonance = 0;
-		int ar = 0;
-		int dr1 = 0;
-		int dr2 = 0;
-		int rr = 0;
-		int dc1 = 128;
-		int dc2 = 64;
-		int sc = 32;
-		int rc = 128;
-	};
-
-private:
-	FilterState _filter_state;
 
 	int _process_mode = ProcessMode::NORMAL;
 	int _track_start_delay = 0;
@@ -363,6 +343,9 @@ public:
 	// Properties and data.
 
 	SiOPMChannelBase *get_channel() const { return _channel; }
+	int get_engine_kind_id() const { return _engine_kind_id; }
+	void set_engine_kind_id(int p_kind) { _engine_kind_id = p_kind; }
+	void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value);
 	void set_channel(SiOPMChannelBase *p_channel) { _channel = p_channel; }
 	MMLExecutor *get_executor() const { return _executor; }
 	MMLSequence *set_channel_parameters(Vector<int> p_params);
@@ -388,8 +371,6 @@ public:
 	int64_t get_slot_scope_id() const { return _slot_scope_id; }
 	void set_slot_scope_id(int64_t p_id) { _slot_scope_id = p_id; }
 
-	// Per-track filter state access for the mailbox drain.
-	FilterState &get_filter_state() { return _filter_state; }
 	// Program number, set by 2nd argument of % command and 1st arg. of &#64; command. Usually same as channel number (except for APU).
 	int get_program_number() const { return _voice_index; }
 

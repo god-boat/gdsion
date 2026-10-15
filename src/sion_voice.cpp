@@ -665,10 +665,10 @@ Ref<SiONVoice> SiONVoice::create_engine(SiONModuleType p_module_type, SiONChipTy
 TypedArray<Dictionary> SiONVoice::get_engine_param_descriptors(int p_engine_kind) {
 	const EngineParamSchema *schema = EngineParamSchema::find_engine(p_engine_kind);
 	TypedArray<Dictionary> result;
-	// Unmigrated engines have no registered scalar parameters.
+	// Inheritance-only catalogs and unused module aliases have no contract.
 	if (schema == nullptr) return result;
-	for (int i = 0; i < schema->count; i++) {
-		const EngineParamDescriptor &d = schema->parameters[i];
+	for (int i = 0; i < schema->parameter_count(); i++) {
+		const EngineParamDescriptor &d = schema->parameter_at(i);
 		Dictionary descriptor;
 		descriptor["engine_kind_id"] = schema->engine_kind;
 		descriptor["param_id"] = int64_t(d.id);
@@ -685,23 +685,23 @@ TypedArray<Dictionary> SiONVoice::get_engine_param_descriptors(int p_engine_kind
 }
 
 void SiONVoice::set_engine_param(int p_param_id, const Variant &p_value, int p_index) {
-	const EngineParamSchema *schema = engine_params.schema();
+	const EngineParamSchema *schema = EngineParamSchema::find_engine(get_module_type());
 	ERR_FAIL_NULL_MSG(schema, "Voice engine has no scalar parameter contract.");
 	const EngineParamDescriptor *d = schema->find(p_param_id);
 	ERR_FAIL_NULL_MSG(d, "Unknown engine parameter ID.");
 	ERR_FAIL_COND_MSG(!d->has_instance(p_index), "Engine parameter index is outside its registered instances.");
 	EngineParamValue value;
 	if (!decode_engine_param(*d, p_value, value)) return;
-	engine_params.set(p_param_id, p_index, value);
+	d->set_prepared(*this, p_param_id, p_index, value);
 }
 
 Variant SiONVoice::get_engine_param(int p_param_id, int p_index) const {
-	const EngineParamSchema *schema = engine_params.schema();
+	const EngineParamSchema *schema = EngineParamSchema::find_engine(get_module_type());
 	ERR_FAIL_NULL_V_MSG(schema, Variant(), "Voice engine has no scalar parameter contract.");
 	const EngineParamDescriptor *d = schema->find(p_param_id);
 	ERR_FAIL_NULL_V_MSG(d, Variant(), "Unknown engine parameter ID.");
 	ERR_FAIL_COND_V_MSG(!d->has_instance(p_index), Variant(), "Engine parameter index is outside its registered instances.");
-	return encode_engine_param(engine_params.get(p_param_id, p_index));
+	return encode_engine_param(d->get_prepared(*this, p_param_id, p_index));
 }
 
 void SiONVoice::_bind_methods() {

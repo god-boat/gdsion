@@ -370,34 +370,8 @@ private:
 		int64_t slot_scope_id = -1;
 		bool has_vol = false;
 		double vol_linear = 1.0;
-		bool has_inst_gain = false;
-		int inst_gain_db = 0;
 		bool has_pan = false;
 		int pan = 0;
-		bool has_filter = false;
-		bool has_filter_cutoff = false;
-		bool has_filter_resonance = false;
-		int filter_cutoff = 128;
-		int filter_resonance = 0;
-		// Filter extended params
-		bool has_filter_type = false;
-		int filter_type = 0;
-		bool has_filter_ar = false;
-		int filter_ar = 0;
-		bool has_filter_dr1 = false;
-		int filter_dr1 = 0;
-		bool has_filter_dr2 = false;
-		int filter_dr2 = 0;
-		bool has_filter_rr = false;
-		int filter_rr = 0;
-		bool has_filter_dc1 = false;
-		int filter_dc1 = 128;
-		bool has_filter_dc2 = false;
-		int filter_dc2 = 64;
-		bool has_filter_sc = false;
-		int filter_sc = 32;
-		bool has_filter_rc = false;
-		int filter_rc = 128;
 		// Sampler ADSR (channel-level)
 		bool has_amp_attack = false;
 		int amp_attack = 0;
@@ -426,34 +400,14 @@ private:
 		int sampler_pan = 0;
 		bool has_sampler_gain_db = false;
 		int sampler_gain_db = 0;
-		// FM operator fields (one flag per message; separate messages for separate params)
-		bool has_fm_op_tl = false;
-		bool has_fm_op_mul = false;
-		bool has_fm_op_fmul = false;
-		bool has_fm_op_dt1 = false;
-		bool has_fm_op_dt2 = false;
-		bool has_fm_op_self_feedback = false;
-		bool has_fm_op_super_count = false;
-		bool has_fm_op_super_spread = false;
-		bool has_fm_op_super_stereo_spread = false;
-		bool has_fm_op_ar = false;
-		bool has_fm_op_dr = false;
-		bool has_fm_op_sr = false;
-		bool has_fm_op_rr = false;
-		bool has_fm_op_sl = false;
-		bool has_fm_op_mute = false;
-		bool has_fm_op_env_reset = false;
 		bool has_fm_operator_count = false;
 		int fm_operator_count = 1;
 		int fm_algorithm = 0;
 		bool fm_analog_like = false;
 		int fm_feedback = 0;
 		int fm_feedback_connection = 0;
-		// Generic indexed-target axis for sub-channel updates: the FM operator
-		// index for fm_op updates, the sampler table slot (pad note) for sampler
-		// data updates. -1 means no indexed target was addressed.
+		// Sampler table slot (pad note); -1 means no indexed target.
 		int target_index = -1;
-		int fm_value = 0;
 		// Channel modulation (FM-only currently)
 		bool has_ch_am = false;
 		int ch_am_depth = 0;
@@ -470,26 +424,6 @@ private:
 		int pitch_modulation_depth_end = 0;
 		int pitch_modulation_delay = 0;
 		int pitch_modulation_term = 0;
-		bool has_pitch_bend = false;
-		int pitch_bend = 0;
-		bool has_portament_ms = false;
-		int portament_ms = 0;
-		bool has_portament_time_mode = false;
-		int portament_time_mode = 0;
-		bool has_portament_sync_division = false;
-		int portament_sync_division = 0;
-		// LFO frequency step
-		bool has_lfo_step = false;
-		int lfo_frequency_step = 0;
-		// LFO wave shape (new)
-		bool has_lfo_wave = false;
-		int lfo_wave_shape = 0;
-		// LFO time mode (0=Rate, 1=Time, 2=Synced, 3=Dotted, 4=Triplet)
-		bool has_lfo_time_mode = false;
-		int lfo_time_mode = 0;
-		// Envelope frequency ratio (channel)
-		bool has_env_freq_ratio = false;
-		int env_freq_ratio = 100;
 		// Fixed-size scalar payload; contains no refcounted or allocating data.
 		int engine_kind_id = -1;
 		uint32_t engine_param_id = 0;
@@ -973,20 +907,7 @@ public:
 	// update to tracks whose stamped tokens match (see section 7.3 of
 	// ScopeAddressingPlan).
 	void mailbox_set_track_volume(int p_track_id, double p_linear_volume, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_instrument_gain_db(int p_track_id, int p_db, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_track_pan(int p_track_id, int p_pan, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter(int p_track_id, int p_cutoff, int p_resonance, int p_type = -1, int p_attack_rate = -1, int p_decay_rate1 = -1, int p_decay_rate2 = -1, int p_release_rate = -1, int p_decay_cutoff1 = -1, int p_decay_cutoff2 = -1, int p_sustain_cutoff = -1, int p_release_cutoff = -1, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter_type(int p_track_id, int p_type, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter_cutoff(int p_track_id, int p_cutoff, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter_resonance(int p_track_id, int p_resonance, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter_attack_rate(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter_decay_rate1(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter_decay_rate2(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter_release_rate(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter_decay_cutoff1(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter_decay_cutoff2(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter_sustain_cutoff(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_filter_release_cutoff(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_track_amp_attack_rate(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_track_amp_decay_rate(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_track_amp_sustain_level(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
@@ -1004,34 +925,10 @@ public:
 	void mailbox_set_sampler_gain_db(int p_track_id, int p_target_index, int p_db, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// FM operator params (by operator index)
 	void mailbox_set_fm_operator_count(int p_track_id, int p_operator_count, int p_algorithm, bool p_analog_like, int p_feedback, int p_feedback_connection, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_total_level(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_multiple(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_fine_multiple(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_detune1(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_detune2(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_self_feedback(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_super_count(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_super_spread(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_super_stereo_spread(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_attack_rate(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_decay_rate(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_sustain_rate(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_release_rate(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_sustain_level(int p_track_id, int p_op_index, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_mute(int p_track_id, int p_op_index, bool p_mute, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_fm_op_envelope_reset(int p_track_id, int p_op_index, bool p_reset, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_ch_am_depth(int p_track_id, int p_depth, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_ch_pm_depth(int p_track_id, int p_depth, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_amplitude_modulation(int p_track_id, int p_depth, int p_end_depth, int p_delay, int p_term, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_pitch_modulation(int p_track_id, int p_depth, int p_end_depth, int p_delay, int p_term, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_pitch_bend(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_portament_ms(int p_track_id, int p_ms, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_portament_time_mode(int p_track_id, int p_mode, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_portament_sync_division(int p_track_id, int p_division, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_lfo_frequency_step(int p_track_id, int p_step, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_lfo_time_mode(int p_track_id, int p_mode, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_engine_param(int p_track_id, int p_engine_kind_id, int p_param_id, const Variant &p_value, int p_index = 0, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// KS base voice mailbox
 	void mailbox_set_pms_guitar(int p_track_id, int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);

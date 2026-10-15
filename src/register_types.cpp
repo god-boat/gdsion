@@ -73,6 +73,7 @@
 #include "sequencer/base/mml_sequencer.h"
 #include "sequencer/base/mml_system_command.h"
 #include "sequencer/simml_data.h"
+#include "sequencer/simml_channel_settings.h"
 #include "sequencer/simml_envelope_table.h"
 #include "sequencer/simml_ref_table.h"
 #include "sequencer/simml_sequencer.h"
@@ -213,6 +214,15 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 	SiMMLRefTable::initialize();
 	SiMMLTrack::initialize();
 	EngineParamSchema::register_schema(SiOPMChannelStrata::get_engine_param_schema());
+	for (const KeyValue<SiONModuleType, SiMMLChannelSettings *> &entry : SiMMLRefTable::get_instance()->channel_settings_map) {
+		const int kind = entry.key;
+		if (kind == SiONModuleType::MODULE_STRATA) continue;
+		const SiMMLChannelSettings *settings = entry.value;
+		const SiOPMChannelManager::ChannelType channel_type = settings->get_channel_type();
+		const EngineParamSchema &shared = channel_type == SiOPMChannelManager::CHANNEL_FM || channel_type == SiOPMChannelManager::CHANNEL_KS
+			? SiOPMChannelFM::get_shared_engine_param_schema() : SiOPMChannelBase::get_shared_engine_param_schema();
+		EngineParamSchema::register_schema({kind, nullptr, 0, &shared});
+	}
 }
 
 void uninitialize_sion_module(ModuleInitializationLevel p_level) {

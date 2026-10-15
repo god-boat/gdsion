@@ -9,6 +9,11 @@
 // a Variant, object, string or method-specific argument list.
 enum class EngineParamType : uint8_t { INT, FLOAT, BOOL };
 
+class SiMMLVoice;
+struct EngineParamValue;
+void store_engine_param(SiMMLVoice &p_voice, uint32_t p_id, int p_index, EngineParamValue p_value);
+EngineParamValue load_engine_param(const SiMMLVoice &p_voice, uint32_t p_id, int p_index);
+
 struct EngineParamValue {
 	EngineParamType type = EngineParamType::INT;
 	union {
@@ -40,15 +45,25 @@ struct EngineParamDescriptor {
 	EngineParamValue reset_value;
 	int instance_count;
 	bool realtime;
+	// Existing native fields remain authoritative for imported/shared parameters.
+	// Engine-local scalars use the voice's plain preparation storage.
+	void (*set_prepared)(SiMMLVoice &, uint32_t, int, EngineParamValue) = store_engine_param;
+	EngineParamValue (*get_prepared)(const SiMMLVoice &, uint32_t, int) = load_engine_param;
 
 	bool has_instance(int p_index) const { return p_index >= 0 && p_index < instance_count; }
+	bool uses_local_state() const { return set_prepared == store_engine_param; }
 };
 
 struct EngineParamSchema {
 	int engine_kind;
 	const EngineParamDescriptor *parameters;
 	int count;
+	const EngineParamSchema *parent = nullptr;
+	// Derived at registration: descriptors whose values live in EngineParamState, in state order.
+	std::vector<const EngineParamDescriptor *> local_parameters;
 	const EngineParamDescriptor *find(uint32_t p_id) const;
+	int parameter_count() const;
+	const EngineParamDescriptor &parameter_at(int p_position) const;
 	int state_index(uint32_t p_id, int p_index) const;
 
 	// Registration is initialization-time only. The returned schema is immutable.

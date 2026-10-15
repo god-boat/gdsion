@@ -3,7 +3,6 @@
 #include "sion_enums.h"
 
 #include <cmath>
-#include <cstdlib>
 #include <iterator>
 #include <godot_cpp/core/class_db.hpp>
 #include "chip/siopm_channel_params.h"
@@ -43,12 +42,8 @@ const EngineParamSchema &SiOPMChannelStrata::get_engine_param_schema() {
 		{TIMBRE, "voice.strata.timbre", EngineParamType::INT, 0, 32767, EngineParamValue::from_int(0), 1, true},
 		{COLOR, "voice.strata.color", EngineParamType::INT, 0, 32767, EngineParamValue::from_int(0), 1, true},
 	};
-	static const EngineParamSchema schema = {SiONModuleType::MODULE_STRATA, parameters, int(std::size(parameters))};
+	static const EngineParamSchema schema = {SiONModuleType::MODULE_STRATA, parameters, int(std::size(parameters)), &SiOPMChannelBase::get_shared_engine_param_schema()};
 	return schema;
-}
-
-int SiOPMChannelStrata::get_engine_kind_id() const {
-	return SiONModuleType::MODULE_STRATA;
 }
 
 void SiOPMChannelStrata::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
@@ -60,8 +55,8 @@ void SiOPMChannelStrata::apply_engine_param(uint32_t p_id, int p_index, EnginePa
 		case TIMBRE: _timbre = int(p_value.integer); break;
 		case COLOR: _color = int(p_value.integer); break;
 		default:
-			CRASH_NOW_MSG("Unknown Strata parameter.");
-			std::abort();
+			SiOPMChannelBase::apply_engine_param(p_id, p_index, p_value);
+			return;
 	}
 	// Timbre and color share a DSP operation, not a transport tuple.
 	_osc.set_parameters((int16_t)_timbre, (int16_t)_color);
@@ -72,17 +67,9 @@ void SiOPMChannelStrata::get_channel_params(const Ref<SiOPMChannelParams> &p_par
 
 	p_params->set_lfo_wave_shape(_lfo_wave_shape);
 	p_params->set_lfo_time_mode(get_lfo_time_mode());
-	switch (get_lfo_time_mode()) {
-		case LFO_TIME_MODE_RATE:
-			p_params->set_lfo_rate_value(_lfo_timer_step_buffer);
-			break;
-		case LFO_TIME_MODE_TIME:
-			p_params->set_lfo_time_value(_lfo_timer_step_buffer);
-			break;
-		default:
-			p_params->set_lfo_beat_value(_lfo_beat_division);
-			break;
-	}
+	p_params->set_lfo_rate_value(_lfo_rate_value);
+	p_params->set_lfo_time_value(_lfo_time_value);
+	p_params->set_lfo_beat_value(_lfo_beat_division);
 
 	p_params->set_amplitude_modulation_depth(0);
 	p_params->set_pitch_modulation_depth(0);
@@ -101,18 +88,10 @@ void SiOPMChannelStrata::set_channel_params(const Ref<SiOPMChannelParams> &p_par
 
 	if (p_with_modulation) {
 		initialize_lfo(p_params->get_lfo_wave_shape());
+		set_lfo_rate_value(p_params->get_lfo_rate_value());
+		set_lfo_time_value(p_params->get_lfo_time_value());
+		set_lfo_beat_value(p_params->get_lfo_beat_value());
 		set_lfo_time_mode(p_params->get_lfo_time_mode());
-		switch (p_params->get_lfo_time_mode()) {
-			case LFO_TIME_MODE_RATE:
-				set_lfo_frequency_step(p_params->get_lfo_rate_value());
-				break;
-			case LFO_TIME_MODE_TIME:
-				set_lfo_frequency_step(p_params->get_lfo_time_value());
-				break;
-			default:
-				set_lfo_frequency_step(p_params->get_lfo_beat_value());
-				break;
-		}
 
 		set_amplitude_modulation(p_params->get_amplitude_modulation_depth());
 		set_pitch_modulation(p_params->get_pitch_modulation_depth());

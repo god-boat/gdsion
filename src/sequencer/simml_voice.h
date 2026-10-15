@@ -27,6 +27,8 @@ class SiMMLVoice : public RefCounted {
 	GDCLASS(SiMMLVoice, RefCounted)
 
 	friend class TranslatorUtil;
+	friend void store_engine_param(SiMMLVoice &, uint32_t, int, EngineParamValue);
+	friend EngineParamValue load_engine_param(const SiMMLVoice &, uint32_t, int);
 
 	// Set to true to update track params alongside channel params.
 	bool update_track_parameters = false;
@@ -192,6 +194,22 @@ protected:
 	static void _bind_methods();
 
 public:
+	enum EngineParameter : uint32_t {
+		PITCH_BEND = 0x100,
+		GLIDE_TIME = 0x101,
+		MONO_ENABLED = 0x102,
+		MONO_PRIORITY = 0x103,
+		MONO_LEGATO = 0x104,
+		GLIDE_MODE = 0x105,
+		GLIDE_DIVISION = 0x106,
+		GLIDE_ALWAYS = 0x107,
+		PITCH_OFFSET = 0x108,
+		EXPRESSION = 0x109,
+		NOTE_OFFSET = 0x10a,
+		TONE_INDEX = 0x10b,
+	};
+	static const EngineParamSchema &get_shared_engine_param_schema();
+
 	static Ref<SiMMLVoice> create_blank_pcm_voice(int p_channel_num);
 
 	SiONChipType get_chip_type() const { return chip_type; }

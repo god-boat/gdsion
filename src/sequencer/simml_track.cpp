@@ -158,6 +158,19 @@ void SiMMLTrack::reset_volume_offset() {
 	_apply_expression(_expression);
 }
 
+void SiMMLTrack::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
+	switch (p_id) {
+		case SiMMLVoice::PITCH_BEND: set_pitch_bend(int(p_value.integer)); return;
+		case SiMMLVoice::GLIDE_TIME: set_portament_ms(int(p_value.integer)); return;
+		case SiMMLVoice::GLIDE_MODE: set_portament_time_mode(int(p_value.integer)); return;
+		case SiMMLVoice::GLIDE_DIVISION: set_portament_sync_division(int(p_value.integer)); return;
+		case SiMMLVoice::PITCH_OFFSET: set_pitch_shift(int(p_value.integer)); return;
+		case SiMMLVoice::EXPRESSION: set_expression(int(p_value.integer)); return;
+		case SiMMLVoice::NOTE_OFFSET: set_note_shift(int(p_value.integer)); return;
+		default: _channel->apply_engine_param(p_id, p_index, p_value); return;
+	}
+}
+
 int SiMMLTrack::get_master_volume() const {
 	return _channel->get_master_volume();
 }
@@ -1416,7 +1429,6 @@ void SiMMLTrack::reset(int p_buffer_index) {
 
 	_entity_scope_id = -1;
 	_slot_scope_id = -1;
-	_filter_state = FilterState();
 
 	_velocity = 256;
 	_expression = 128;

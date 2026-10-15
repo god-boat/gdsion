@@ -28,8 +28,52 @@
 #include "sequencer/simml_track.h"
 #include "sequencer/simml_channel_settings.h"
 #include "utils/godot_util.h"
+#include <iterator>
 
 using namespace godot;
+
+const EngineParamSchema &SiMMLVoice::get_shared_engine_param_schema() {
+	static const EngineParamDescriptor parameters[] = {
+		{PITCH_BEND, "voice.pitch_bend", EngineParamType::INT, -8192, 8191, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.pitch_bend = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.pitch_bend); }},
+		{GLIDE_TIME, "voice.glide.time", EngineParamType::INT, 0, 2147483647, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.portament_ms = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.portament_ms); }},
+		{MONO_ENABLED, "voice.mono.enabled", EngineParamType::BOOL, 0, 1, EngineParamValue::from_bool(false), 1, false,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.mono = value.boolean; },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_bool(voice.mono); }},
+		{MONO_PRIORITY, "voice.mono.priority", EngineParamType::INT, 0, 2, EngineParamValue::from_int(0), 1, false,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.mono_priority = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.mono_priority); }},
+		{MONO_LEGATO, "voice.mono.legato", EngineParamType::BOOL, 0, 1, EngineParamValue::from_bool(true), 1, false,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.mono_legato = value.boolean; },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_bool(voice.mono_legato); }},
+		{GLIDE_MODE, "voice.glide.mode", EngineParamType::INT, 0, 1, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.portament_time_mode = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.portament_time_mode); }},
+		{GLIDE_DIVISION, "voice.glide.sync_division", EngineParamType::INT, 0, 5, EngineParamValue::from_int(4), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.portament_sync_division = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.portament_sync_division); }},
+		{GLIDE_ALWAYS, "voice.glide.always", EngineParamType::BOOL, 0, 1, EngineParamValue::from_bool(false), 1, false,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.glide_always = value.boolean; },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_bool(voice.glide_always); }},
+		{PITCH_OFFSET, "voice.pitch.offset", EngineParamType::INT, -8192, 8191, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.pitch_shift = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.pitch_shift); }},
+		{EXPRESSION, "voice.expression", EngineParamType::INT, 0, 128, EngineParamValue::from_int(128), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.expression = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.expression); }},
+		{NOTE_OFFSET, "voice.note.offset", EngineParamType::INT, -127, 127, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.note_shift = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.note_shift); }},
+		{TONE_INDEX, "voice.tone.index", EngineParamType::INT, -1, 127, EngineParamValue::from_int(-1), 1, false,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.tone_num = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.tone_num); }},
+	};
+	static const EngineParamSchema schema = {-1, parameters, int(std::size(parameters))};
+	return schema;
+}
 
 bool SiMMLVoice::is_fm_voice() const {
 	return module_type == SiONModuleType::MODULE_FM;
@@ -240,11 +284,11 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 	// Published preparation state is consumed through the same scalar operation
 	// as live updates. Initialization does not introduce a second bulk protocol.
 	const EngineParamSchema *schema = engine_params.schema();
+	p_track->set_engine_kind_id(module_type);
 	if (schema != nullptr) {
-		for (int i = 0; i < schema->count; i++) {
-			const EngineParamDescriptor &d = schema->parameters[i];
-			for (int index = 0; index < d.instance_count; index++) {
-				p_track->get_channel()->apply_engine_param(d.id, index, engine_params.get(d.id, index));
+		for (const EngineParamDescriptor *d : schema->local_parameters) {
+			for (int index = 0; index < d->instance_count; index++) {
+				p_track->get_channel()->apply_engine_param(d->id, index, engine_params.get(d->id, index));
 			}
 		}
 	}
@@ -347,7 +391,7 @@ void SiMMLVoice::reset() {
 	guitar6_stereo_spread = 0.2;
 	guitar6_body_bypass = false;
 
-	engine_params.reset(engine_params.schema());
+	engine_params.reset(EngineParamSchema::find_engine(module_type));
 
 	iron = IronParams();
 	talus = TalusParams();

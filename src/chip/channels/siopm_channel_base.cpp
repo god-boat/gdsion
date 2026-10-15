@@ -14,10 +14,98 @@
 #include <cstring>
 #include <cmath>
 #include <cstdlib>
+#include <iterator>
+#include "sequencer/simml_voice.h"
+#include "chip/siopm_channel_params.h"
+
+const EngineParamSchema &SiOPMChannelBase::get_shared_engine_param_schema() {
+	static const EngineParamDescriptor parameters[] = {
+		{OUTPUT_GAIN, "voice.output.gain", EngineParamType::INT, -70, 6, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_instrument_gain_db(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_instrument_gain_db()); }},
+		{LFO_MODE, "voice.lfo.mode", EngineParamType::INT, 0, 4, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_lfo_time_mode(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_lfo_time_mode()); }},
+		{LFO_RATE, "voice.lfo.rate", EngineParamType::INT, 0, 2147483647, EngineParamValue::from_int(12126), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_lfo_rate_value(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_lfo_rate_value()); }},
+		{LFO_TIME, "voice.lfo.time", EngineParamType::INT, 0, 2147483647, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_lfo_time_value(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_lfo_time_value()); }},
+		{LFO_DIVISION, "voice.lfo.sync_division", EngineParamType::INT, 0, 5, EngineParamValue::from_int(2), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_lfo_beat_value(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_lfo_beat_value()); }},
+		{LFO_WAVEFORM, "voice.lfo.waveform", EngineParamType::INT, 0, 11, EngineParamValue::from_int(2), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_lfo_wave_shape(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_lfo_wave_shape()); }},
+		{ENVELOPE_RATIO, "voice.envelope.frequency_ratio", EngineParamType::INT, 1, 400, EngineParamValue::from_int(100), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_envelope_frequency_ratio(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_envelope_frequency_ratio()); }},
+		{FILTER_TYPE, "voice.filter.type", EngineParamType::INT, 0, 2, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_filter_type(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_filter_type()); }},
+		{FILTER_CUTOFF, "voice.filter.cutoff", EngineParamType::INT, 0, 128, EngineParamValue::from_int(128), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_filter_cutoff(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_filter_cutoff()); }},
+		{FILTER_RESONANCE, "voice.filter.resonance", EngineParamType::INT, 0, 9, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_filter_resonance(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_filter_resonance()); }},
+		{FILTER_ATTACK, "voice.filter_envelope.attack_rate", EngineParamType::INT, 0, 255, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_filter_attack_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_filter_attack_rate()); }},
+		{FILTER_DECAY1, "voice.filter_envelope.decay_1_rate", EngineParamType::INT, 0, 255, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_filter_decay_rate1(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_filter_decay_rate1()); }},
+		{FILTER_DECAY2, "voice.filter_envelope.decay_2_rate", EngineParamType::INT, 0, 255, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_filter_decay_rate2(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_filter_decay_rate2()); }},
+		{FILTER_RELEASE, "voice.filter_envelope.release_rate", EngineParamType::INT, 0, 255, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_filter_release_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_filter_release_rate()); }},
+		{FILTER_DECAY_CUTOFF1, "voice.filter_envelope.decay_1_cutoff", EngineParamType::INT, 0, 128, EngineParamValue::from_int(128), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_filter_decay_offset1(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_filter_decay_offset1()); }},
+		{FILTER_DECAY_CUTOFF2, "voice.filter_envelope.decay_2_cutoff", EngineParamType::INT, 0, 128, EngineParamValue::from_int(64), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_filter_decay_offset2(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_filter_decay_offset2()); }},
+		{FILTER_SUSTAIN_CUTOFF, "voice.filter_envelope.sustain_cutoff", EngineParamType::INT, 0, 128, EngineParamValue::from_int(32), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_filter_sustain_offset(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_filter_sustain_offset()); }},
+		{FILTER_RELEASE_CUTOFF, "voice.filter_envelope.release_cutoff", EngineParamType::INT, 0, 128, EngineParamValue::from_int(128), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_filter_release_offset(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_filter_release_offset()); }},
+	};
+	static const EngineParamSchema schema = {-1, parameters, int(std::size(parameters)), &SiMMLVoice::get_shared_engine_param_schema()};
+	return schema;
+}
 
 void SiOPMChannelBase::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
-	CRASH_NOW_MSG("A registered engine must implement scalar parameter application.");
-	std::abort();
+	const int value = int(p_value.integer);
+	switch (p_id) {
+		case OUTPUT_GAIN: set_instrument_gain_db(value); return;
+		case LFO_MODE: set_lfo_time_mode(value); return;
+		case LFO_RATE: set_lfo_rate_value(value); return;
+		case LFO_TIME: set_lfo_time_value(value); return;
+		case LFO_DIVISION: set_lfo_beat_value(value); return;
+		case LFO_WAVEFORM: initialize_lfo(value); set_lfo_time_mode(_lfo_time_mode); return;
+		case ENVELOPE_RATIO: set_frequency_ratio(value); return;
+		case FILTER_TYPE: set_filter_type(value); break;
+		case FILTER_CUTOFF: activate_filter(true); set_filter_cutoff_now(value); return;
+		case FILTER_RESONANCE: activate_filter(true); set_filter_resonance_now(value); return;
+		case FILTER_ATTACK: _scalar_filter.ar = value; break;
+		case FILTER_DECAY1: _scalar_filter.dr1 = value; break;
+		case FILTER_DECAY2: _scalar_filter.dr2 = value; break;
+		case FILTER_RELEASE: _scalar_filter.rr = value; break;
+		case FILTER_DECAY_CUTOFF1: _scalar_filter.dc1 = value; break;
+		case FILTER_DECAY_CUTOFF2: _scalar_filter.dc2 = value; break;
+		case FILTER_SUSTAIN_CUTOFF: _scalar_filter.sc = value; break;
+		case FILTER_RELEASE_CUTOFF: _scalar_filter.rc = value; break;
+		default: CRASH_NOW_MSG("Unknown shared channel parameter."); std::abort();
+	}
+	set_sv_filter(_scalar_filter.cutoff, _scalar_filter.resonance, _scalar_filter.ar, _scalar_filter.dr1,
+		_scalar_filter.dr2, _scalar_filter.rr, _scalar_filter.dc1, _scalar_filter.dc2, _scalar_filter.sc, _scalar_filter.rc);
+	activate_filter(true);
+	set_filter_cutoff_now(_scalar_filter.cutoff);
 }
 
 #define COPY_TL_TABLE(m_target, m_source)                        \
@@ -278,6 +366,8 @@ void SiOPMChannelBase::set_lfo_cycle_time(double p_ms) {
 	_lfo_timer = 0;
 	_lfo_timer_step = _ms_to_lfo_timer_step(p_ms, _table->sampling_rate);
 	_lfo_timer_step_buffer = _lfo_timer_step;
+	_lfo_rate_value = _lfo_timer_step;
+	_lfo_time_value = int(p_ms);
 }
 
 double SiOPMChannelBase::_get_lfo_bpm() const {
@@ -285,10 +375,9 @@ double SiOPMChannelBase::_get_lfo_bpm() const {
 }
 
 void SiOPMChannelBase::set_lfo_frequency_step(int p_value) {
-	// In synced modes, p_value is beat division; in Rate mode, it's raw timer step.
-	if (_lfo_time_mode >= LFO_TIME_MODE_SYNCED) {
-		_lfo_beat_division = p_value;
-	}
+	if (_lfo_time_mode == LFO_TIME_MODE_RATE) _lfo_rate_value = p_value;
+	else if (_lfo_time_mode == LFO_TIME_MODE_TIME) _lfo_time_value = p_value;
+	else _lfo_beat_division = p_value;
 	double bpm = _get_lfo_bpm();
 	int timer_step = _calculate_lfo_timer_step(
 		_lfo_time_mode,
@@ -303,19 +392,23 @@ void SiOPMChannelBase::set_lfo_frequency_step(int p_value) {
 
 void SiOPMChannelBase::set_lfo_time_mode(int p_mode) {
 	_lfo_time_mode = p_mode;
-	// Recalculate timer step if in a BPM-synced mode.
-	if (_lfo_time_mode >= LFO_TIME_MODE_SYNCED) {
-		double bpm = _get_lfo_bpm();
-		int timer_step = _calculate_lfo_timer_step(
-			_lfo_time_mode,
-			_lfo_beat_division,
-			bpm,
-			_table->sampling_rate
-		);
-		_lfo_timer = (timer_step > 0 ? 1 : 0);
-		_lfo_timer_step = timer_step;
-		_lfo_timer_step_buffer = timer_step;
-	}
+	set_lfo_frequency_step(p_mode == LFO_TIME_MODE_RATE ? _lfo_rate_value
+		: p_mode == LFO_TIME_MODE_TIME ? _lfo_time_value : _lfo_beat_division);
+}
+
+void SiOPMChannelBase::set_lfo_rate_value(int p_value) {
+	_lfo_rate_value = p_value;
+	if (_lfo_time_mode == LFO_TIME_MODE_RATE) set_lfo_frequency_step(p_value);
+}
+
+void SiOPMChannelBase::set_lfo_time_value(int p_value) {
+	_lfo_time_value = p_value;
+	if (_lfo_time_mode == LFO_TIME_MODE_TIME) set_lfo_frequency_step(p_value);
+}
+
+void SiOPMChannelBase::set_lfo_beat_value(int p_value) {
+	_lfo_beat_division = p_value;
+	if (_lfo_time_mode >= LFO_TIME_MODE_SYNCED) set_lfo_frequency_step(p_value);
 }
 
 void SiOPMChannelBase::update_lfo_for_bpm() {
@@ -337,6 +430,8 @@ void SiOPMChannelBase::update_lfo_for_bpm() {
 // Filter control.
 
 void SiOPMChannelBase::set_sv_filter(int p_cutoff, int p_resonance, int p_attack_rate, int p_decay_rate1, int p_decay_rate2, int p_release_rate, int p_decay_cutoff1, int p_decay_cutoff2, int p_sustain_cutoff, int p_release_cutoff) {
+	_scalar_filter = {p_cutoff, p_resonance, p_attack_rate, p_decay_rate1, p_decay_rate2, p_release_rate,
+		p_decay_cutoff1, p_decay_cutoff2, p_sustain_cutoff, p_release_cutoff};
 	_filter_eg_cutoff[EG_ATTACK]  = CLAMP(p_cutoff, 0, 128);
 	_filter_eg_cutoff[EG_DECAY1]  = CLAMP(p_decay_cutoff1, 0, 128);
 	_filter_eg_cutoff[EG_DECAY2]  = CLAMP(p_decay_cutoff2, 0, 128);

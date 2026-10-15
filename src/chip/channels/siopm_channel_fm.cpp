@@ -17,11 +17,134 @@
 #include "utils/godot_util.h"
 #include <algorithm>
 #include <cmath>
+#include <iterator>
+#include "sequencer/simml_voice.h"
+#include "chip/siopm_operator_params.h"
+
+const EngineParamSchema &SiOPMChannelFM::get_shared_engine_param_schema() {
+	static const EngineParamDescriptor parameters[] = {
+		{ALGORITHM, "voice.algorithm", EngineParamType::INT, 0, 15, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_algorithm(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_algorithm()); }},
+		{FEEDBACK, "voice.feedback.amount", EngineParamType::INT, 0, 19, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_feedback(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_feedback()); }},
+		{FEEDBACK_CONNECTION, "voice.feedback.connection", EngineParamType::INT, 0, 3, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_feedback_connection(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_feedback_connection()); }},
+		{WAVEFORM, "operator.waveform", EngineParamType::INT, 0, 511, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_pulse_generator_type(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_pulse_generator_type()); }},
+		{ATTACK, "operator.envelope.attack_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(58), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_attack_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_attack_rate()); }},
+		{DECAY, "operator.envelope.decay_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_decay_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_decay_rate()); }},
+		{SUSTAIN, "operator.envelope.sustain_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_sustain_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_sustain_rate()); }},
+		{RELEASE, "operator.envelope.release_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(63), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_release_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_release_rate()); }},
+		{ENVELOPE_TYPE, "operator.envelope.type", EngineParamType::INT, 0, 17, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_ssg_envelope_control(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_ssg_envelope_control()); }},
+		{SUSTAIN_ATTENUATION, "operator.envelope.sustain_attenuation", EngineParamType::INT, 0, 15, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_sustain_level(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_sustain_level()); }},
+		{ATTENUATION, "operator.output.attenuation", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_total_level(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_total_level()); }},
+		{SELF_FEEDBACK, "operator.self_feedback.amount", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_self_feedback(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_self_feedback()); }},
+		{KEY_RATE, "operator.key_scaling.rate", EngineParamType::INT, 0, 3, EngineParamValue::from_int(1), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_key_scaling_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_key_scaling_rate()); }},
+		{KEY_LEVEL, "operator.key_scaling.level", EngineParamType::INT, 0, 3, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_key_scaling_level(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_key_scaling_level()); }},
+		{DETUNE, "operator.detune", EngineParamType::INT, 0, 7, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_detune1(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_detune1()); }},
+		{TRANSPOSE, "operator.transpose", EngineParamType::INT, -8192, 8191, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_detune2(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_detune2()); }},
+		{AM_SHIFT, "operator.amplitude_modulation.shift", EngineParamType::INT, 0, 3, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_amplitude_modulation_shift(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_amplitude_modulation_shift()); }},
+		{PHASE, "operator.phase", EngineParamType::INT, -1, 255, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_initial_phase(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_initial_phase()); }},
+		{FIXED_NOTE, "operator.fixed_note", EngineParamType::INT, -1, 127, EngineParamValue::from_int(0), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_fixed_pitch(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_fixed_pitch()); }},
+		{UNISON_COUNT, "operator.unison.voice_count", EngineParamType::INT, 1, 16, EngineParamValue::from_int(1), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_super_count(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_super_count()); }},
+		{UNISON_DETUNE, "operator.unison.detune", EngineParamType::INT, 0, 1000, EngineParamValue::from_int(40), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_super_spread(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_super_spread()); }},
+		{UNISON_STEREO, "operator.unison.stereo_spread", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_super_stereo_spread(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_super_stereo_spread()); }},
+		{FINE_MULTIPLE, "operator.frequency.fine_multiple", EngineParamType::INT, 0, 2047, EngineParamValue::from_int(128), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_fine_multiple(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_fine_multiple()); }},
+		{MUTE, "operator.mute", EngineParamType::BOOL, 0, 1, EngineParamValue::from_bool(false), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_mute(value.boolean); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_bool(voice.get_channel_params()->get_operator_params(index)->get_mute()); }},
+		{RESET_ON_ATTACK, "operator.envelope.reset_on_attack", EngineParamType::BOOL, 0, 1, EngineParamValue::from_bool(false), 4, true,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_envelope_reset_on_attack(value.boolean); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_bool(voice.get_channel_params()->get_operator_params(index)->get_envelope_reset_on_attack()); }},
+	};
+	static const EngineParamSchema schema = {-1, parameters, int(std::size(parameters)), &SiOPMChannelBase::get_shared_engine_param_schema()};
+	return schema;
+}
 
 List<SiOPMOperator *> SiOPMChannelFM::_operator_pool;
 
 // Forward declaration of helper (definition further below).
 static _FORCE_INLINE_ int _safe_log_lookup(class SiOPMRefTable *p_table, int p_index);
+
+void SiOPMChannelFM::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
+	SiOPMOperator *op = _operators[p_index];
+	switch (p_id) {
+		case ALGORITHM: {
+			const int feedback = _scalar_feedback;
+			const int connection = _scalar_feedback_connection;
+			const bool analog_like = _process_function_type >= PROCESS_ANALOG_LIKE && _process_function_type < PROCESS_ANALOG_LIKE + 4;
+			set_algorithm(_operator_count, analog_like, int(p_value.integer));
+			set_feedback(feedback, connection);
+		} return;
+		case FEEDBACK: set_feedback(int(p_value.integer), _scalar_feedback_connection); return;
+		case FEEDBACK_CONNECTION: set_feedback(_scalar_feedback, int(p_value.integer)); return;
+		case WAVEFORM: op->set_pulse_generator_type(int(p_value.integer)); op->set_pitch_table_type(_table->get_wave_table(int(p_value.integer))->get_default_pitch_table_type()); return;
+		case ATTACK: op->set_attack_rate(int(p_value.integer)); return;
+		case DECAY: op->set_decay_rate(int(p_value.integer)); return;
+		case SUSTAIN: op->set_sustain_rate(int(p_value.integer)); return;
+		case RELEASE: op->set_release_rate(int(p_value.integer)); return;
+		case ENVELOPE_TYPE: op->set_ssg_type(int(p_value.integer)); return;
+		case SUSTAIN_ATTENUATION: op->set_sustain_level(int(p_value.integer)); return;
+		case ATTENUATION: op->set_total_level(int(p_value.integer)); return;
+		case SELF_FEEDBACK: op->set_self_feedback(int(p_value.integer)); return;
+		case KEY_RATE: op->set_key_scaling_rate(int(p_value.integer)); return;
+		case KEY_LEVEL: op->set_key_scaling_level(int(p_value.integer)); return;
+		case DETUNE: op->set_detune1(int(p_value.integer)); return;
+		case TRANSPOSE: op->set_ptss_detune(int(p_value.integer)); return;
+		case AM_SHIFT: op->set_amplitude_modulation_shift(int(p_value.integer)); return;
+		case PHASE: op->set_key_on_phase(int(p_value.integer)); return;
+		case FIXED_NOTE: op->set_fixed_pitch_index(int(p_value.integer)); return;
+		case UNISON_COUNT: op->set_super_wave(int(p_value.integer), op->get_super_spread()); return;
+		case UNISON_DETUNE: op->set_super_wave(op->get_super_count(), int(p_value.integer)); return;
+		case UNISON_STEREO: op->set_super_stereo_spread(int(p_value.integer)); return;
+		case FINE_MULTIPLE: op->set_fine_multiple(int(p_value.integer)); return;
+		case MUTE: op->set_mute(p_value.boolean); return;
+		case RESET_ON_ATTACK: op->set_envelope_reset_on_attack(p_value.boolean); return;
+		default: SiOPMChannelBase::apply_engine_param(p_id, p_index, p_value); return;
+	}
+}
 
 void SiOPMChannelFM::finalize_pool() {
 	for (SiOPMOperator *op : _operator_pool) {
@@ -120,17 +243,9 @@ void SiOPMChannelFM::get_channel_params(const Ref<SiOPMChannelParams> &p_params)
 	p_params->set_lfo_wave_shape(_lfo_wave_shape);
 	// Set mode first so that per-mode setters sync lfo_frequency_step correctly.
 	p_params->set_lfo_time_mode(get_lfo_time_mode());
-	switch (get_lfo_time_mode()) {
-		case LFO_TIME_MODE_RATE:
-			p_params->set_lfo_rate_value(_lfo_timer_step_buffer);
-			break;
-		case LFO_TIME_MODE_TIME:
-			p_params->set_lfo_time_value(_lfo_timer_step_buffer);
-			break;
-		default:
-			p_params->set_lfo_beat_value(_lfo_beat_division);
-			break;
-	}
+	p_params->set_lfo_rate_value(_lfo_rate_value);
+	p_params->set_lfo_time_value(_lfo_time_value);
+	p_params->set_lfo_beat_value(_lfo_beat_division);
 
 	p_params->set_amplitude_modulation_depth(_amplitude_modulation_depth);
 	p_params->set_pitch_modulation_depth(_pitch_modulation_depth);
@@ -160,18 +275,10 @@ void SiOPMChannelFM::_apply_common_channel_params(const Ref<SiOPMChannelParams> 
 	if (p_with_modulation) {
 		initialize_lfo(p_params->get_lfo_wave_shape());
 
+		set_lfo_rate_value(p_params->get_lfo_rate_value());
+		set_lfo_time_value(p_params->get_lfo_time_value());
+		set_lfo_beat_value(p_params->get_lfo_beat_value());
 		set_lfo_time_mode(p_params->get_lfo_time_mode());
-		switch (p_params->get_lfo_time_mode()) {
-			case LFO_TIME_MODE_RATE:
-				set_lfo_frequency_step(p_params->get_lfo_rate_value());
-				break;
-			case LFO_TIME_MODE_TIME:
-				set_lfo_frequency_step(p_params->get_lfo_time_value());
-				break;
-			default:
-				set_lfo_frequency_step(p_params->get_lfo_beat_value());
-				break;
-		}
 
 		set_amplitude_modulation(p_params->get_amplitude_modulation_depth());
 		set_pitch_modulation(p_params->get_pitch_modulation_depth());
@@ -655,6 +762,8 @@ void SiOPMChannelFM::set_algorithm(int p_operator_count, bool p_analog_like, int
 }
 
 void SiOPMChannelFM::set_feedback(int p_level, int p_connection) {
+	_scalar_feedback = p_level;
+	_scalar_feedback_connection = p_connection;
 	if (p_level > 0) {
 		// Connect the feedback pipe.
 		if (p_connection < 0 || p_connection >= _operator_count) {
@@ -851,6 +960,8 @@ void SiOPMChannelFM::_set_lfo_state(bool p_enabled) {
 }
 
 void SiOPMChannelFM::_set_lfo_timer(int p_value) {
+	// OPM registers supply a raw Rate value regardless of the selected LFO mode.
+	_lfo_rate_value = p_value;
 	_lfo_timer = (p_value > 0 ? 1 : 0);
 	_lfo_timer_step = p_value;
 	_lfo_timer_step_buffer = p_value;

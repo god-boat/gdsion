@@ -43,6 +43,27 @@ class SiOPMChannelBase : public Object {
 	};
 
 public:
+	enum EngineParameter : uint32_t {
+		OUTPUT_GAIN = 0x200,
+		LFO_MODE = 0x201,
+		LFO_RATE = 0x202,
+		LFO_TIME = 0x203,
+		LFO_DIVISION = 0x204,
+		LFO_WAVEFORM = 0x205,
+		ENVELOPE_RATIO = 0x206,
+		FILTER_TYPE = 0x207,
+		FILTER_CUTOFF = 0x208,
+		FILTER_RESONANCE = 0x209,
+		FILTER_ATTACK = 0x20a,
+		FILTER_DECAY1 = 0x20b,
+		FILTER_DECAY2 = 0x20c,
+		FILTER_RELEASE = 0x20d,
+		FILTER_DECAY_CUTOFF1 = 0x20e,
+		FILTER_DECAY_CUTOFF2 = 0x20f,
+		FILTER_SUSTAIN_CUTOFF = 0x210,
+		FILTER_RELEASE_CUTOFF = 0x211,
+	};
+	static const EngineParamSchema &get_shared_engine_param_schema();
 	enum OutputMode {
 		OUTPUT_STANDARD = 0,  // Standard output.
 		OUTPUT_OVERWRITE = 1, // Overwrite output pipe.
@@ -118,6 +139,12 @@ protected:
 	int _expression_table[SiOPMRefTable::TL_TABLE_SIZE];
 
 	// Low pass filter.
+	// Authored scalar inputs; envelope times, levels and current cutoff below are derived.
+	struct ScalarFilter {
+		int cutoff = 128, resonance = 0;
+		int ar = 0, dr1 = 0, dr2 = 0, rr = 0;
+		int dc1 = 128, dc2 = 128, sc = 128, rc = 128;
+	} _scalar_filter;
 
 	bool _filter_on = false;
 	int _filter_type = 0;
@@ -169,6 +196,8 @@ protected:
 	Vector<int> _lfo_wave_table;
 	int _lfo_wave_shape = 0;
 	int _lfo_time_mode = LFO_TIME_MODE_RATE;
+	int _lfo_rate_value = 0;
+	int _lfo_time_value = 0;
 	int _lfo_beat_division = LFO_BEAT_1_4;
 	double _get_lfo_bpm() const;
 
@@ -216,8 +245,7 @@ public:
 	virtual int get_pitch() const { return 0; }
 	virtual void set_pitch(int p_value) {}
 
-	// Migrated engines identify themselves and own scalar application.
-	virtual int get_engine_kind_id() const { return -1; }
+	// Engine and shared channel owners apply their registered scalars.
 	virtual void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value);
 
 	virtual void set_active_operator_index(int p_value) {}
@@ -254,6 +282,9 @@ public:
 	virtual void initialize_lfo(int p_waveform, Vector<int> p_custom_wave_table = Vector<int>());
 	virtual void set_lfo_cycle_time(double p_ms);
 	virtual void set_lfo_frequency_step(int p_value);
+	void set_lfo_rate_value(int p_value);
+	void set_lfo_time_value(int p_value);
+	void set_lfo_beat_value(int p_value);
 	virtual void set_lfo_time_mode(int p_mode);
 	virtual int get_lfo_time_mode() const { return _lfo_time_mode; }
 	virtual void update_lfo_for_bpm();
@@ -294,11 +325,15 @@ public:
 	SiOPMChannelBase(SiOPMSoundChip *p_chip = nullptr);
 	~SiOPMChannelBase();
 
-	virtual void set_filter_cutoff_now(int p_cutoff) { _cutoff_frequency = CLAMP(p_cutoff, 0, 128); }
+	virtual void set_filter_cutoff_now(int p_cutoff) {
+		_scalar_filter.cutoff = CLAMP(p_cutoff, 0, 128);
+		_cutoff_frequency = _scalar_filter.cutoff;
+	}
 	// Smoothly update current resonance without re-stamping the envelope.
 	// Applies a tiny one-pole smoothing to avoid clicks on large Q jumps.
 	virtual void set_filter_resonance_now(int p_resonance) {
 		int target = CLAMP(p_resonance, 0, 9);
+		_scalar_filter.resonance = target;
 		// Use the same mapping as set_sv_filter: _resonance = (1 << (9 - res)) * (1/512)
 		double target_q = (double)(1 << (9 - target)) * 0.001953125; // 1/512
 		// Simple smoothing: lerp 25% toward target per immediate update; filter core further smooths per-sample.

@@ -16,6 +16,7 @@
 #include "sequencer/simml_voice.h"
 
 int SiMMLChannelSettings::initialize_tone(SiMMLTrack *p_track, int p_channel_num, int p_buffer_index) {
+	p_track->set_engine_kind_id(_type);
 	// Prepare the track.
 
 	if (!p_track->get_channel()) {

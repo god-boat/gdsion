@@ -44,6 +44,8 @@ class SiOPMChannelFM : public SiOPMChannelBase {
 	void _release_operator(SiOPMOperator *p_operator);
 
 	int _algorithm = 0;
+	int _scalar_feedback = 0;
+	int _scalar_feedback_connection = 0;
 
 	enum ProcessType {
 		PROCESS_OP1 = 0,
@@ -128,7 +130,36 @@ protected:
 	int _lfo_timer_initial = 0; // LFO_TIMER_INITIAL * freq_ratio
 
 public:
+	enum EngineParameter : uint32_t {
+		ALGORITHM = 0x300,
+		FEEDBACK = 0x301,
+		FEEDBACK_CONNECTION = 0x302,
+		WAVEFORM = 0x303,
+		ATTACK = 0x304,
+		DECAY = 0x305,
+		SUSTAIN = 0x306,
+		RELEASE = 0x307,
+		ENVELOPE_TYPE = 0x308,
+		SUSTAIN_ATTENUATION = 0x309,
+		ATTENUATION = 0x30a,
+		SELF_FEEDBACK = 0x30b,
+		KEY_RATE = 0x30c,
+		KEY_LEVEL = 0x30d,
+		DETUNE = 0x30e,
+		TRANSPOSE = 0x30f,
+		AM_SHIFT = 0x310,
+		PHASE = 0x311,
+		FIXED_NOTE = 0x312,
+		UNISON_COUNT = 0x313,
+		UNISON_DETUNE = 0x314,
+		UNISON_STEREO = 0x315,
+		FINE_MULTIPLE = 0x316,
+		MUTE = 0x317,
+		RESET_ON_ATTACK = 0x318,
+	};
+	static const EngineParamSchema &get_shared_engine_param_schema();
 	static void finalize_pool();
+	void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) override;
 
 	virtual void get_channel_params(const Ref<SiOPMChannelParams> &p_params) const override;
 	virtual void set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation = true) override;
