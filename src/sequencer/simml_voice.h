@@ -7,6 +7,8 @@
 #ifndef SIMML_VOICE_H
 #define SIMML_VOICE_H
 
+#include "engine_params.h"
+
 #include <godot_cpp/classes/ref_counted.hpp>
 #include "chip/channels/siopm_iron_params.h"
 #include "chip/channels/siopm_talus_params.h"
@@ -83,9 +85,12 @@ class SiMMLVoice : public RefCounted {
 	int note_off_pitch_envelope_step = 1;
 	int note_off_note_envelope_step = 1;
 
-protected:
-	SiONChipType chip_type = (SiONChipType)0;
 	SiONModuleType module_type = (SiONModuleType)5;
+
+protected:
+	void _set_engine_type(SiONModuleType p_module_type);
+
+	SiONChipType chip_type = (SiONChipType)0;
 	int channel_num = -1;
 	// PMS guitar tension.
 	int pms_tension = 8;
@@ -130,10 +135,7 @@ protected:
 	double guitar6_stereo_spread = 0.2;
 	bool guitar6_body_bypass = false;
 
-	// strata macro-oscillator params.
-	int strata_shape = 0;   // braids::MacroOscillatorShape
-	int strata_timbre = 0;  // 0..32767
-	int strata_color = 0;   // 0..32767
+	EngineParamState engine_params;
 
 	// Monolith bass engine params.
 	int monolith_sub_shape = 0;

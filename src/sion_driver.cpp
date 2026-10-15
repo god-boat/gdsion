@@ -5,6 +5,7 @@
 /***************************************************/
 
 #include "sion_driver.h"
+#include "engine_param_api.h"
 #include "sion_stream.h"
 #include "sion_stream_playback.h"
 #include "utils/denormals.h"
@@ -52,7 +53,6 @@
 #include "chip/channels/siopm_channel_fm.h"
 #include "chip/channels/siopm_channel_sampler.h"
 #include "chip/channels/siopm_channel_stream.h"
-#include "chip/channels/siopm_channel_strata.h"
 #include "chip/channels/siopm_channel_monolith.h"
 #include "chip/channels/siopm_channel_iron.h"
 #include "chip/channels/siopm_channel_talus.h"
@@ -1634,8 +1634,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_wave_shape", "track_id", "wave_shape", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_lfo_wave_shape, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_lfo_time_mode", "track_id", "mode", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_lfo_time_mode, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_envelope_freq_ratio", "track_id", "ratio", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_envelope_freq_ratio, DEFVAL(-1), DEFVAL(-1));
-	// Strata macro-oscillator
-	ClassDB::bind_method(D_METHOD("mailbox_set_strata_params", "track_id", "shape", "timbre", "color", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_strata_params, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_engine_param", "track_id", "engine_kind_id", "param_id", "value", "index", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_engine_param, DEFVAL(0), DEFVAL(-1), DEFVAL(-1));
 	// KS base voice
 	ClassDB::bind_method(D_METHOD("mailbox_set_pms_guitar", "track_id", "attack_rate", "decay_rate", "total_level", "fixed_pitch", "wave_shape", "tension", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_pms_guitar, DEFVAL(-1), DEFVAL(-1));
 	// KS extended resonator
@@ -2906,15 +2905,22 @@ void SiONDriver::mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, in
     _push_command(u);
 }
 
-void SiONDriver::mailbox_set_strata_params(int p_track_id, int p_shape, int p_timbre, int p_color, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+void SiONDriver::mailbox_set_engine_param(int p_track_id, int p_engine_kind_id, int p_param_id, const Variant &p_value, int p_index, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+	const EngineParamSchema *schema = EngineParamSchema::find_engine(p_engine_kind_id);
+	ERR_FAIL_NULL_MSG(schema, "Engine kind has no registered scalar parameter contract.");
+	const EngineParamDescriptor *d = schema->find(p_param_id);
+	ERR_FAIL_NULL_MSG(d, "Unknown engine parameter ID.");
+	ERR_FAIL_COND_MSG(!d->realtime, "Engine parameter does not support live updates.");
+	ERR_FAIL_COND_MSG(!d->has_instance(p_index), "Engine parameter index is outside its registered instances.");
 	_DriverCommand u;
+	u.op = _DriverCommand::OP_ENGINE_PARAM;
 	u.track_id = p_track_id;
 	u.entity_scope_id = p_entity_scope_id;
 	u.slot_scope_id = p_slot_scope_id;
-	u.has_strata = true;
-	u.strata_shape = p_shape;
-	u.strata_timbre = p_timbre;
-	u.strata_color = p_color;
+	u.engine_kind_id = p_engine_kind_id;
+	u.engine_param_id = p_param_id;
+	u.engine_param_index = p_index;
+	if (!decode_engine_param(*d, p_value, u.engine_value)) return;
 	_push_command(u);
 }
 
@@ -3523,6 +3529,9 @@ void SiONDriver::_apply_command(_DriverCommand &p_command) {
 		case _DriverCommand::OP_TRACK_UPDATE: {
 			_apply_track_update(p_command);
 		} break;
+		case _DriverCommand::OP_ENGINE_PARAM: {
+			_apply_engine_param(p_command);
+		} break;
 
 		case _DriverCommand::OP_EFFECT: {
 			_apply_effect_command(p_command);
@@ -3593,6 +3602,25 @@ void SiONDriver::_apply_effect_command(_DriverCommand &p_command) {
 	}
 }
 
+// The scalar and legacy lanes use the same exact scope selection. A retired
+// track remains linked until its queue-ordered retirement, but receives no edit.
+static bool matches_param_scope(const SiMMLTrack &p_track, int p_track_id, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
+	return p_track.get_track_id() == p_track_id
+		&& (p_entity_scope_id == -1 || p_track.get_entity_scope_id() == p_entity_scope_id)
+		&& (p_slot_scope_id == -1 || p_track.get_slot_scope_id() == p_slot_scope_id);
+}
+
+void SiONDriver::_apply_engine_param(const _DriverCommand &u) {
+	for (SiMMLTrack *track : sequencer->get_tracks_ref()) {
+		if (track->is_pending_disposal()) continue;
+		if (!matches_param_scope(*track, u.track_id, u.entity_scope_id, u.slot_scope_id)) continue;
+		SiOPMChannelBase *channel = track->get_channel();
+		// One logical track can contain leaves with different engines.
+		if (channel->get_engine_kind_id() != u.engine_kind_id) continue;
+		channel->apply_engine_param(u.engine_param_id, u.engine_param_index, u.engine_value);
+	}
+}
+
 void SiONDriver::_apply_track_update(const _DriverCommand &u) {
 	int key_off_delay_samples = 0;
 	if (u.has_key_off && u.key_off_delay_16th_beats > 0.0) {
@@ -3604,13 +3632,7 @@ void SiONDriver::_apply_track_update(const _DriverCommand &u) {
     const LocalVector<SiMMLTrack *> &tracks = sequencer->get_tracks_ref();
     for (SiMMLTrack *trk : tracks) {
         if (!trk) continue;
-        if (trk->get_track_id() != u.track_id) continue;
-        if (u.entity_scope_id != -1) {
-            if (trk->get_entity_scope_id() != u.entity_scope_id) continue;
-        }
-        if (u.slot_scope_id != -1) {
-            if (trk->get_slot_scope_id() != u.slot_scope_id) continue;
-        }
+        if (!matches_param_scope(*trk, u.track_id, u.entity_scope_id, u.slot_scope_id)) continue;
         SiOPMChannelBase *ch = trk->get_channel();
         if (!ch) continue;
         if (u.has_vol) {
@@ -3777,13 +3799,6 @@ void SiONDriver::_apply_track_update(const _DriverCommand &u) {
 				}
 			}
 		}
-        // strata macro-oscillator updates
-        if (u.has_strata) {
-            SiOPMChannelStrata *strata_ch = Object::cast_to<SiOPMChannelStrata>(ch);
-            if (strata_ch) {
-                strata_ch->set_strata_params(u.strata_shape, u.strata_timbre, u.strata_color);
-            }
-        }
         // KS base voice updates
         if (u.has_pms_guitar) {
             SiOPMChannelKS *ks_ch = Object::cast_to<SiOPMChannelKS>(ch);

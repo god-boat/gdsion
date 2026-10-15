@@ -22,6 +22,7 @@ class SiONVoice;
 class SiOPMChannelParams;
 class SiOPMWavePCMTable;
 class SiOPMWaveSamplerTable;
+class EngineParamState;
 
 class TranslatorUtil {
 
@@ -59,6 +60,10 @@ class TranslatorUtil {
 	static OperatorParamsSizes _get_operator_params_sizes(const Ref<SiOPMChannelParams> &p_params);
 
 public:
+	// Schema declaration order, then instance order, is the append-only MML layout.
+	static String get_engine_params_as_mml(const EngineParamState &p_params);
+	static bool parse_engine_params(EngineParamState &p_params, const String &p_data_string);
+
 	// Channel params.
 
 	static void parse_siopm_params(const Ref<SiOPMChannelParams> &p_params, const String &p_data_string);

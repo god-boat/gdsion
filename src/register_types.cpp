@@ -212,6 +212,7 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 	SiOPMRefTable::initialize();
 	SiMMLRefTable::initialize();
 	SiMMLTrack::initialize();
+	EngineParamSchema::register_schema(SiOPMChannelStrata::get_engine_param_schema());
 }
 
 void uninitialize_sion_module(ModuleInitializationLevel p_level) {

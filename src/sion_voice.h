@@ -10,6 +10,7 @@
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 #include "sequencer/simml_voice.h"
 
 using namespace godot;
@@ -35,6 +36,9 @@ public:
 	static Ref<SiONVoice> create(SiONModuleType p_module_type = (SiONModuleType)5, int p_channel_num = 0, int p_attack_rate = 58, int p_release_rate = 63, int p_pitch_shift = 0, int p_connection_type = -1, int p_wave_shape2 = 0, int p_pitch_shift2 = 0);
 	// Engine construction supplies structure; authored parameters use the normal setters.
 	static Ref<SiONVoice> create_engine(SiONModuleType p_module_type, SiONChipType p_chip_type);
+	static TypedArray<Dictionary> get_engine_param_descriptors(int p_engine_kind);
+	void set_engine_param(int p_param_id, const Variant &p_value, int p_index = 0);
+	Variant get_engine_param(int p_param_id, int p_index = 0) const;
 
 	//
 
@@ -87,7 +91,6 @@ public:
 			double p_string_damp = 0.5, double p_string_damp_variation = 0.25,
 			double p_plug_damp = 0.5, double p_plug_damp_variation = 0.25,
 			double p_string_tension = 0.0, double p_stereo_spread = 0.2, bool p_body_bypass = false);
-	void set_strata(int p_shape = 0, int p_timbre = 0, int p_color = 0);
 	void set_monolith(
 			int p_sub_shape = 0, int p_sub_level = 80, int p_sub_drive = 0, int p_pitch_drop = 0,
 			int p_osc1_shape = 0, int p_osc2_shape = 0,

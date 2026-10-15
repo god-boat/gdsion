@@ -5,6 +5,13 @@
 /***************************************************/
 
 #include "translator_util.h"
+#include "engine_params.h"
+
+#include <cmath>
+#include <iomanip>
+#include <limits>
+#include <locale>
+#include <sstream>
 
 #include <godot_cpp/classes/reg_ex.hpp>
 #include <godot_cpp/classes/reg_ex_match.hpp>
@@ -19,6 +26,64 @@
 #include "chip/wave/siopm_wave_sampler_table.h"
 #include "sequencer/simml_ref_table.h"
 #include "utils/godot_util.h"
+
+String TranslatorUtil::get_engine_params_as_mml(const EngineParamState &p_params) {
+	PackedStringArray parts;
+	const EngineParamSchema &schema = *p_params.schema();
+	for (int i = 0; i < schema.count; i++) {
+		const EngineParamDescriptor &d = schema.parameters[i];
+		for (int index = 0; index < d.instance_count; index++) {
+			EngineParamValue value = p_params.get(d.id, index);
+			switch (value.type) {
+				case EngineParamType::INT: parts.push_back(itos(value.integer)); break;
+				case EngineParamType::FLOAT: {
+					std::ostringstream number;
+					number.imbue(std::locale::classic());
+					number << std::setprecision(std::numeric_limits<double>::max_digits10) << value.real;
+					parts.push_back(String(number.str().c_str()));
+				} break;
+				case EngineParamType::BOOL: parts.push_back(value.boolean ? "1" : "0"); break;
+			}
+		}
+	}
+	return "{" + String(",").join(parts) + "}";
+}
+
+bool TranslatorUtil::parse_engine_params(EngineParamState &p_params, const String &p_data_string) {
+	EngineParamState parsed;
+	const EngineParamSchema &schema = *p_params.schema();
+	parsed.reset(&schema);
+	PackedStringArray parts;
+	if (!p_data_string.strip_edges().is_empty()) parts = p_data_string.split(",");
+	int position = 0;
+	for (int i = 0; i < schema.count; i++) {
+		const EngineParamDescriptor &d = schema.parameters[i];
+		for (int index = 0; index < d.instance_count && position < parts.size(); index++) {
+			String token = parts[position++].strip_edges();
+			EngineParamValue value;
+			switch (d.type) {
+				case EngineParamType::INT:
+					ERR_FAIL_COND_V_MSG(!token.is_valid_int(), false, "Engine MML parameter requires an integer.");
+					value = EngineParamValue::from_int(token.to_int());
+					break;
+				case EngineParamType::FLOAT:
+					ERR_FAIL_COND_V_MSG(!token.is_valid_float(), false, "Engine MML parameter requires a float.");
+					value = EngineParamValue::from_float(token.to_float());
+					break;
+				case EngineParamType::BOOL:
+					ERR_FAIL_COND_V_MSG(token != "0" && token != "1", false, "Engine MML parameter requires 0 or 1.");
+					value = EngineParamValue::from_bool(token == "1");
+					break;
+			}
+			ERR_FAIL_COND_V_MSG(!std::isfinite(value.number()) || value.number() < d.minimum || value.number() > d.maximum,
+				false, "Engine MML parameter is outside its registered range.");
+			parsed.set(d.id, index, value);
+		}
+	}
+	// Omitted trailing values retain the schema reset, including nonzero resets.
+	p_params = parsed;
+	return true;
+}
 
 // Channel params.
 

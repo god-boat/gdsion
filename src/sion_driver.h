@@ -357,6 +357,7 @@ private:
 			OP_TRACK_UPDATE = 0,     // Parameter and note updates for every matching track.
 			OP_EFFECT,               // An edit of the logical track's effect stream.
 			OP_RETIRE_TRACK,         // Stops one track and hands it to the sequencer to delete.
+			OP_ENGINE_PARAM,         // One typed scalar for matching runtime scopes.
 		};
 		int op = OP_TRACK_UPDATE;
 
@@ -489,11 +490,11 @@ private:
 		// Envelope frequency ratio (channel)
 		bool has_env_freq_ratio = false;
 		int env_freq_ratio = 100;
-		// strata macro-oscillator grouped params
-		bool has_strata = false;
-		int strata_shape = 0;
-		int strata_timbre = 0;
-		int strata_color = 0;
+		// Fixed-size scalar payload; contains no refcounted or allocating data.
+		int engine_kind_id = -1;
+		uint32_t engine_param_id = 0;
+		int engine_param_index = 0;
+		EngineParamValue engine_value;
 		// KS extended resonator params
 		bool has_pms_guitar = false;
 		int pms_attack_rate = 48;
@@ -695,6 +696,7 @@ private:
 	void _discard_commands();
 	void _apply_command(_DriverCommand &p_command);
 	void _apply_track_update(const _DriverCommand &p_command);
+	void _apply_engine_param(const _DriverCommand &p_command);
 	void _apply_effect_command(_DriverCommand &p_command);
 	SiMMLTrack *_get_linked_track(uint64_t p_track_instance_id) const;
 
@@ -1030,8 +1032,7 @@ public:
 	void mailbox_set_lfo_wave_shape(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_lfo_time_mode(int p_track_id, int p_mode, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_envelope_freq_ratio(int p_track_id, int p_ratio, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	// strata macro-oscillator mailbox
-	void mailbox_set_strata_params(int p_track_id, int p_shape, int p_timbre, int p_color, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
+	void mailbox_set_engine_param(int p_track_id, int p_engine_kind_id, int p_param_id, const Variant &p_value, int p_index = 0, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// KS base voice mailbox
 	void mailbox_set_pms_guitar(int p_track_id, int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// KS extended resonator mailbox

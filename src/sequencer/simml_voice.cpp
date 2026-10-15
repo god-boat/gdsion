@@ -65,8 +65,15 @@ bool SiMMLVoice::is_suitable_for_fm_voice() const {
 	return update_track_parameters || (SiMMLRefTable::get_instance()->is_suitable_for_fm_voice(module_type) && wave_data == nullptr);
 }
 
+void SiMMLVoice::_set_engine_type(SiONModuleType p_module_type) {
+	if (module_type != p_module_type) {
+		module_type = p_module_type;
+		engine_params.reset(EngineParamSchema::find_engine(module_type));
+	}
+}
+
 void SiMMLVoice::set_module_type(SiONModuleType p_module_type, int p_channel_num, int p_tone_num) {
-	module_type = p_module_type;
+	_set_engine_type(p_module_type);
 	channel_num = p_channel_num;
 	tone_num = p_tone_num;
 
@@ -154,7 +161,6 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 				strata_ch = dynamic_cast<SiOPMChannelStrata *>(p_track->get_channel());
 			}
 			if (strata_ch) {
-				strata_ch->set_strata_params(strata_shape, strata_timbre, strata_color);
 				strata_ch->set_channel_params(channel_params, update_volumes, true);
 				p_track->reset_volume_offset();
 			}
@@ -231,6 +237,18 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 		} break;
 	}
 
+	// Published preparation state is consumed through the same scalar operation
+	// as live updates. Initialization does not introduce a second bulk protocol.
+	const EngineParamSchema *schema = engine_params.schema();
+	if (schema != nullptr) {
+		for (int i = 0; i < schema->count; i++) {
+			const EngineParamDescriptor &d = schema->parameters[i];
+			for (int index = 0; index < d.instance_count; index++) {
+				p_track->get_channel()->apply_engine_param(d.id, index, engine_params.get(d.id, index));
+			}
+		}
+	}
+
 	if (!Math::is_nan(default_gate_time)) {
 		p_track->set_quantize_ratio(default_gate_time);
 	}
@@ -270,7 +288,7 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 Ref<SiMMLVoice> SiMMLVoice::create_blank_pcm_voice(int p_channel_num) {
 	Ref<SiMMLVoice> instance;
 	instance.instantiate();
-	instance->module_type = SiONModuleType::MODULE_PCM;
+	instance->_set_engine_type(SiONModuleType::MODULE_PCM);
 	instance->channel_num = p_channel_num;
 	instance->wave_data = Ref<SiOPMWavePCMTable>(memnew(SiOPMWavePCMTable));
 
@@ -282,7 +300,7 @@ void SiMMLVoice::reset() {
 	update_volumes = false;
 
 	chip_type = SiONChipType::CHIP_SIOPM;
-	module_type = SiONModuleType::MODULE_GENERIC_PG;
+	_set_engine_type(SiONModuleType::MODULE_GENERIC_PG);
 	channel_num = -1;
 	tone_num = -1;
 	preferable_note = -1;
@@ -329,9 +347,7 @@ void SiMMLVoice::reset() {
 	guitar6_stereo_spread = 0.2;
 	guitar6_body_bypass = false;
 
-	strata_shape = 0;
-	strata_timbre = 0;
-	strata_color = 0;
+	engine_params.reset(engine_params.schema());
 
 	iron = IronParams();
 	talus = TalusParams();
@@ -395,7 +411,7 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	update_track_parameters = p_source->update_track_parameters;
 	update_volumes = p_source->update_volumes;
 
-	module_type = p_source->module_type;
+	_set_engine_type(p_source->module_type);
 	channel_num = p_source->channel_num;
 	tone_num = p_source->tone_num;
 	preferable_note = p_source->preferable_note;
@@ -442,9 +458,7 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 	guitar6_stereo_spread = p_source->guitar6_stereo_spread;
 	guitar6_body_bypass = p_source->guitar6_body_bypass;
 
-	strata_shape = p_source->strata_shape;
-	strata_timbre = p_source->strata_timbre;
-	strata_color = p_source->strata_color;
+	engine_params = p_source->engine_params;
 
 	monolith_sub_shape = p_source->monolith_sub_shape;
 	monolith_sub_level = p_source->monolith_sub_level;

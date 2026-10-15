@@ -933,7 +933,9 @@ void SiONVoicePresetUtil::_generate_template_voices() {
 	_create_guitar6_voice("template.guitar6", "Init Guitar6");
 
 	// Strata: Mutable Instruments macro-oscillator with CSAW default
-	_create_strata_voice("template.strata", "Init Strata", 0, 0, 0);
+	Ref<SiONVoice> strata = SiONVoice::create_engine(SiONModuleType::MODULE_STRATA, SiONChipType::CHIP_STRATA);
+	strata->set_name("Init Strata");
+	_register_voice("template.strata", strata);
 
 	// Monolith: bass engine with default sub sine + saw oscillators
 	_create_monolith_voice("template.monolith", "Init Monolith");
@@ -999,15 +1001,6 @@ void SiONVoicePresetUtil::_create_guitar6_voice(const String &p_key, const Strin
 		p_plug_damp, p_plug_damp_variation,
 		p_string_tension, p_stereo_spread, p_body_bypass);
 
-	voice->set_name(p_name);
-	_register_voice(p_key, voice);
-}
-
-void SiONVoicePresetUtil::_create_strata_voice(const String &p_key, const String &p_name,
-	int p_shape, int p_timbre, int p_color) {
-
-	Ref<SiONVoice> voice = memnew(SiONVoice);
-	voice->set_strata(p_shape, p_timbre, p_color);
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
 }

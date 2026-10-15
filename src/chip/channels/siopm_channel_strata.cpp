@@ -1,6 +1,10 @@
 #include "siopm_channel_strata.h"
 
+#include "sion_enums.h"
+
 #include <cmath>
+#include <cstdlib>
+#include <iterator>
 #include <godot_cpp/core/class_db.hpp>
 #include "chip/siopm_channel_params.h"
 #include "chip/siopm_ref_table.h"
@@ -33,18 +37,33 @@ void SiOPMChannelStrata::_set_strata_pitch() {
 	_osc.set_pitch((int16_t)braids_pitch);
 }
 
-void SiOPMChannelStrata::set_strata_params(int p_shape, int p_timbre, int p_color) {
-	int s = p_shape;
-	if (s < 0) {
-		s = 0;
-	} else if (s >= (int)braids::MACRO_OSC_SHAPE_LAST) {
-		s = (int)braids::MACRO_OSC_SHAPE_LAST - 1;
-	}
-	_shape = s;
-	_timbre = CLAMP(p_timbre, 0, 32767);
-	_color = CLAMP(p_color, 0, 32767);
+const EngineParamSchema &SiOPMChannelStrata::get_engine_param_schema() {
+	static const EngineParamDescriptor parameters[] = {
+		{SHAPE, "voice.strata.shape", EngineParamType::INT, 0, int(braids::MACRO_OSC_SHAPE_808), EngineParamValue::from_int(0), 1, true},
+		{TIMBRE, "voice.strata.timbre", EngineParamType::INT, 0, 32767, EngineParamValue::from_int(0), 1, true},
+		{COLOR, "voice.strata.color", EngineParamType::INT, 0, 32767, EngineParamValue::from_int(0), 1, true},
+	};
+	static const EngineParamSchema schema = {SiONModuleType::MODULE_STRATA, parameters, int(std::size(parameters))};
+	return schema;
+}
 
-	_osc.set_shape((braids::MacroOscillatorShape)_shape);
+int SiOPMChannelStrata::get_engine_kind_id() const {
+	return SiONModuleType::MODULE_STRATA;
+}
+
+void SiOPMChannelStrata::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
+	switch (p_id) {
+		case SHAPE:
+			_shape = int(p_value.integer);
+			_osc.set_shape((braids::MacroOscillatorShape)_shape);
+			return;
+		case TIMBRE: _timbre = int(p_value.integer); break;
+		case COLOR: _color = int(p_value.integer); break;
+		default:
+			CRASH_NOW_MSG("Unknown Strata parameter.");
+			std::abort();
+	}
+	// Timbre and color share a DSP operation, not a transport tuple.
 	_osc.set_parameters((int16_t)_timbre, (int16_t)_color);
 }
 
@@ -202,17 +221,17 @@ void SiOPMChannelStrata::initialize(SiOPMChannelBase *p_prev, int p_buffer_index
 	double sample_rate = _table ? (double)_table->sampling_rate : REFERENCE_SAMPLE_RATE;
 	_recompute_pitch_correction(sample_rate);
 
-	_shape = (int)braids::MACRO_OSC_SHAPE_CSAW;
-	_timbre = 0;
-	_color = 0;
 	_current_pitch = 0;
 	_expression = 1.0;
 	_declick_level = 0.0;
 	_declick_target = 0.0;
 
 	_osc.Init();
-	_osc.set_shape((braids::MacroOscillatorShape)_shape);
-	_osc.set_parameters((int16_t)_timbre, (int16_t)_color);
+	const EngineParamSchema &schema = get_engine_param_schema();
+	for (int i = 0; i < schema.count; i++) {
+		const EngineParamDescriptor &d = schema.parameters[i];
+		apply_engine_param(d.id, 0, d.reset_value);
+	}
 	_render_read_pos = BRAIDS_BLOCK_SIZE;
 
 	_process_function = Callable(this, "_process_strata");

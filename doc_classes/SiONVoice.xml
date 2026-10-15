@@ -36,7 +36,31 @@
 			<param index="0" name="module_type" type="int" enum="SiONModuleType" />
 			<param index="1" name="chip_type" type="int" enum="SiONChipType" />
 			<description>
-				Creates native engine structure without looking up a preset. The voice starts with reset parameters; apply authored values through the normal voice, channel and operator setters. Use [constant SiONDriver.CHIP_AUTO] for engines identified only by their module. Analog-like voices start with two operators; other modules start with one.
+				Creates native engine structure without looking up a preset. Registered scalar parameters start with their schema's reset values and use [method set_engine_param]. Unmigrated parameters use the existing voice, channel and operator setters. Use [constant SiONDriver.CHIP_AUTO] for engines identified only by their module. Analog-like voices start with two operators; other modules start with one.
+			</description>
+		</method>
+		<method name="get_engine_param_descriptors" qualifiers="static">
+			<return type="Dictionary[]" />
+			<param index="0" name="engine_kind_id" type="int" />
+			<description>
+				Returns the registered scalar contract for an engine module. Each descriptor contains engine_kind_id, param_id (stable numeric identity), id (stable string identity), scalar_type (the value's [enum Variant.Type]: [constant TYPE_INT], [constant TYPE_FLOAT] or [constant TYPE_BOOL]), min_value, max_value, reset_value, instance_count and realtime. A parameter holds instance_count independent values selected by index; the engine owns what an index denotes, such as an operator. This is a preparation-thread API. An unregistered engine returns an empty descriptor list.
+			</description>
+		</method>
+		<method name="set_engine_param">
+			<return type="void" />
+			<param index="0" name="param_id" type="int" />
+			<param index="1" name="value" type="Variant" />
+			<param index="2" name="index" type="int" default="0" />
+			<description>
+				Writes preparation state using the identity from [method get_engine_param_descriptors]. The value must have the registered scalar_type and lie inside the registered range, and index must select one of the registered instances. Copying or cloning a voice preserves this state independently. Live channels receive edits through SiONDriver.mailbox_set_engine_param with the same identity, value and index, plus track and exact entity/slot scope IDs.
+			</description>
+		</method>
+		<method name="get_engine_param" qualifiers="const">
+			<return type="Variant" />
+			<param index="0" name="param_id" type="int" />
+			<param index="1" name="index" type="int" default="0" />
+			<description>
+				Reads the registered scalar from this voice's preparation state. Uses the same index as [method set_engine_param]; unknown identities or indices outside the registered instances report an error.
 			</description>
 		</method>
 		<method name="get_mml" qualifiers="const">

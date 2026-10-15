@@ -66,11 +66,11 @@ protected:
 	String _to_string() const;
 
 public:
-	void set_strata_params(int p_shape, int p_timbre, int p_color);
-
-	int get_strata_shape() const { return _shape; }
-	int get_strata_timbre() const { return _timbre; }
-	int get_strata_color() const { return _color; }
+	// Stable IDs are independent of storage order and the MML codec.
+	enum ParamID : uint32_t { SHAPE = 0x170001, TIMBRE = 0x170002, COLOR = 0x170003 };
+	static const EngineParamSchema &get_engine_param_schema();
+	int get_engine_kind_id() const override;
+	void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) override;
 
 	virtual int get_pitch() const override { return _current_pitch; }
 	virtual void set_pitch(int p_value) override { _current_pitch = p_value; }

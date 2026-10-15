@@ -7,6 +7,8 @@
 #ifndef SIOPM_CHANNEL_BASE_H
 #define SIOPM_CHANNEL_BASE_H
 
+#include "engine_params.h"
+
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/templates/vector.hpp>
 #include <godot_cpp/variant/callable.hpp>
@@ -213,6 +215,10 @@ public:
 
 	virtual int get_pitch() const { return 0; }
 	virtual void set_pitch(int p_value) {}
+
+	// Migrated engines identify themselves and own scalar application.
+	virtual int get_engine_kind_id() const { return -1; }
+	virtual void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value);
 
 	virtual void set_active_operator_index(int p_value) {}
 	virtual void set_release_rate(int p_value) {}

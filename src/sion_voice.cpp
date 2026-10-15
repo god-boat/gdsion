@@ -5,6 +5,7 @@
 /***************************************************/
 
 #include "sion_voice.h"
+#include "engine_param_api.h"
 
 #include <godot_cpp/classes/reg_ex.hpp>
 #include <godot_cpp/classes/reg_ex_match.hpp>
@@ -148,14 +149,9 @@ String SiONVoice::get_mml(int p_index, SiONChipType p_chip_type, bool p_append_p
 			data += "}";
 			mml = "#G6@" + itos(p_index) + data;
 		} break;
-		case SiONChipType::CHIP_STRATA: {
-			String data = "{";
-			data += itos(strata_shape) + ",";
-			data += itos(strata_timbre) + ",";
-			data += itos(strata_color);
-			data += "}";
-			mml = "#BR@" + itos(p_index) + data;
-		} break;
+		case SiONChipType::CHIP_STRATA:
+			mml = "#BR@" + itos(p_index) + ::TranslatorUtil::get_engine_params_as_mml(engine_params);
+			break;
 		case SiONChipType::CHIP_MONOLITH: {
 			String data = "{";
 			data += itos(monolith_sub_shape) + "," + itos(monolith_sub_level) + ",";
@@ -257,11 +253,10 @@ int SiONVoice::set_by_mml(String p_mml) {
 		bool bb = parts.size() > 8 ? parts[8].strip_edges().to_int() != 0 : false;
 		set_guitar6(cs, cv, sd, sdv, pd, pdv, st, ss, bb);
 	} else if (command == "#BR@") {
-		PackedStringArray parts = data.split(",");
-		int shape = parts.size() > 0 ? parts[0].strip_edges().to_int() : 0;
-		int timbre = parts.size() > 1 ? parts[1].strip_edges().to_int() : 0;
-		int color = parts.size() > 2 ? parts[2].strip_edges().to_int() : 0;
-		set_strata(shape, timbre, color);
+		_set_engine_type(SiONModuleType::MODULE_STRATA);
+		channel_num = 0;
+		chip_type = SiONChipType::CHIP_STRATA;
+		if (!::TranslatorUtil::parse_engine_params(engine_params, data)) return -1;
 	} else if (command == "#MO@") {
 		PackedStringArray parts = data.split(",");
 		set_monolith(
@@ -317,7 +312,7 @@ int SiONVoice::set_by_mml(String p_mml) {
 }
 
 Ref<SiOPMWaveTable> SiONVoice::set_wave_table(Vector<double> *p_data) {
-	module_type = SiONModuleType::MODULE_SCC;
+	_set_engine_type(SiONModuleType::MODULE_SCC);
 
 	Vector<int> table;
 	for (int i = 0; i < p_data->size(); i++) {
@@ -332,7 +327,7 @@ Ref<SiOPMWaveTable> SiONVoice::set_wave_table(Vector<double> *p_data) {
 }
 
 Ref<SiOPMWavePCMData> SiONVoice::set_pcm_voice(const Variant &p_data, int p_sampling_note, int p_src_channel_count, int p_channel_count) {
-	module_type = SiONModuleType::MODULE_PCM;
+	_set_engine_type(SiONModuleType::MODULE_PCM);
 
 	Ref<SiOPMWavePCMData> pcm_data = memnew(SiOPMWavePCMData(p_data, p_sampling_note * 64, p_src_channel_count, p_channel_count));
 	wave_data = pcm_data;
@@ -341,11 +336,11 @@ Ref<SiOPMWavePCMData> SiONVoice::set_pcm_voice(const Variant &p_data, int p_samp
 }
 
 Ref<SiOPMWavePCMData> SiONVoice::set_pcm_wave(int p_index, const Variant &p_data, int p_sampling_note, int p_key_range_from, int p_key_range_to, int p_src_channel_count, int p_channel_count) {
-	if (module_type != SiONModuleType::MODULE_PCM || channel_num != p_index) {
+	if (get_module_type() != SiONModuleType::MODULE_PCM || channel_num != p_index) {
 		wave_data = Ref<SiOPMWaveBase>();
 	}
 
-	module_type = SiONModuleType::MODULE_PCM;
+	_set_engine_type(SiONModuleType::MODULE_PCM);
 	channel_num = p_index;
 
 	Ref<SiOPMWavePCMTable> pcm_table = wave_data;
@@ -361,7 +356,7 @@ Ref<SiOPMWavePCMData> SiONVoice::set_pcm_wave(int p_index, const Variant &p_data
 }
 
 Ref<SiOPMWaveSamplerData> SiONVoice::set_sampler_voice(const Variant &p_data, bool p_ignore_note_off, int p_channel_count) {
-	module_type = SiONModuleType::MODULE_SAMPLE;
+	_set_engine_type(SiONModuleType::MODULE_SAMPLE);
 
 	Ref<SiOPMWaveSamplerData> sampler_data = memnew(SiOPMWaveSamplerData(p_data, p_ignore_note_off, 0, 2, p_channel_count));
 	wave_data = sampler_data;
@@ -370,7 +365,7 @@ Ref<SiOPMWaveSamplerData> SiONVoice::set_sampler_voice(const Variant &p_data, bo
 }
 
 Ref<SiOPMWaveSamplerData> SiONVoice::set_sampler_wave(int p_index, const Variant &p_data, bool p_ignore_note_off, int p_pan, int p_src_channel_count, int p_channel_count, bool p_fixed_pitch) {
-	module_type = SiONModuleType::MODULE_SAMPLE;
+	_set_engine_type(SiONModuleType::MODULE_SAMPLE);
 
 	Ref<SiOPMWaveSamplerTable> sampler_table = wave_data;
 	if (sampler_table.is_null()) {
@@ -385,13 +380,13 @@ Ref<SiOPMWaveSamplerData> SiONVoice::set_sampler_wave(int p_index, const Variant
 }
 
 void SiONVoice::set_sampler_table(const Ref<SiOPMWaveSamplerTable> &p_table) {
-	module_type = SiONModuleType::MODULE_SAMPLE;
+	_set_engine_type(SiONModuleType::MODULE_SAMPLE);
 
 	wave_data = p_table;
 }
 
 void SiONVoice::set_pms_guitar(int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension) {
-	module_type = SiONModuleType::MODULE_KS;
+	_set_engine_type(SiONModuleType::MODULE_KS);
 	channel_num = 1;
 
 	TypedArray<int> param_args = make_typed_array_from_vector<int>({ 1, 0, 0, p_wave_shape, p_attack_rate, p_decay_rate, 0, 63, 15, p_total_level, 0, 0, 1, 0, 0, 0, 0, p_fixed_pitch, 0 });
@@ -443,7 +438,7 @@ void SiONVoice::set_guitar6(double p_character_seed, double p_character_variatio
 		double p_string_damp, double p_string_damp_variation,
 		double p_plug_damp, double p_plug_damp_variation,
 		double p_string_tension, double p_stereo_spread, bool p_body_bypass) {
-	module_type = SiONModuleType::MODULE_GUITAR6;
+	_set_engine_type(SiONModuleType::MODULE_GUITAR6);
 	channel_num = 0;
 	chip_type = SiONChipType::CHIP_GUITAR6;
 
@@ -458,16 +453,6 @@ void SiONVoice::set_guitar6(double p_character_seed, double p_character_variatio
 	guitar6_body_bypass = p_body_bypass;
 }
 
-void SiONVoice::set_strata(int p_shape, int p_timbre, int p_color) {
-	module_type = SiONModuleType::MODULE_STRATA;
-	channel_num = 0;
-	chip_type = SiONChipType::CHIP_STRATA;
-
-	strata_shape = p_shape;
-	strata_timbre = p_timbre;
-	strata_color = p_color;
-}
-
 void SiONVoice::set_monolith(
 		int p_sub_shape, int p_sub_level, int p_sub_drive, int p_pitch_drop,
 		int p_osc1_shape, int p_osc2_shape,
@@ -476,7 +461,7 @@ void SiONVoice::set_monolith(
 		int p_motion_target, int p_motion_amount, int p_motion_rate,
 		int p_width, int p_low_lock, int p_lens, int p_glide,
 		int p_sub_octave) {
-	module_type = SiONModuleType::MODULE_MONOLITH;
+	_set_engine_type(SiONModuleType::MODULE_MONOLITH);
 	channel_num = 0;
 	chip_type = SiONChipType::CHIP_MONOLITH;
 
@@ -514,7 +499,7 @@ void SiONVoice::set_iron(int p_voicing, int p_pick_attack, int p_pick_position, 
 }
 
 void SiONVoice::set_iron_params(const IronParams &p_params) {
-	module_type = SiONModuleType::MODULE_IRON;
+	_set_engine_type(SiONModuleType::MODULE_IRON);
 	channel_num = 0;
 	chip_type = SiONChipType::CHIP_IRON;
 	iron = p_params;
@@ -537,7 +522,7 @@ void SiONVoice::set_talus(
 }
 
 void SiONVoice::set_talus_params(const TalusParams &p_params) {
-	module_type = SiONModuleType::MODULE_TALUS;
+	_set_engine_type(SiONModuleType::MODULE_TALUS);
 	channel_num = 0;
 	chip_type = SiONChipType::CHIP_TALUS;
 	talus = p_params;
@@ -677,11 +662,56 @@ Ref<SiONVoice> SiONVoice::create_engine(SiONModuleType p_module_type, SiONChipTy
 	return voice;
 }
 
+TypedArray<Dictionary> SiONVoice::get_engine_param_descriptors(int p_engine_kind) {
+	const EngineParamSchema *schema = EngineParamSchema::find_engine(p_engine_kind);
+	TypedArray<Dictionary> result;
+	// Unmigrated engines have no registered scalar parameters.
+	if (schema == nullptr) return result;
+	for (int i = 0; i < schema->count; i++) {
+		const EngineParamDescriptor &d = schema->parameters[i];
+		Dictionary descriptor;
+		descriptor["engine_kind_id"] = schema->engine_kind;
+		descriptor["param_id"] = int64_t(d.id);
+		descriptor["id"] = d.name;
+		descriptor["scalar_type"] = engine_param_variant_type(d.type);
+		descriptor["min_value"] = d.minimum;
+		descriptor["max_value"] = d.maximum;
+		descriptor["reset_value"] = encode_engine_param(d.reset_value);
+		descriptor["instance_count"] = d.instance_count;
+		descriptor["realtime"] = d.realtime;
+		result.push_back(descriptor);
+	}
+	return result;
+}
+
+void SiONVoice::set_engine_param(int p_param_id, const Variant &p_value, int p_index) {
+	const EngineParamSchema *schema = engine_params.schema();
+	ERR_FAIL_NULL_MSG(schema, "Voice engine has no scalar parameter contract.");
+	const EngineParamDescriptor *d = schema->find(p_param_id);
+	ERR_FAIL_NULL_MSG(d, "Unknown engine parameter ID.");
+	ERR_FAIL_COND_MSG(!d->has_instance(p_index), "Engine parameter index is outside its registered instances.");
+	EngineParamValue value;
+	if (!decode_engine_param(*d, p_value, value)) return;
+	engine_params.set(p_param_id, p_index, value);
+}
+
+Variant SiONVoice::get_engine_param(int p_param_id, int p_index) const {
+	const EngineParamSchema *schema = engine_params.schema();
+	ERR_FAIL_NULL_V_MSG(schema, Variant(), "Voice engine has no scalar parameter contract.");
+	const EngineParamDescriptor *d = schema->find(p_param_id);
+	ERR_FAIL_NULL_V_MSG(d, Variant(), "Unknown engine parameter ID.");
+	ERR_FAIL_COND_V_MSG(!d->has_instance(p_index), Variant(), "Engine parameter index is outside its registered instances.");
+	return encode_engine_param(engine_params.get(p_param_id, p_index));
+}
+
 void SiONVoice::_bind_methods() {
 	// Factory.
 
 	ClassDB::bind_static_method("SiONVoice", D_METHOD("create", "module_type", "channel_num", "attack_rate", "release_rate", "pitch_shift", "connection_type", "wave_shape2", "pitch_shift2"), &SiONVoice::create, DEFVAL(SiONModuleType::MODULE_GENERIC_PG), DEFVAL(0), DEFVAL(58), DEFVAL(63), DEFVAL(0), DEFVAL(-1), DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_static_method("SiONVoice", D_METHOD("create_engine", "module_type", "chip_type"), &SiONVoice::create_engine);
+	ClassDB::bind_static_method("SiONVoice", D_METHOD("get_engine_param_descriptors", "engine_kind_id"), &SiONVoice::get_engine_param_descriptors);
+	ClassDB::bind_method(D_METHOD("set_engine_param", "param_id", "value", "index"), &SiONVoice::set_engine_param, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("get_engine_param", "param_id", "index"), &SiONVoice::get_engine_param, DEFVAL(0));
 
 	// Public API.
 
@@ -726,7 +756,6 @@ void SiONVoice::_bind_methods() {
 			DEFVAL(0), DEFVAL(0), DEFVAL(50), DEFVAL(50), DEFVAL(100), DEFVAL(0),
 			DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_guitar6", "character_seed", "character_variation", "string_damp", "string_damp_variation", "plug_damp", "plug_damp_variation", "string_tension", "stereo_spread", "body_bypass"), &SiONVoice::set_guitar6, DEFVAL(65535.0), DEFVAL(0.5), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.0), DEFVAL(0.2), DEFVAL(false));
-	ClassDB::bind_method(D_METHOD("set_strata", "shape", "timbre", "color"), &SiONVoice::set_strata, DEFVAL(0), DEFVAL(0), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_monolith",
 			"sub_shape", "sub_level", "sub_drive", "pitch_drop",
 			"osc1_shape", "osc2_shape",
@@ -825,7 +854,7 @@ SiONVoice::SiONVoice(SiONModuleType p_module_type, int p_channel_num, int p_atta
 }
 
 Ref<SiOPMWaveSamplerData> SiONVoice::get_sampler_data(int p_note_number) const {
-	if (module_type != SiONModuleType::MODULE_SAMPLE) {
+	if (get_module_type() != SiONModuleType::MODULE_SAMPLE) {
 		return Ref<SiOPMWaveSamplerData>();
 	}
 

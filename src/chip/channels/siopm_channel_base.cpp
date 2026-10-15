@@ -7,11 +7,18 @@
 #include "siopm_channel_base.h"
 
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/core/error_macros.hpp>
 #include "chip/siopm_sound_chip.h"
 #include "chip/siopm_stream.h"
 #include "dsp/lfo.h"
 #include <cstring>
 #include <cmath>
+#include <cstdlib>
+
+void SiOPMChannelBase::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
+	CRASH_NOW_MSG("A registered engine must implement scalar parameter application.");
+	std::abort();
+}
 
 #define COPY_TL_TABLE(m_target, m_source)                        \
 	for (int _i = 0; _i < SiOPMRefTable::TL_TABLE_SIZE; _i++) {  \
