@@ -232,12 +232,6 @@ void SiOPMChannelPCM::_set_lfo_state(bool p_enabled) {
 	_lfo_timer_step = p_enabled ? _lfo_timer_step_buffer : 0;
 }
 
-void SiOPMChannelPCM::_set_lfo_timer(int p_value) {
-	_lfo_timer = (p_value > 0 ? 1 : 0);
-	_lfo_timer_step = p_value;
-	_lfo_timer_step_buffer = p_value;
-}
-
 void SiOPMChannelPCM::set_frequency_ratio(int p_ratio) {
 	_frequency_ratio = p_ratio;
 

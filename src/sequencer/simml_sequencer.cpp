@@ -1296,7 +1296,8 @@ MMLEvent *SiMMLSequencer::_on_mml_lf_oscillator(MMLEvent *p_event) {
 		_current_track->get_channel()->initialize_lfo(waveform);
 	}
 
-	_current_track->get_channel()->set_lfo_cycle_time(cycle_time);
+	_current_track->get_channel()->set_lfo_time_value(cycle_time);
+	_current_track->get_channel()->set_lfo_time_mode(SiOPMChannelBase::LFO_TIME_MODE_TIME);
 	return next_event->get_next();
 }
 

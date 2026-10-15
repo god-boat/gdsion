@@ -38,7 +38,6 @@ class SiOPMChannelPCM : public SiOPMChannelBase {
 	// LFO control.
 
 	void _set_lfo_state(bool p_enabled);
-	void _set_lfo_timer(int p_value);
 
 	// Processing.
 

@@ -226,12 +226,6 @@ void SiOPMChannelSampler::_set_lfo_state(bool p_enabled) {
 	_lfo_timer_step = p_enabled ? _lfo_timer_step_buffer : 0;
 }
 
-void SiOPMChannelSampler::_set_lfo_timer(int p_value) {
-	_lfo_timer = (p_value > 0 ? 1 : 0);
-	_lfo_timer_step = p_value;
-	_lfo_timer_step_buffer = p_value;
-}
-
 void SiOPMChannelSampler::_update_lfo() {
 	if (_lfo_on == 0) {
 		return;

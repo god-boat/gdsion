@@ -1369,9 +1369,10 @@ void TranslatorUtil::parse_voice_setting(const Ref<SiMMLVoice> &p_voice, String 
 
 		} else if (command == "@lfo") {
 			int lfo_arg0 = EXTRACT_ARGUMENT(0, 30);
-			if (lfo_arg0 < 0) {
-				// Negative values encode the raw lfo_frequency_step directly to preserve the full range.
-				params->set_lfo_frequency_step(-lfo_arg0);
+			if (parsed_setting->get_string(2).begins_with("-")) {
+				// A minus sign encodes a raw Rate value, including zero for a stopped LFO.
+				params->set_lfo_rate_value(-lfo_arg0);
+				params->set_lfo_time_mode(0);
 			} else {
 				// Legacy behaviour – argument expresses the LFO frame rate.
 				params->set_lfo_frame(lfo_arg0);
@@ -1560,7 +1561,7 @@ String TranslatorUtil::get_voice_setting_as_mml(const Ref<SiMMLVoice> &p_voice) 
 	int lfo_frame_tmp = params->get_lfo_frame();
 	if (p_voice->has_amplitude_modulation() || params->has_amplitude_modulation() || p_voice->has_pitch_modulation() || params->has_pitch_modulation() || lfo_frame_tmp != 30 || lfo_frame_tmp == 0 || params->lfo_wave_shape != SiOPMRefTable::LFO_WAVE_TRIANGLE) {
 		{
-			// Encode LFO frequency. For large lfo_frequency_step values the computed lfo_frame may
+			// Encode LFO frequency. For large active values the computed lfo_frame may
 			// round down to 0. In that case we store the raw step value as a negative number to
 			// preserve the full numeric range when the voice is serialized and restored.
 			int lfo_frame = params->get_lfo_frame();

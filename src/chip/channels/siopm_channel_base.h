@@ -200,6 +200,7 @@ protected:
 	int _lfo_time_value = 0;
 	int _lfo_beat_division = LFO_BEAT_1_4;
 	double _get_lfo_bpm() const;
+	void _update_lfo_timer();
 
 	void _apply_ring_modulation(SinglyLinkedList<int>::Element *p_buffer_start, int p_length);
 	// Filters the left/mono pipe and, when given, the right pipe along one shared cutoff envelope.
@@ -280,8 +281,6 @@ public:
 
 	virtual void set_frequency_ratio(int p_ratio) { _frequency_ratio = p_ratio; }
 	virtual void initialize_lfo(int p_waveform, Vector<int> p_custom_wave_table = Vector<int>());
-	virtual void set_lfo_cycle_time(double p_ms);
-	virtual void set_lfo_frequency_step(int p_value);
 	void set_lfo_rate_value(int p_value);
 	void set_lfo_time_value(int p_value);
 	void set_lfo_beat_value(int p_value);

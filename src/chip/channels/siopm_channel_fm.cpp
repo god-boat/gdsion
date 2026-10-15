@@ -241,7 +241,6 @@ void SiOPMChannelFM::get_channel_params(const Ref<SiOPMChannelParams> &p_params)
 	}
 
 	p_params->set_lfo_wave_shape(_lfo_wave_shape);
-	// Set mode first so that per-mode setters sync lfo_frequency_step correctly.
 	p_params->set_lfo_time_mode(get_lfo_time_mode());
 	p_params->set_lfo_rate_value(_lfo_rate_value);
 	p_params->set_lfo_time_value(_lfo_time_value);
@@ -415,7 +414,8 @@ void SiOPMChannelFM::_set_by_opm_register(int p_address, int p_data) {
 			} break;
 
 			case 24: { // LFO FREQ:7-0 for all 8 channels
-				_set_lfo_timer(_table->lfo_timer_steps[p_data]);
+				set_lfo_rate_value(_table->lfo_timer_steps[p_data]);
+				set_lfo_time_mode(LFO_TIME_MODE_RATE);
 			} break;
 
 			case 25: { // A(0)/P(1):7 DEPTH:6-0 for all 8 channels
@@ -957,14 +957,6 @@ void SiOPMChannelFM::_set_lfo_state(bool p_enabled) {
 	_update_process_function();
 
 	_lfo_timer_step = p_enabled ? _lfo_timer_step_buffer : 0;
-}
-
-void SiOPMChannelFM::_set_lfo_timer(int p_value) {
-	// OPM registers supply a raw Rate value regardless of the selected LFO mode.
-	_lfo_rate_value = p_value;
-	_lfo_timer = (p_value > 0 ? 1 : 0);
-	_lfo_timer_step = p_value;
-	_lfo_timer_step_buffer = p_value;
 }
 
 void SiOPMChannelFM::set_frequency_ratio(int p_ratio) {

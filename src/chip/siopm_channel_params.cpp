@@ -146,44 +146,13 @@ bool SiOPMChannelParams::has_filter_advanced() const {
 }
 
 int SiOPMChannelParams::get_lfo_frame() const {
-	return (int)(SiOPMRefTable::LFO_TIMER_INITIAL * 0.346938775510204 / lfo_frequency_step);
+	const int value = get_lfo_frequency_step();
+	return value == 0 ? 0 : (int)(SiOPMRefTable::LFO_TIMER_INITIAL * 0.346938775510204 / value);
 }
 
 void SiOPMChannelParams::set_lfo_frame(int p_fps) {
-	lfo_frequency_step = (int)(SiOPMRefTable::LFO_TIMER_INITIAL/(p_fps * 2.882352941176471));
-}
-
-void SiOPMChannelParams::set_lfo_time_mode(int p_value) {
-	lfo_time_mode = p_value;
-	// Sync the active lfo_frequency_step from the newly-active per-mode
-	// field so that code reading get_lfo_frequency_step() always sees the
-	// value for the current mode.
-	switch (lfo_time_mode) {
-		case 0:  lfo_frequency_step = lfo_rate_value; break;
-		case 1:  lfo_frequency_step = lfo_time_value; break;
-		default: lfo_frequency_step = lfo_beat_division; break;
-	}
-}
-
-void SiOPMChannelParams::set_lfo_rate_value(int p_value) {
-	lfo_rate_value = p_value;
-	if (lfo_time_mode == 0) {
-		lfo_frequency_step = p_value;
-	}
-}
-
-void SiOPMChannelParams::set_lfo_time_value(int p_value) {
-	lfo_time_value = p_value;
-	if (lfo_time_mode == 1) {
-		lfo_frequency_step = p_value;
-	}
-}
-
-void SiOPMChannelParams::set_lfo_beat_value(int p_value) {
-	lfo_beat_division = p_value;
-	if (lfo_time_mode >= 2) {
-		lfo_frequency_step = p_value;
-	}
+	set_lfo_rate_value(p_fps == 0 ? 0 : (int)(SiOPMRefTable::LFO_TIMER_INITIAL / (p_fps * 2.882352941176471)));
+	set_lfo_time_mode(0);
 }
 
 void SiOPMChannelParams::set_by_opm_register(int p_channel, int p_address, int p_data) {
@@ -198,7 +167,8 @@ void SiOPMChannelParams::set_by_opm_register(int p_channel, int p_address, int p
 			} break;
 
 			case 24: { // LFO FREQ:7-0 for all 8 channels
-				lfo_frequency_step = SiOPMRefTable::get_instance()->lfo_timer_steps[p_data];
+				set_lfo_rate_value(SiOPMRefTable::get_instance()->lfo_timer_steps[p_data]);
+				set_lfo_time_mode(0);
 			} break;
 
 			case 25: { // A(0)/P(1):7 DEPTH:6-0 for all 8 channels
@@ -272,7 +242,6 @@ void SiOPMChannelParams::initialize() {
 	feedback_connection = 0;
 
 	lfo_wave_shape = SiOPMRefTable::LFO_WAVE_TRIANGLE;
-	lfo_frequency_step = 12126; // 12126 = 30 frames / 100 fratio
 	lfo_time_mode = 0; // Default to Rate mode
 	lfo_beat_division = 2; // Default to 1/4 note
 	lfo_rate_value = 12126;
@@ -328,7 +297,6 @@ void SiOPMChannelParams::copy_from(const Ref<SiOPMChannelParams> &p_params) {
 	feedback_connection = p_params->feedback_connection;
 
 	lfo_wave_shape = p_params->lfo_wave_shape;
-	lfo_frequency_step = p_params->lfo_frequency_step;
 	lfo_time_mode = p_params->lfo_time_mode;
 	lfo_beat_division = p_params->lfo_beat_division;
 	lfo_rate_value = p_params->lfo_rate_value;
@@ -378,7 +346,8 @@ String SiOPMChannelParams::_to_string() const {
 	params += "feedback=(" + itos(feedback) + ", " + itos(feedback_connection) + "), ";
 	params += "fratio=" + itos(envelope_frequency_ratio) + ", ";
 
-	const double lfo_frequency = SiOPMRefTable::LFO_TIMER_INITIAL * 0.005782313 / lfo_frequency_step;
+	const int lfo_value = get_lfo_frequency_step();
+	const double lfo_frequency = lfo_value == 0 ? 0.0 : SiOPMRefTable::LFO_TIMER_INITIAL * 0.005782313 / lfo_value;
 	params += "lfo=(" + itos(lfo_wave_shape) + ", " + rtos(lfo_frequency) + "), ";
 
 	params += "amp=" + itos(amplitude_modulation_depth) + ", ";
@@ -414,8 +383,6 @@ void SiOPMChannelParams::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_envelope_frequency_ratio", "value"), &SiOPMChannelParams::set_envelope_frequency_ratio);
 	ClassDB::bind_method(D_METHOD("get_lfo_wave_shape"), &SiOPMChannelParams::get_lfo_wave_shape);
 	ClassDB::bind_method(D_METHOD("set_lfo_wave_shape", "value"), &SiOPMChannelParams::set_lfo_wave_shape);
-	ClassDB::bind_method(D_METHOD("get_lfo_frequency_step"), &SiOPMChannelParams::get_lfo_frequency_step);
-	ClassDB::bind_method(D_METHOD("set_lfo_frequency_step", "value"), &SiOPMChannelParams::set_lfo_frequency_step);
 	ClassDB::bind_method(D_METHOD("get_lfo_time_mode"), &SiOPMChannelParams::get_lfo_time_mode);
 	ClassDB::bind_method(D_METHOD("set_lfo_time_mode", "value"), &SiOPMChannelParams::set_lfo_time_mode);
 
@@ -473,7 +440,6 @@ void SiOPMChannelParams::_bind_methods() {
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "envelope_frequency_ratio"), "set_envelope_frequency_ratio", "get_envelope_frequency_ratio");
 
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "lfo_wave_shape"), "set_lfo_wave_shape", "get_lfo_wave_shape");
-	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "lfo_frequency_step"), "set_lfo_frequency_step", "get_lfo_frequency_step");
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "lfo_time_mode"), "set_lfo_time_mode", "get_lfo_time_mode");
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "lfo_rate_value"), "set_lfo_rate_value", "get_lfo_rate_value");
 	ClassDB::add_property("SiOPMChannelParams", PropertyInfo(Variant::INT, "lfo_time_value"), "set_lfo_time_value", "get_lfo_time_value");

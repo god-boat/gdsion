@@ -79,7 +79,6 @@ class SiOPMChannelSampler : public SiOPMChannelBase {
 
 	// LFO helpers.
 	void _set_lfo_state(bool p_enabled);
-	void _set_lfo_timer(int p_value);
 	void _update_lfo();
 
 	// Amplitude envelope helpers.

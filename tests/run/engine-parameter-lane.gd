@@ -41,6 +41,13 @@ func run(scene_tree: SceneTree) -> void:
 		for sample in register_audio:
 			register_peak = maxf(register_peak, absf(sample))
 		_assert_equal("OPM LFO comparison renders audio in mode %d" % mode, register_peak > 0.0, true)
+		var time_audio := await _render_mml_lfo(scene_tree, mode, false)
+		var mml_audio := await _render_mml_lfo(scene_tree, mode, true)
+		_assert_equal("MML LFO cycle selects Time from mode %d" % mode, mml_audio, time_audio)
+		var time_peak := 0.0
+		for sample in time_audio:
+			time_peak = maxf(time_peak, absf(sample))
+		_assert_equal("MML LFO comparison renders audio in mode %d" % mode, time_peak > 0.0, true)
 	await _run_case(scene_tree, "scoped updates", _test_scopes)
 	await _run_case(scene_tree, "multi-write boundary", _test_boundary)
 	await _run_case(scene_tree, "queue overflow", _test_overflow)
@@ -141,9 +148,12 @@ func _test_fm_voice_state() -> void:
 	voice.set_engine_param(_fm_params["voice.lfo.rate"], 900)
 	voice.set_engine_param(_fm_params["voice.lfo.time"], 333)
 	voice.set_engine_param(_fm_params["voice.lfo.sync_division"], 4)
-	voice.set_engine_param(_fm_params["voice.lfo.mode"], 1)
-	_assert_equal("FM LFO reads the selected mode's raw value", voice.get_channel_params().get_lfo_frequency_step(), 333)
-	_assert_equal("FM LFO inactive values stay independent", voice.get_engine_param(_fm_params["voice.lfo.rate"]), 900)
+	for mode in [0, 1, 2, 3, 4]:
+		voice.set_engine_param(_fm_params["voice.lfo.mode"], mode)
+		_assert_equal("FM LFO mode %d preserves each independent value" % mode,
+			[voice.get_engine_param(_fm_params["voice.lfo.rate"]),
+				voice.get_engine_param(_fm_params["voice.lfo.time"]),
+				voice.get_engine_param(_fm_params["voice.lfo.sync_division"])], [900, 333, 4])
 	var mml_voice := SiONVoice.create_engine(5, 0)
 	mml_voice.set_engine_param(_fm_params["operator.envelope.attack_rate"], 24)
 	var imported := SiONVoice.create()
@@ -152,6 +162,14 @@ func _test_fm_voice_state() -> void:
 	_assert_equal("FM MML import resets previous operator state", voice.set_by_mml(mml_voice.get_mml(8, 0, false)), 8)
 	_assert_equal("FM reset clears the old bool state", voice.get_engine_param(mute, 2), false)
 	_assert_equal("FM reset clears the old voice state", voice.get_engine_param(_fm_params["voice.glide.time"]), 0)
+	var mml_body := mml_voice.get_mml(9, 0, false).trim_suffix(";")
+	_assert_equal("legacy LFO frame import succeeds", imported.set_by_mml(mml_body + " @lfo30;"), 9)
+	_assert_equal("legacy LFO frames populate the Rate parameter", imported.get_engine_param(_fm_params["voice.lfo.rate"]), 12126)
+	for rate in [0, 1000000]:
+		mml_voice.set_engine_param(_fm_params["voice.lfo.rate"], rate)
+		_assert_equal("raw LFO rate %d MML import succeeds" % rate, imported.set_by_mml(mml_voice.get_mml(10)), 10)
+		_assert_equal("raw LFO rate %d survives MML" % rate, imported.get_engine_param(_fm_params["voice.lfo.rate"]), rate)
+		_assert_equal("raw LFO MML selects Rate mode", imported.get_engine_param(_fm_params["voice.lfo.mode"]), 0)
 
 
 ## Compare real audio with identical prepared voices. Only one exact scope is
@@ -220,7 +238,7 @@ func _render_fm_scalars(scene_tree: SceneTree, queued: bool) -> PackedFloat32Arr
 	return audio
 
 
-## A hardware register supplies a Rate value even while Time or Sync is selected.
+## A hardware register selects Rate even while Time or Sync was selected.
 ## Reapplying modes before the first block must retain that effective frequency.
 func _render_opm_lfo(scene_tree: SceneTree, initial_mode: int, roundtrip: bool) -> PackedFloat32Array:
 	var driver := SiONDriver.create(BUFFER_SIZE)
@@ -241,9 +259,45 @@ func _render_opm_lfo(scene_tree: SceneTree, initial_mode: int, roundtrip: bool) 
 	# The track's existing register callback is the same path MML register events use.
 	track.call(&"_default_update_register", 24, 224)
 	if roundtrip:
+		# Inactive parameter edits must not overwrite the register's Rate value.
+		driver.mailbox_set_engine_param(1, 5, _fm_params["voice.lfo.time"], 444)
+		driver.mailbox_set_engine_param(1, 5, _fm_params["voice.lfo.sync_division"], 5)
 		for mode in [1, 2, 0]:
 			driver.mailbox_set_engine_param(1, 5, _fm_params["voice.lfo.mode"], mode)
 	driver.mailbox_key_on(1, 60, 0, -1, -1, track.get_instance_id())
+	var audio := PackedFloat32Array()
+	for block in 8:
+		audio.append_array(renderer.render_block())
+	renderer.finish()
+	driver.stop()
+	await scene_tree.process_frame
+	driver.get_parent().remove_child(driver)
+	driver.free()
+	return audio
+
+
+## The MML cycle command applies its Time parameter through the same live owner.
+func _render_mml_lfo(scene_tree: SceneTree, initial_mode: int, mml_cycle: bool) -> PackedFloat32Array:
+	var driver := SiONDriver.create(BUFFER_SIZE)
+	scene_tree.root.add_child(driver)
+	await scene_tree.process_frame
+	var commands := "@lfo20,2 " if mml_cycle else ""
+	var data := driver.compile(commands + "ma64 o5 c1;")
+	driver.stream_without_output()
+	var renderer := SiONOfflineRenderer.new()
+	_assert_equal("MML LFO renderer owns the audio thread", renderer.begin(driver), true)
+	var voice := SiONVoice.create_engine(5, 2)
+	voice.set_engine_param(_fm_params["voice.lfo.rate"], 900)
+	voice.set_engine_param(_fm_params["voice.lfo.time"], 333)
+	voice.set_engine_param(_fm_params["voice.lfo.sync_division"], 4)
+	voice.set_engine_param(_fm_params["voice.lfo.mode"], initial_mode)
+	voice.set_engine_param(_fm_params["operator.amplitude_modulation.shift"], 3)
+	if not mml_cycle:
+		# The MML command's legacy 20-frame period is 20 * (1000 / 60) = 320 ms.
+		voice.set_engine_param(_fm_params["voice.lfo.time"], 320)
+		voice.set_engine_param(_fm_params["voice.lfo.mode"], 1)
+	var tracks := driver.sequence_on(data, voice, 0, 0, 1, 0, false)
+	_assert_equal("MML LFO creates one track", tracks.size(), 1)
 	var audio := PackedFloat32Array()
 	for block in 8:
 		audio.append_array(renderer.render_block())

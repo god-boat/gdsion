@@ -84,16 +84,16 @@
 			Filter type. Can be set by a filter mode MML command ([code]%f[/code]).
 		</member>
 		<member name="lfo_beat_value" type="int" setter="set_lfo_beat_value" getter="get_lfo_beat_value">
-			Per-mode LFO beat division value for BPM-synced modes. Stored independently so that LFOFS_RATE, LFOFS_TIME, and LFOFS_BEAT ParamSpecs never clobber each other.
-		</member>
-		<member name="lfo_frequency_step" type="int" setter="set_lfo_frequency_step" getter="get_lfo_frequency_step">
-			Frequency step of the low-frequency oscillator.
+			LFO beat division for synced modes, stored independently of the Rate and Time values.
 		</member>
 		<member name="lfo_rate_value" type="int" setter="set_lfo_rate_value" getter="get_lfo_rate_value">
-			Per-mode LFO rate value (raw timer step for Rate mode). Stored independently so that LFOFS_RATE, LFOFS_TIME, and LFOFS_BEAT ParamSpecs never clobber each other.
+			Raw LFO timer step for Rate mode, stored independently of the Time and beat division values. Zero stops the LFO.
 		</member>
 		<member name="lfo_time_value" type="int" setter="set_lfo_time_value" getter="get_lfo_time_value">
-			Per-mode LFO time value in milliseconds (for Time mode). Stored independently so that LFOFS_RATE, LFOFS_TIME, and LFOFS_BEAT ParamSpecs never clobber each other.
+			LFO period in milliseconds for Time mode, stored independently of the Rate and beat division values.
+		</member>
+		<member name="lfo_time_mode" type="int" setter="set_lfo_time_mode" getter="get_lfo_time_mode">
+			Selects the LFO parameter driving the live timer: Rate (0), Time (1), synced (2), dotted (3), or triplet (4).
 		</member>
 		<member name="lfo_wave_shape" type="int" setter="set_lfo_wave_shape" getter="get_lfo_wave_shape">
 			Wave shape of the low-frequency oscillator.
