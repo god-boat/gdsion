@@ -425,8 +425,7 @@ Ref<SiONVoice> SiONVoice::create_engine(SiONModuleType p_module_type, SiONChipTy
 TypedArray<Dictionary> SiONVoice::get_engine_param_descriptors(int p_engine_kind) {
 	const EngineParamSchema *schema = EngineParamSchema::find_engine(p_engine_kind);
 	TypedArray<Dictionary> result;
-	// Inheritance-only catalogs and unused module aliases have no contract.
-	if (schema == nullptr) return result;
+	ERR_FAIL_NULL_V_MSG(schema, result, "Engine kind has no registered scalar parameter contract.");
 	for (int i = 0; i < schema->parameter_count(); i++) {
 		const EngineParamDescriptor &d = schema->parameter_at(i);
 		Dictionary descriptor;

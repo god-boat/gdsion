@@ -16,7 +16,7 @@ func run(scene_tree: SceneTree) -> void:
 	if driver == null:
 		return
 	var backend_sample_rate := int(SiONDriver.get_backend_sample_rate())
-	_assert_equal("driver buffer",      driver.get_buffer_length(), 2048)
+	_assert_equal("driver buffer",      driver.get_buffer_length(), 512)
 	_assert_equal("driver channels",    driver.get_channel_num(),   2)
 	_assert_equal("backend sample rate supported", backend_sample_rate == 44100 or backend_sample_rate == 48000, true)
 	_assert_equal("driver preferred sample rate", driver.get_preferred_sample_rate(), 48000)
