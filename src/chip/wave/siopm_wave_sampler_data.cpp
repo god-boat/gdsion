@@ -133,8 +133,9 @@ SiOPMWaveSamplerData::PlaybackWindow SiOPMWaveSamplerData::resolve_playback_wind
 	}
 	window.end_point = MAX(window.start_point + 1, resolved_end);
 
-	window.loop_point = CLAMP(_loop_point, 0, length - 1);
-	window.loop_enabled = _loop_enabled && window.loop_point >= window.start_point && window.loop_point < window.end_point;
+	// Bound the effective position without changing the authored point when trims move.
+	window.loop_point = CLAMP(_loop_point, window.start_point, window.end_point - 1);
+	window.loop_enabled = _loop_enabled;
 
 	window.ignore_note_off = _ignore_note_off && !window.loop_enabled;
 	window.boundary_fade_samples = _get_sampler_boundary_fade_samples(_sample_rate, window.end_point - window.start_point);

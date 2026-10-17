@@ -36,6 +36,18 @@ func run(scene_tree: SceneTree) -> void:
 		Array(looping.slice(looping.size() - 512)).any(func(value: float) -> bool: return absf(value) > 0.0), true)
 	_assert_equal("disabled sampler ends with a retained loop position",
 		Array(one_shot.slice(one_shot.size() - 512)).all(func(value: float) -> bool: return value == 0.0), true)
+	var trimmed_loop := await _render_sampler_loop(scene_tree, false, true, 256, 768, 256)
+	for queued: bool in [false, true]:
+		var default_loop := await _render_sampler_loop(scene_tree, queued, true, 256, 768, 0)
+		_assert_equal("enabling a trimmed sampler resolves its untouched loop position (queued=%s)" % queued,
+			default_loop, trimmed_loop)
+	_assert_equal("trimmed sampler loops beyond its region end",
+		Array(trimmed_loop.slice(trimmed_loop.size() - 512)).any(func(value: float) -> bool: return absf(value) > 0.0), true)
+	var last_sample_loop := await _render_sampler_loop(scene_tree, false, true, 256, 768, 767)
+	var end_boundary_loop := await _render_sampler_loop(scene_tree, false, true, 256, 768, 768)
+	_assert_equal("a loop at the exclusive end resolves to the final playable sample", end_boundary_loop, last_sample_loop)
+	_assert_equal("a one-sample loop wraps even when the pitch step exceeds its length",
+		Array(last_sample_loop.slice(last_sample_loop.size() - 512)).any(func(value: float) -> bool: return absf(value) > 0.0), true)
 	_test_all_engine_state()
 	_test_guitar6_mml_precision()
 	for kind in [11, 22, 24, 25, 26]:
@@ -542,7 +554,14 @@ func _test_sampler_aliases() -> void:
 	_assert_equal("an unloaded key exposes disabled looping", empty.get_engine_param(loop_enabled, 60), false)
 
 
-func _render_sampler_loop(scene_tree: SceneTree, queued: bool, enabled: bool) -> PackedFloat32Array:
+func _render_sampler_loop(
+	scene_tree: SceneTree,
+	queued: bool,
+	enabled: bool,
+	start_point: int = 0,
+	end_point: int = 1024,
+	loop_point: int = 256
+) -> PackedFloat32Array:
 	var driver := SiONDriver.create(BUFFER_SIZE)
 	scene_tree.root.add_child(driver)
 	await scene_tree.process_frame
@@ -557,7 +576,10 @@ func _render_sampler_loop(scene_tree: SceneTree, queued: bool, enabled: bool) ->
 	source.resize(1024)
 	source.fill(0.25)
 	voice.set_sampler_wave(60, source, false, 0, 1, 1)
-	voice.set_engine_param(ids["sampler.region.loop_point"], 256, 60)
+	voice.set_engine_param(ids["sampler.region.start_point"], start_point, 60)
+	voice.set_engine_param(ids["sampler.region.end_point"], end_point, 60)
+	voice.set_engine_param(ids["sampler.region.loop_point"], loop_point, 60)
+	voice.set_engine_param(ids["sampler.region.coarse_offset"], 12, 60)
 	if not queued:
 		voice.set_engine_param(ids["sampler.region.loop_enabled"], enabled, 60)
 	var track := driver.create_user_controllable_track(1)
@@ -570,6 +592,7 @@ func _render_sampler_loop(scene_tree: SceneTree, queued: bool, enabled: bool) ->
 	var audio := PackedFloat32Array()
 	for block in 8:
 		audio.append_array(renderer.render_block())
+	_assert_equal("playback resolution preserves the authored loop position", voice.get_engine_param(ids["sampler.region.loop_point"], 60), loop_point)
 	renderer.finish()
 	driver.stop()
 	await scene_tree.process_frame

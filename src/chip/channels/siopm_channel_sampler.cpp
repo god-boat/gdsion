@@ -366,7 +366,7 @@ void SiOPMChannelSampler::buffer(int p_length) {
 		// End/loop handling.
 		if (_sample_index_fp >= end_point) {
 			if (playback_window.loop_enabled) {
-				_sample_index_fp = loop_point + (_sample_index_fp - end_point);
+				_sample_index_fp = loop_point + std::fmod(_sample_index_fp - end_point, end_point - loop_point);
 			} else if (_amp_stage != AMP_STAGE_IDLE) {
 				// Sample reached its end (one-shot).
 				_set_amp_stage(AMP_STAGE_IDLE);
