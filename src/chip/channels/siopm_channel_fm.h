@@ -130,6 +130,19 @@ protected:
 
 public:
 	enum EngineParameter : uint32_t {
+		GLOBAL_ATTACK = 0x320,
+		GLOBAL_DECAY = 0x321,
+		GLOBAL_SUSTAIN = 0x322,
+		GLOBAL_RELEASE = 0x323,
+		GLOBAL_SUSTAIN_ATTENUATION = 0x324,
+		GLOBAL_ATTENUATION = 0x325,
+		AL_CONNECTION = 0x330,
+		AL_WAVEFORM_A = 0x331,
+		AL_WAVEFORM_B = 0x332,
+		AL_BALANCE = 0x333,
+		AL_DETUNE = 0x334,
+		SCC_WAVETABLE = 0x335,
+
 		ALGORITHM = 0x300,
 		FEEDBACK = 0x301,
 		FEEDBACK_CONNECTION = 0x302,
@@ -157,6 +170,8 @@ public:
 		RESET_ON_ATTACK = 0x318,
 	};
 	static const EngineParamSchema &get_shared_engine_param_schema();
+	static const EngineParamSchema &get_prepared_engine_param_schema();
+	static const EngineParamSchema &get_scc_engine_param_schema();
 	static void finalize_pool();
 	void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) override;
 

@@ -25,6 +25,8 @@ class SiOPMChannelParams : public RefCounted {
 
 public:
 	static const int MAX_OPERATORS = 4;
+	void set_analog_balance(int p_balance);
+	int get_analog_balance() const { return analog_balance; }
 
 private:
 	MMLSequence *init_sequence = nullptr;
@@ -33,6 +35,7 @@ private:
 	Vector<Ref<SiOPMOperatorParams>> operator_params;
 	int operator_count = 0;
 	bool analog_like = false;
+	int analog_balance = 0;
 
 	// Algorithm [0,15]
 	int algorithm = 0;

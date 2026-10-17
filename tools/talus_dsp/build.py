@@ -1,9 +1,9 @@
 """Compiles the real Talus and Iron channel sources against the stubs into
 out/talus_render.exe with MSVC. Not the SCons build: no Godot, no DLL.
 
-Also builds out/iron_baseline.exe from Iron as committed at --iron-rev
-(default HEAD of the gdsion repo), so tests.py can check that sharing DSP
-blocks left Iron's output bit-identical.
+Also builds out/iron_baseline.exe from Iron, DSP headers and harness fixtures
+as committed at --iron-rev (default HEAD of the gdsion repo), so tests.py can
+compare output without depending on a historical engine API in current code.
 
     python gdsion/tools/talus_dsp/build.py [--iron-rev HEAD]
 """
@@ -56,19 +56,31 @@ def compile_exe(name: str, defines: str, includes: list[pathlib.Path], sources: 
 
 
 def build_iron_baseline(rev: str) -> None:
-	baseline = OUT / "iron_baseline" / "chip" / "channels"
-	baseline.mkdir(parents=True, exist_ok=True)
-	for name in ("siopm_channel_iron.h", "siopm_channel_iron.cpp"):
-		text = subprocess.run(
-			["git", "-C", str(GDSION), "show", f"{rev}:src/chip/channels/{name}"],
-			capture_output=True, text=True, check=True,
+	commit = subprocess.run(
+		["git", "-C", str(GDSION), "rev-parse", "--verify", f"{rev}^{{commit}}"],
+		capture_output=True, text=True, check=True,
+	).stdout.strip()
+	baseline = OUT / "iron_baseline" / commit
+	paths = subprocess.run(
+		["git", "-C", str(GDSION), "ls-tree", "-r", "--name-only", commit, "--",
+		 "src/chip/channels/siopm_channel_iron.h", "src/chip/channels/siopm_channel_iron.cpp",
+		 "src/chip/channels/siopm_iron_params.h", "src/dsp", "src/engine_params.h", "src/sion_enums.h",
+		 "tools/talus_dsp/render_main.cpp", "tools/talus_dsp/stubs"],
+		capture_output=True, text=True, check=True,
+	).stdout.splitlines()
+	for path in paths:
+		contents = subprocess.run(
+			["git", "-C", str(GDSION), "show", f"{commit}:{path}"],
+			capture_output=True, check=True,
 		).stdout
-		(baseline / name).write_text(text, encoding="utf-8", newline="\n")
+		target = baseline / path
+		target.parent.mkdir(parents=True, exist_ok=True)
+		target.write_bytes(contents)
 	compile_exe(
 		"iron_baseline",
 		"/DHARNESS_IRON /DHARNESS_NO_TALUS",
-		[OUT / "iron_baseline", HERE / "stubs", SRC],
-		[HERE / "render_main.cpp", baseline / "siopm_channel_iron.cpp"],
+		[baseline / "tools/talus_dsp/stubs", baseline / "src"],
+		[baseline / "tools/talus_dsp/render_main.cpp", baseline / "src/chip/channels/siopm_channel_iron.cpp"],
 	)
 
 

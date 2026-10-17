@@ -173,8 +173,6 @@ private:
 	EnvelopeClockSetting _setting_clock_pitch[2];
 	EnvelopeClockSetting _setting_clock_filter[2];
 
-	Vector<SinglyLinkedList<int> *> _table_envelope_mod_amp;
-	Vector<SinglyLinkedList<int> *> _table_envelope_mod_pitch;
 	int _setting_sweep_step[2] = {};
 	int _setting_sweep_end[2] = {};
 	int _envelope_interval = 0;
@@ -202,8 +200,6 @@ private:
 	EnvelopeRuntimeClock _runtime_clock_pitch;
 	EnvelopeRuntimeClock _runtime_clock_filter;
 
-	SinglyLinkedList<int> *_envelope_mod_amp = nullptr;
-	SinglyLinkedList<int> *_envelope_mod_pitch = nullptr;
 	int _sweep_step = 0;
 	int _sweep_end = 0;
 	int _sweep_pitch = 0;
@@ -256,7 +252,6 @@ private:
 	void _refresh_envelope_clock_counter(int p_phase, EnvelopeClockSetting *p_settings, int *p_counters, EnvelopeRuntimeClock &r_clock);
 	void _refresh_envelope_clock_counters(int p_phase);
 
-	SinglyLinkedList<int> *_make_modulation_table(int p_depth, int p_end_depth, int p_delay, int p_term);
 
 	// Events.
 
@@ -301,6 +296,18 @@ private:
 	int _key_on_delay = 0;
 	bool _flag_no_key_on = false;
 
+	struct ModulationEnvelope {
+		int depth = 0;
+		int end_depth = 0;
+		int delay = 0;
+		int term = 0;
+		int position = 0;
+		bool active = false;
+		bool ramps() const { return depth != end_depth && term > 0; }
+	};
+	ModulationEnvelope _modulation[2];
+	void _refresh_modulation(bool p_pitch);
+	int _step_modulation(ModulationEnvelope &p_envelope);
 	void _enable_envelope_mode(int p_note_on);
 	void _disable_envelope_mode(int p_note_on);
 	void _apply_expression(int p_expression);

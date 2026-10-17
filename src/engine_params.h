@@ -49,9 +49,13 @@ struct EngineParamDescriptor {
 	// Engine-local scalars use the voice's plain preparation storage.
 	void (*set_prepared)(SiMMLVoice &, uint32_t, int, EngineParamValue) = store_engine_param;
 	EngineParamValue (*get_prepared)(const SiMMLVoice &, uint32_t, int) = load_engine_param;
+	// Some authored inputs also stamp existing preparation fields (global FM
+	// envelope edits stamp operators). Those resolved fields install the voice;
+	// replaying the input afterwards would erase later operator edits.
+	bool applies_on_voice = true;
 
 	bool has_instance(int p_index) const { return p_index >= 0 && p_index < instance_count; }
-	bool uses_local_state() const { return set_prepared == store_engine_param; }
+	bool uses_local_state() const { return get_prepared == load_engine_param; }
 };
 
 struct EngineParamSchema {

@@ -5,7 +5,9 @@
 #include "chip/siopm_ref_table.h"
 #include "chip/siopm_sound_chip.h"
 #include "harness_godot.h"
+#include "engine_params.h"
 #include "templates/singly_linked_list.h"
+#include <cstdlib>
 
 using namespace godot;
 
@@ -34,6 +36,8 @@ protected:
 	int _filter_type = 0;
 
 public:
+	// The harness sends only the selected engine's channel-local scalar IDs.
+	virtual void apply_engine_param(uint32_t, int, EngineParamValue) { std::abort(); }
 	virtual void get_channel_params(const Ref<SiOPMChannelParams> &p_params) const {}
 	virtual void set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation = true) {}
 

@@ -112,6 +112,26 @@ protected:
 	String _to_string() const;
 
 public:
+	enum EngineParameter : uint32_t {
+		REGION_GAIN = 0x900,
+		REGION_PAN = 0x901,
+		REGION_START = 0x902,
+		REGION_END = 0x903,
+		REGION_MODE = 0x904,
+		REGION_LOOP = 0x905,
+		REGION_ROOT = 0x906,
+		REGION_COARSE = 0x907,
+		REGION_FINE = 0x908,
+		AMP_ATTACK = 0x920,
+		AMP_DECAY = 0x921,
+		AMP_SUSTAIN = 0x922,
+		AMP_RELEASE = 0x923,
+		SLICE_MODE = 0x930,
+		SLICE_SENSITIVITY = 0x931,
+	};
+	static const EngineParamSchema &get_engine_param_schema();
+	virtual void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) override;
+
 	virtual void get_channel_params(const Ref<SiOPMChannelParams> &p_params) const override;
 	virtual void set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation = true) override;
 

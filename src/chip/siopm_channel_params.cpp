@@ -235,6 +235,7 @@ void SiOPMChannelParams::set_by_opm_register(int p_channel, int p_address, int p
 }
 
 void SiOPMChannelParams::initialize() {
+	analog_balance = 0;
 	operator_count = 1;
 
 	algorithm = 0;
@@ -286,6 +287,7 @@ void SiOPMChannelParams::initialize() {
 
 void SiOPMChannelParams::copy_from(const Ref<SiOPMChannelParams> &p_params) {
 	operator_count = p_params->operator_count;
+	analog_balance = p_params->analog_balance;
 
 	// Preserve Analog-Like mode flag when cloning/copying voices.
 	// Without this, AL presets cloned via SiONVoice::clone() lose their
@@ -502,4 +504,11 @@ SiOPMChannelParams::~SiOPMChannelParams() {
 	init_sequence = nullptr;
 
 	operator_params.clear();
+}
+
+void SiOPMChannelParams::set_analog_balance(int p_balance) {
+	analog_balance = p_balance;
+	int (&table)[129] = SiOPMRefTable::get_instance()->eg_linear_to_total_level_table;
+	operator_params[0]->set_total_level(table[64 - p_balance]);
+	operator_params[1]->set_total_level(table[64 + p_balance]);
 }

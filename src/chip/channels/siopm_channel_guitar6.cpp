@@ -1,4 +1,7 @@
 #include "siopm_channel_guitar6.h"
+#include "chip/channels/siopm_channel_fm.h"
+#include "sion_enums.h"
+#include <iterator>
 
 #include <cmath>
 #include <cstring>
@@ -310,28 +313,7 @@ void SiOPMChannelGuitar6::_init_body_resonators(double p_sample_rate) {
 	_body_resonators[2].init(290.0, 8.0, 2.0, p_sample_rate);
 }
 
-void SiOPMChannelGuitar6::set_guitar6_params(double p_character_seed, double p_character_variation,
-		double p_string_damp, double p_string_damp_variation,
-		double p_plug_damp, double p_plug_damp_variation,
-		double p_string_tension, double p_stereo_spread, bool p_body_bypass) {
-	if (p_character_seed != _character_seed) {
-		_character_seed = p_character_seed;
-		_randomize_character_noise((uint32_t)p_character_seed);
-	}
-	_character_variation = CLAMP(p_character_variation, 0.0, 1.0);
-	_string_damp = CLAMP(p_string_damp, 0.0, 1.0);
-	_string_damp_variation = CLAMP(p_string_damp_variation, 0.0, 1.0);
-	_plug_damp = CLAMP(p_plug_damp, 0.0, 1.0);
-	_plug_damp_variation = CLAMP(p_plug_damp_variation, 0.0, 1.0);
-	_string_tension = CLAMP(p_string_tension, 0.0, 1.0);
-	_stereo_spread = CLAMP(p_stereo_spread, 0.0, 1.0);
-	if (p_body_bypass && !_body_bypass) {
-		for (int r = 0; r < 3; r++) {
-			_body_resonators[r].reset();
-		}
-	}
-	_body_bypass = p_body_bypass;
-}
+
 
 void SiOPMChannelGuitar6::pluck_string(int p_string_index, int p_tab_index, double p_velocity, int p_target_sample) {
 	if (p_string_index < 0 || p_string_index >= NUM_STRINGS) {
@@ -554,4 +536,35 @@ String SiOPMChannelGuitar6::_to_string() const {
 
 SiOPMChannelGuitar6::SiOPMChannelGuitar6(SiOPMSoundChip *p_chip) : SiOPMChannelBase(p_chip) {
 	_randomize_character_noise(65535);
+}
+
+const EngineParamSchema &SiOPMChannelGuitar6::get_engine_param_schema() {
+	static const EngineParamDescriptor parameters[] = {
+		{PARAM_CHARACTER_SEED, "voice.guitar6.character.seed", EngineParamType::FLOAT, 0, 131072, EngineParamValue::from_float(65535), 1, true},
+		{PARAM_CHARACTER_VARIATION, "voice.guitar6.character.variation", EngineParamType::FLOAT, 0, 100, EngineParamValue::from_float(50), 1, true},
+		{PARAM_STRING_DAMPING, "voice.guitar6.string.damping", EngineParamType::FLOAT, 0, 100, EngineParamValue::from_float(50), 1, true},
+		{PARAM_STRING_DAMPING_VARIATION, "voice.guitar6.string.damping_variation", EngineParamType::FLOAT, 0, 100, EngineParamValue::from_float(25), 1, true},
+		{PARAM_PLUG_DAMPING, "voice.guitar6.plug.damping", EngineParamType::FLOAT, 0, 100, EngineParamValue::from_float(50), 1, true},
+		{PARAM_PLUG_DAMPING_VARIATION, "voice.guitar6.plug.damping_variation", EngineParamType::FLOAT, 0, 100, EngineParamValue::from_float(25), 1, true},
+		{PARAM_STRING_TENSION, "voice.guitar6.string.tension", EngineParamType::FLOAT, 0, 100, EngineParamValue::from_float(0), 1, true},
+		{PARAM_OUTPUT_STEREO_SPREAD, "voice.guitar6.output.stereo_spread", EngineParamType::FLOAT, 0, 100, EngineParamValue::from_float(20), 1, true},
+		{PARAM_BODY_BYPASS, "voice.guitar6.body.bypass", EngineParamType::BOOL, 0, 1, EngineParamValue::from_bool(false), 1, true},
+	};
+	static const EngineParamSchema schema = {SiONModuleType::MODULE_GUITAR6, parameters, int(std::size(parameters)), &SiOPMChannelFM::get_prepared_engine_param_schema()};
+	return schema;
+}
+
+void SiOPMChannelGuitar6::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
+	switch (p_id) {
+		case PARAM_CHARACTER_SEED: if (_character_seed != p_value.real) { _character_seed = p_value.real; _randomize_character_noise(uint32_t(_character_seed)); } return;
+		case PARAM_CHARACTER_VARIATION: _character_variation = p_value.real * 0.01; return;
+		case PARAM_STRING_DAMPING: _string_damp = p_value.real * 0.01; return;
+		case PARAM_STRING_DAMPING_VARIATION: _string_damp_variation = p_value.real * 0.01; return;
+		case PARAM_PLUG_DAMPING: _plug_damp = p_value.real * 0.01; return;
+		case PARAM_PLUG_DAMPING_VARIATION: _plug_damp_variation = p_value.real * 0.01; return;
+		case PARAM_STRING_TENSION: _string_tension = p_value.real * 0.01; return;
+		case PARAM_OUTPUT_STEREO_SPREAD: _stereo_spread = p_value.real * 0.01; return;
+		case PARAM_BODY_BYPASS: if (p_value.boolean && !_body_bypass) { for (int r = 0; r < 3; r++) _body_resonators[r].reset(); } _body_bypass = p_value.boolean; return;
+		default: SiOPMChannelBase::apply_engine_param(p_id, p_index, p_value); return;
+	}
 }

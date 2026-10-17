@@ -5,6 +5,8 @@
 /***************************************************/
 
 #include "sion_voice.h"
+#include "chip/channels/siopm_channel_fm.h"
+#include "chip/channels/siopm_channel_ks.h"
 #include "engine_param_api.h"
 
 #include <godot_cpp/classes/reg_ex.hpp>
@@ -24,39 +26,60 @@
 #include "utils/translator_util.h"
 #include "sequencer/simml_track.h"
 
+// Legacy FM codecs author operator fields. Seed the unscoped envelope inputs
+// once at that import boundary; later scalar operator edits retain their own
+// precedence and never rewrite the authored global input.
+static void import_global_envelope_inputs(SiMMLVoice &p_voice) {
+	const Ref<SiOPMChannelParams> params = p_voice.get_channel_params();
+	if (params->get_operator_count() == 0) return; // A silent FM definition has no envelope to import.
+	const Ref<SiOPMOperatorParams> op = params->get_operator_params(0);
+	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_ATTACK, 0, EngineParamValue::from_int(op->get_attack_rate()));
+	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_DECAY, 0, EngineParamValue::from_int(op->get_decay_rate()));
+	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_SUSTAIN, 0, EngineParamValue::from_int(op->get_sustain_rate()));
+	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_RELEASE, 0, EngineParamValue::from_int(op->get_release_rate()));
+	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_SUSTAIN_ATTENUATION, 0, EngineParamValue::from_int(op->get_sustain_level()));
+	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_ATTENUATION, 0, EngineParamValue::from_int(op->get_total_level()));
+}
+
 void SiONVoice::set_params(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_siopm_params(channel_params, data);
+	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_SIOPM;
 }
 
 void SiONVoice::set_params_opl(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_opl_params(channel_params, data);
+	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_OPL;
 }
 
 void SiONVoice::set_params_opm(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_opm_params(channel_params, data);
+	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_OPM;
 }
 
 void SiONVoice::set_params_opn(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_opn_params(channel_params, data);
+	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_OPN;
 }
 
 void SiONVoice::set_params_opx(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_opx_params(channel_params, data);
+	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_OPX;
 }
 
 void SiONVoice::set_params_ma3(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_ma3_params(channel_params, data);
+	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_MA3;
 
 }
@@ -64,6 +87,7 @@ void SiONVoice::set_params_ma3(TypedArray<int> p_args) {
 void SiONVoice::set_params_al(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_al_params(channel_params, data);
+	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_ANALOG_LIKE;
 
 }
@@ -114,9 +138,16 @@ String SiONVoice::get_mml(int p_index, SiONChipType p_chip_type, bool p_append_p
 		case SiONChipType::CHIP_SIOPM:
 			mml = "#@"    + itos(p_index) + ::TranslatorUtil::get_siopm_params_as_mml(channel_params, " ", "\n", _name);
 			break;
-			case SiONChipType::CHIP_PMS_GUITAR:
-				mml = "#KS@"  + itos(p_index) + ::TranslatorUtil::get_ks_params_as_mml(channel_params, pms_tension, " ", "\n", _name);
-				break;
+		case SiONChipType::CHIP_PMS_GUITAR: {
+			String data = ::TranslatorUtil::get_ks_params_as_mml(channel_params,
+				int(engine_params.get(SiOPMChannelKS::PMS_TENSION, 0).integer), ",", "", "").trim_suffix("}");
+			const EngineParamSchema &schema = *engine_params.schema();
+			for (int i = 0; i < schema.count; i++) {
+				const EngineParamDescriptor &d = schema.parameters[i];
+				if (d.uses_local_state() && d.id != SiOPMChannelKS::PMS_TENSION) data += "," + itos(engine_params.get(d.id, 0).integer);
+			}
+			mml = "#KS@" + itos(p_index) + data + "}";
+		} break;
 		case SiONChipType::CHIP_OPL:
 			mml = "#OPL@" + itos(p_index) + ::TranslatorUtil::get_opl_params_as_mml(channel_params, " ", "\n", _name);
 			break;
@@ -136,55 +167,27 @@ String SiONVoice::get_mml(int p_index, SiONChipType p_chip_type, bool p_append_p
 			mml = "#AL@"  + itos(p_index) + ::TranslatorUtil::get_al_params_as_mml(channel_params, " ", "\n", _name);
 			break;
 		case SiONChipType::CHIP_GUITAR6: {
-			String data = "{";
-			data += rtos(guitar6_character_seed) + ",";
-			data += rtos(guitar6_character_variation) + ",";
-			data += rtos(guitar6_string_damp) + ",";
-			data += rtos(guitar6_string_damp_variation) + ",";
-			data += rtos(guitar6_plug_damp) + ",";
-			data += rtos(guitar6_plug_damp_variation) + ",";
-			data += rtos(guitar6_string_tension) + ",";
-			data += rtos(guitar6_stereo_spread) + ",";
-			data += itos(guitar6_body_bypass ? 1 : 0);
-			data += "}";
-			mml = "#G6@" + itos(p_index) + data;
+			PackedStringArray values;
+			const EngineParamSchema &schema = *engine_params.schema();
+			for (int i = 0; i < schema.count; i++) {
+				const EngineParamDescriptor &d = schema.parameters[i];
+				EngineParamValue value = engine_params.get(d.id, 0);
+				if (value.type == EngineParamType::BOOL) values.push_back(value.boolean ? "1" : "0");
+				else values.push_back(::TranslatorUtil::format_mml_float(i == 0 ? value.real : value.real * 0.01));
+			}
+			mml = "#G6@" + itos(p_index) + "{" + String(",").join(values) + "}";
 		} break;
 		case SiONChipType::CHIP_STRATA:
 			mml = "#BR@" + itos(p_index) + ::TranslatorUtil::get_engine_params_as_mml(engine_params);
 			break;
 		case SiONChipType::CHIP_MONOLITH: {
-			String data = "{";
-			data += itos(monolith_sub_shape) + "," + itos(monolith_sub_level) + ",";
-			data += itos(monolith_sub_drive) + "," + itos(monolith_pitch_drop) + ",";
-			data += itos(monolith_osc1_shape) + "," + itos(monolith_osc2_shape) + ",";
-			data += itos(monolith_mass) + "," + itos(monolith_bite) + "," + itos(monolith_shape) + ",";
-			data += itos(monolith_drive_mode) + "," + itos(monolith_grind) + ",";
-			data += itos(monolith_motion_target) + "," + itos(monolith_motion_amount) + "," + itos(monolith_motion_rate) + ",";
-			data += itos(monolith_width) + "," + itos(monolith_low_lock) + "," + itos(monolith_lens) + "," + itos(monolith_glide);
-			data += "}";
-			mml = "#MO@" + itos(p_index) + data;
+			mml = "#MO@" + itos(p_index) + ::TranslatorUtil::get_engine_params_as_mml(engine_params);
 		} break;
 		case SiONChipType::CHIP_IRON: {
-			String data = "{";
-			for (int i = 0; i < IronParams::SLOT_COUNT; i++) {
-				if (i > 0) {
-					data += ",";
-				}
-				data += itos(iron.values[i]);
-			}
-			data += "}";
-			mml = "#IR@" + itos(p_index) + data;
+			mml = "#IR@" + itos(p_index) + ::TranslatorUtil::get_engine_params_as_mml(engine_params);
 		} break;
 		case SiONChipType::CHIP_TALUS: {
-			String data = "{";
-			for (int i = 0; i < TalusParams::SLOT_COUNT; i++) {
-				if (i > 0) {
-					data += ",";
-				}
-				data += itos(talus.values[i]);
-			}
-			data += "}";
-			mml = "#TL@" + itos(p_index) + data;
+			mml = "#TL@" + itos(p_index) + ::TranslatorUtil::get_engine_params_as_mml(engine_params);
 		} break;
 		default:
 			ERR_FAIL_V_MSG("", vformat("SiONVoice: Chip type %d is unsupported for MML strings.", type));
@@ -206,7 +209,7 @@ int SiONVoice::set_by_mml(String p_mml) {
 
 	// Godot's RegEx implementation doesn't support passing global flags, but PCRE2 allows local flags, which we can abuse.
 	// (?s) enables single line mode (dot matches newline) for the entire expression.
-	Ref<RegEx> re_command = RegEx::create_from_string("(?s)(#[A-Z]*@)\\s*(\\d+)\\s*{(.*?)}(.*?);");
+	Ref<RegEx> re_command = RegEx::create_from_string("(?s)(#[A-Z0-9]*@)\\s*(\\d+)\\s*{(.*?)}(.*?);");
 	Ref<RegExMatch> res = re_command->search(p_mml);
 	if (res.is_null()) {
 		return -1;
@@ -217,81 +220,74 @@ int SiONVoice::set_by_mml(String p_mml) {
 
 	if (command == "#@") {
 		::TranslatorUtil::parse_siopm_params(channel_params, data);
+		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_SIOPM;
 	} else if (command == "#OPL@") {
 		::TranslatorUtil::parse_opl_params(channel_params, data);
+		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_OPL;
 	} else if (command == "#OPM@") {
 		::TranslatorUtil::parse_opm_params(channel_params, data);
+		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_OPM;
 	} else if (command == "#OPN@") {
 		::TranslatorUtil::parse_opn_params(channel_params, data);
+		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_OPN;
 	} else if (command == "#OPX@") {
 		::TranslatorUtil::parse_opx_params(channel_params, data);
+		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_OPX;
 	} else if (command == "#MA@") {
 		::TranslatorUtil::parse_ma3_params(channel_params, data);
+		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_MA3;
 	} else if (command == "#AL@") {
 		::TranslatorUtil::parse_al_params(channel_params, data);
+		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_ANALOG_LIKE;
 	} else if (command == "#KS@") {
 		int ws, ar, dr, tl, fn, tn;
 		::TranslatorUtil::parse_ks_params(channel_params, data, ws, ar, dr, tl, fn, tn);
-		set_pms_guitar(ar, dr, tl, fn, ws, tn);
-	} else if (command == "#G6@") {
+		_set_engine_type(SiONModuleType::MODULE_KS);
+		channel_num = 1;
+		chip_type = SiONChipType::CHIP_PMS_GUITAR;
 		PackedStringArray parts = data.split(",");
-		double cs = parts.size() > 0 ? parts[0].strip_edges().to_float() : 65535.0;
-		double cv = parts.size() > 1 ? parts[1].strip_edges().to_float() : 0.5;
-		double sd = parts.size() > 2 ? parts[2].strip_edges().to_float() : 0.5;
-		double sdv = parts.size() > 3 ? parts[3].strip_edges().to_float() : 0.25;
-		double pd = parts.size() > 4 ? parts[4].strip_edges().to_float() : 0.5;
-		double pdv = parts.size() > 5 ? parts[5].strip_edges().to_float() : 0.25;
-		double st = parts.size() > 6 ? parts[6].strip_edges().to_float() : 0.0;
-		double ss = parts.size() > 7 ? parts[7].strip_edges().to_float() : 0.2;
-		bool bb = parts.size() > 8 ? parts[8].strip_edges().to_int() != 0 : false;
-		set_guitar6(cs, cv, sd, sdv, pd, pdv, st, ss, bb);
+		String local = itos(tn);
+		if (parts.size() > 6) local += "," + String(",").join(parts.slice(6));
+		if (!::TranslatorUtil::parse_engine_params(engine_params, local)) return -1;
+		import_global_envelope_inputs(*this);
+	} else if (command == "#G6@") {
+		_set_engine_type(SiONModuleType::MODULE_GUITAR6);
+		channel_num = 0;
+		chip_type = SiONChipType::CHIP_GUITAR6;
+		PackedStringArray parts = data.split(",");
+		for (int i = 1; i < MIN(int(parts.size()), 8); i++) {
+			ERR_FAIL_COND_V_MSG(!parts[i].strip_edges().is_valid_float(), -1, "Guitar6 MML parameter requires a float.");
+			parts.set(i, ::TranslatorUtil::format_mml_float(parts[i].to_float() * 100.0));
+		}
+
+		if (!::TranslatorUtil::parse_engine_params(engine_params, String(",").join(parts))) return -1;
 	} else if (command == "#BR@") {
 		_set_engine_type(SiONModuleType::MODULE_STRATA);
 		channel_num = 0;
 		chip_type = SiONChipType::CHIP_STRATA;
 		if (!::TranslatorUtil::parse_engine_params(engine_params, data)) return -1;
 	} else if (command == "#MO@") {
-		PackedStringArray parts = data.split(",");
-		set_monolith(
-				parts.size() > 0 ? parts[0].strip_edges().to_int() : 0,
-				parts.size() > 1 ? parts[1].strip_edges().to_int() : 80,
-				parts.size() > 2 ? parts[2].strip_edges().to_int() : 0,
-				parts.size() > 3 ? parts[3].strip_edges().to_int() : 0,
-				parts.size() > 4 ? parts[4].strip_edges().to_int() : 0,
-				parts.size() > 5 ? parts[5].strip_edges().to_int() : 0,
-				parts.size() > 6 ? parts[6].strip_edges().to_int() : 40,
-				parts.size() > 7 ? parts[7].strip_edges().to_int() : 40,
-				parts.size() > 8 ? parts[8].strip_edges().to_int() : 0,
-				parts.size() > 9 ? parts[9].strip_edges().to_int() : 0,
-				parts.size() > 10 ? parts[10].strip_edges().to_int() : 0,
-				parts.size() > 11 ? parts[11].strip_edges().to_int() : 0,
-				parts.size() > 12 ? parts[12].strip_edges().to_int() : 0,
-				parts.size() > 13 ? parts[13].strip_edges().to_int() : 40,
-				parts.size() > 14 ? parts[14].strip_edges().to_int() : 0,
-				parts.size() > 15 ? parts[15].strip_edges().to_int() : 100,
-				parts.size() > 16 ? parts[16].strip_edges().to_int() : 0,
-				parts.size() > 17 ? parts[17].strip_edges().to_int() : 0);
+		_set_engine_type(SiONModuleType::MODULE_MONOLITH);
+		channel_num = 0;
+		chip_type = SiONChipType::CHIP_MONOLITH;
+		if (!::TranslatorUtil::parse_engine_params(engine_params, data)) return -1;
 	} else if (command == "#IR@") {
-		PackedStringArray parts = data.split(",");
-		IronParams params;
-		for (int i = 0; i < MIN((int)parts.size(), (int)IronParams::SLOT_COUNT); i++) {
-			params.values[i] = parts[i].strip_edges().to_int();
-		}
-		set_iron_params(params);
+		_set_engine_type(SiONModuleType::MODULE_IRON);
+		channel_num = 0;
+		chip_type = SiONChipType::CHIP_IRON;
+		if (!::TranslatorUtil::parse_engine_params(engine_params, data)) return -1;
 	} else if (command == "#TL@") {
-		PackedStringArray parts = data.split(",");
-		TalusParams params;
-		for (int i = 0; i < MIN((int)parts.size(), (int)TalusParams::SLOT_COUNT); i++) {
-			params.values[i] = parts[i].strip_edges().to_int();
-		}
-		set_talus_params(params);
+		_set_engine_type(SiONModuleType::MODULE_TALUS);
+		channel_num = 0;
+		chip_type = SiONChipType::CHIP_TALUS;
+		if (!::TranslatorUtil::parse_engine_params(engine_params, data)) return -1;
 	} else {
 		return -1;
 	}
@@ -379,252 +375,12 @@ Ref<SiOPMWaveSamplerData> SiONVoice::set_sampler_wave(int p_index, const Variant
 	return sampler_data;
 }
 
-void SiONVoice::set_sampler_table(const Ref<SiOPMWaveSamplerTable> &p_table) {
-	_set_engine_type(SiONModuleType::MODULE_SAMPLE);
-
-	wave_data = p_table;
-}
-
-void SiONVoice::set_pms_guitar(int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension) {
-	_set_engine_type(SiONModuleType::MODULE_KS);
-	channel_num = 1;
-
-	TypedArray<int> param_args = make_typed_array_from_vector<int>({ 1, 0, 0, p_wave_shape, p_attack_rate, p_decay_rate, 0, 63, 15, p_total_level, 0, 0, 1, 0, 0, 0, 0, p_fixed_pitch, 0 });
-	set_params(param_args);
-	pms_tension = p_tension;
-	chip_type = SiONChipType::CHIP_PMS_GUITAR;
-}
-
-void SiONVoice::set_ks_extended(
-		int p_exciter_type, int p_exciter_color, int p_exciter_length,
-		int p_exciter_shape, int p_exciter_drive, int p_exciter_pitch_follow, int p_exciter_randomness,
-		int p_loop_filter_mode, int p_loop_damping, int p_loop_brightness,
-		int p_loop_loss, int p_loop_tone_tilt,
-		int p_stiffness, int p_dispersion, int p_bend, int p_odd_even,
-		int p_body_type, int p_body_amount, int p_body_tune, int p_body_width,
-		int p_pitch_drift, int p_pitch_drop, int p_pick_bend,
-		int p_tension_mod, int p_keytrack, int p_glide,
-		int p_release_mode) {
-	ks_exciter_type = p_exciter_type;
-	ks_exciter_color = p_exciter_color;
-	ks_exciter_length = p_exciter_length;
-	ks_exciter_shape = p_exciter_shape;
-	ks_exciter_drive = p_exciter_drive;
-	ks_exciter_pitch_follow = p_exciter_pitch_follow;
-	ks_exciter_randomness = p_exciter_randomness;
-	ks_loop_filter_mode = p_loop_filter_mode;
-	ks_loop_damping = p_loop_damping;
-	ks_loop_brightness = p_loop_brightness;
-	ks_loop_loss = p_loop_loss;
-	ks_loop_tone_tilt = p_loop_tone_tilt;
-	ks_stiffness = p_stiffness;
-	ks_dispersion = p_dispersion;
-	ks_bend = p_bend;
-	ks_odd_even = p_odd_even;
-	ks_body_type = p_body_type;
-	ks_body_amount = p_body_amount;
-	ks_body_tune = p_body_tune;
-	ks_body_width = p_body_width;
-	ks_pitch_drift = p_pitch_drift;
-	ks_pitch_drop = p_pitch_drop;
-	ks_pick_bend = p_pick_bend;
-	ks_tension_mod = p_tension_mod;
-	ks_keytrack = p_keytrack;
-	ks_glide = p_glide;
-	ks_release_mode = p_release_mode;
-}
-
-void SiONVoice::set_guitar6(double p_character_seed, double p_character_variation,
-		double p_string_damp, double p_string_damp_variation,
-		double p_plug_damp, double p_plug_damp_variation,
-		double p_string_tension, double p_stereo_spread, bool p_body_bypass) {
-	_set_engine_type(SiONModuleType::MODULE_GUITAR6);
-	channel_num = 0;
-	chip_type = SiONChipType::CHIP_GUITAR6;
-
-	guitar6_character_seed = p_character_seed;
-	guitar6_character_variation = p_character_variation;
-	guitar6_string_damp = p_string_damp;
-	guitar6_string_damp_variation = p_string_damp_variation;
-	guitar6_plug_damp = p_plug_damp;
-	guitar6_plug_damp_variation = p_plug_damp_variation;
-	guitar6_string_tension = p_string_tension;
-	guitar6_stereo_spread = p_stereo_spread;
-	guitar6_body_bypass = p_body_bypass;
-}
-
-void SiONVoice::set_monolith(
-		int p_sub_shape, int p_sub_level, int p_sub_drive, int p_pitch_drop,
-		int p_osc1_shape, int p_osc2_shape,
-		int p_mass, int p_bite, int p_shape,
-		int p_drive_mode, int p_grind,
-		int p_motion_target, int p_motion_amount, int p_motion_rate,
-		int p_width, int p_low_lock, int p_lens, int p_glide,
-		int p_sub_octave) {
-	_set_engine_type(SiONModuleType::MODULE_MONOLITH);
-	channel_num = 0;
-	chip_type = SiONChipType::CHIP_MONOLITH;
-
-	monolith_sub_shape = p_sub_shape;
-	monolith_sub_level = p_sub_level;
-	monolith_sub_drive = p_sub_drive;
-	monolith_pitch_drop = p_pitch_drop;
-	monolith_osc1_shape = p_osc1_shape;
-	monolith_osc2_shape = p_osc2_shape;
-	monolith_mass = p_mass;
-	monolith_bite = p_bite;
-	monolith_shape = p_shape;
-	monolith_drive_mode = p_drive_mode;
-	monolith_grind = p_grind;
-	monolith_motion_target = p_motion_target;
-	monolith_motion_amount = p_motion_amount;
-	monolith_motion_rate = p_motion_rate;
-	monolith_width = p_width;
-	monolith_low_lock = p_low_lock;
-	monolith_lens = p_lens;
-	monolith_glide = p_glide;
-	monolith_sub_octave = p_sub_octave;
-}
-
-void SiONVoice::set_iron(int p_voicing, int p_pick_attack, int p_pick_position, int p_palm_mute, int p_mute_velocity,
-		int p_sustain_ms, int p_release_ms, int p_stiffness, int p_pickup_position,
-		int p_gain, int p_tight_hz, int p_bass_db, int p_mid_db, int p_treble_db,
-		int p_cabinet, int p_mic, int p_humanize, int p_timing_ms,
-		int p_pick_scrape, int p_pick_bend_cents, int p_fret_noise) {
-	set_iron_params({ { p_voicing, p_pick_attack, p_pick_position, p_palm_mute, p_mute_velocity,
-			p_sustain_ms, p_release_ms, p_stiffness, p_pickup_position,
-			p_gain, p_tight_hz, p_bass_db, p_mid_db, p_treble_db,
-			p_cabinet, p_mic, p_humanize, p_timing_ms,
-			p_pick_scrape, p_pick_bend_cents, p_fret_noise } });
-}
-
-void SiONVoice::set_iron_params(const IronParams &p_params) {
-	_set_engine_type(SiONModuleType::MODULE_IRON);
-	channel_num = 0;
-	chip_type = SiONChipType::CHIP_IRON;
-	iron = p_params;
-}
-
-void SiONVoice::set_talus(
-			int p_strike_level, int p_strike_hardness, int p_strike_velocity, int p_noise_level, int p_noise_decay_ms, int p_noise_color_hz,
-			int p_tone_level, int p_tone_pitch_cents, int p_tone_shape, int p_tone_decay_ms, int p_variation, int p_model,
-			int p_tune_semitones, int p_fine_cents, int p_keytrack, int p_decay_ms, int p_damping, int p_position,
-			int p_stiffness, int p_low_cut_hz, int p_cut_hz, int p_cut_db, int p_tension_cents, int p_drive,
-			int p_wires_level, int p_wires_tension, int p_wires_tone_hz, int p_wires_decay_ms, int p_head, int p_direct,
-			int p_release_mode, int p_release_ms, int p_body_level, int p_body_hz, int p_body_decay_ms) {
-	set_talus_params({ {
-			p_strike_level, p_strike_hardness, p_strike_velocity, p_noise_level, p_noise_decay_ms, p_noise_color_hz,
-			p_tone_level, p_tone_pitch_cents, p_tone_shape, p_tone_decay_ms, p_variation, p_model,
-			p_tune_semitones, p_fine_cents, p_keytrack, p_decay_ms, p_damping, p_position,
-			p_stiffness, p_low_cut_hz, p_cut_hz, p_cut_db, p_tension_cents, p_drive,
-			p_wires_level, p_wires_tension, p_wires_tone_hz, p_wires_decay_ms, p_head, p_direct,
-			p_release_mode, p_release_ms, p_body_level, p_body_hz, p_body_decay_ms } });
-}
-
-void SiONVoice::set_talus_params(const TalusParams &p_params) {
-	_set_engine_type(SiONModuleType::MODULE_TALUS);
-	channel_num = 0;
-	chip_type = SiONChipType::CHIP_TALUS;
-	talus = p_params;
-}
-
-void SiONVoice::set_analog_like(int p_connection_type, int p_wave_shape1, int p_wave_shape2, int p_balance, int p_pitch_difference) {
-	channel_params->set_operator_count(2);
-	channel_params->set_analog_like(true);
-	channel_params->set_algorithm((p_connection_type >= 0 && p_connection_type <= 3) ? p_connection_type : 0);
-	channel_params->get_operator_params(0)->set_pulse_generator_type(p_wave_shape1);
-	channel_params->get_operator_params(1)->set_pulse_generator_type(p_wave_shape2);
-
-	int balance = CLAMP(p_balance, -64, 64);
-	int (&level_table)[129] = SiOPMRefTable::get_instance()->eg_linear_to_total_level_table;
-	channel_params->get_operator_params(0)->set_total_level(level_table[64 - balance]);
-	channel_params->get_operator_params(1)->set_total_level(level_table[balance + 64]);
-
-	channel_params->get_operator_params(0)->set_detune2(0);
-	channel_params->get_operator_params(1)->set_detune2(p_pitch_difference);
-
-	chip_type = SiONChipType::CHIP_ANALOG_LIKE;
-}
-
-void SiONVoice::set_envelope(int p_attack_rate, int p_decay_rate, int p_sustain_rate, int p_release_rate, int p_sustain_level, int p_total_level) {
-	for (int i = 0; i < channel_params->get_operator_count(); i++) {
-		Ref<SiOPMOperatorParams> op_params = channel_params->get_operator_params(i);
-		op_params->set_attack_rate(p_attack_rate);
-		op_params->set_decay_rate(p_decay_rate);
-		op_params->set_sustain_rate(p_sustain_rate);
-		op_params->set_release_rate(p_release_rate);
-		op_params->set_sustain_level(p_sustain_level);
-		op_params->set_total_level(p_total_level);
-	}
-}
-
-void SiONVoice::set_filter_envelope(int p_filter_type, int p_cutoff, int p_resonance, int p_attack_rate, int p_decay_rate1, int p_decay_rate2, int p_release_rate, int p_decay_cutoff1, int p_decay_cutoff2, int p_sustain_cutoff, int p_release_cutoff) {
-	channel_params->set_filter_type(p_filter_type);
-	channel_params->set_filter_cutoff(p_cutoff);
-	channel_params->set_filter_resonance(p_resonance);
-	channel_params->set_filter_attack_rate(p_attack_rate);
-	channel_params->set_filter_decay_rate1(p_decay_rate1);
-	channel_params->set_filter_decay_rate2(p_decay_rate2);
-	channel_params->set_filter_release_rate(p_release_rate);
-	channel_params->set_filter_decay_offset1(p_decay_cutoff1);
-	channel_params->set_filter_decay_offset2(p_decay_cutoff2);
-	channel_params->set_filter_sustain_offset(p_sustain_cutoff);
-	channel_params->set_filter_release_offset(p_release_cutoff);
-}
-
 void SiONVoice::set_pitch_envelope(TypedArray<int> p_envelope, int p_loop_point, int p_step) {
 	Vector<int> envelope_vector = make_vector_from_typed_array<int>(p_envelope);
 	UtilityFunctions::print("SiONVoice::set_pitch_envelope - envelope size: ", envelope_vector.size(), " first value: ", (envelope_vector.size() > 0 ? envelope_vector[0] : -999));
 	Ref<SiMMLEnvelopeTable> envelope = memnew(SiMMLEnvelopeTable(envelope_vector, p_loop_point));
 	UtilityFunctions::print("SiONVoice::set_pitch_envelope - envelope table created, is_null: ", envelope.is_null());
 	set_note_on_pitch_envelope(envelope, p_step);
-}
-
-void SiONVoice::set_amplitude_modulation(int p_depth, int p_end_depth, int p_delay, int p_term) {
-	amplitude_modulation_depth = p_depth;
-	channel_params->set_amplitude_modulation_depth(p_depth);
-
-	amplitude_modulation_depth_end = p_end_depth;
-	amplitude_modulation_delay = p_delay;
-	amplitude_modulation_term = p_term;
-}
-
-void SiONVoice::set_pitch_modulation(int p_depth, int p_end_depth, int p_delay, int p_term) {
-	pitch_modulation_depth = p_depth;
-	channel_params->set_pitch_modulation_depth(p_depth);
-
-	pitch_modulation_depth_end = p_end_depth;
-	pitch_modulation_delay = p_delay;
-	pitch_modulation_term = p_term;
-}
-
-void SiONVoice::set_operator_super_wave(int p_operator_index, int p_count, int p_spread) {
-	if (p_operator_index >= 0 && p_operator_index < channel_params->get_operator_count()) {
-		Ref<SiOPMOperatorParams> op_params = channel_params->get_operator_params(p_operator_index);
-		op_params->set_super_count(p_count);
-		op_params->set_super_spread(p_spread);
-	}
-}
-
-void SiONVoice::set_wave_table_index(int p_index) {
-	int clamped = p_index < 0 ? 0 : (p_index > 127 ? 127 : p_index);
-	channel_num = clamped;
-	if (channel_params.is_valid() && channel_params->get_operator_count() > 0) {
-		Ref<SiOPMOperatorParams> op = channel_params->get_operator_params(0);
-		if (op.is_valid()) {
-			op->set_pulse_generator_type(SiONPulseGeneratorType::PULSE_CUSTOM + clamped);
-		}
-	}
-}
-
-int SiONVoice::get_wave_table_index() {
-	if (channel_params.is_valid() && channel_params->get_operator_count() > 0) {
-		Ref<SiOPMOperatorParams> op = channel_params->get_operator_params(0);
-		if (op.is_valid()) {
-			return op->get_pulse_generator_type() - SiONPulseGeneratorType::PULSE_CUSTOM;
-		}
-	}
-	return 0;
 }
 
 Ref<SiONVoice> SiONVoice::clone() {
@@ -657,7 +413,11 @@ Ref<SiONVoice> SiONVoice::create_engine(SiONModuleType p_module_type, SiONChipTy
 		voice->chip_type = p_chip_type;
 	}
 	if (p_chip_type == SiONChipType::CHIP_ANALOG_LIKE) {
-		voice->set_analog_like(0, 0, 0, 0, 0);
+		voice->channel_params->set_operator_count(2);
+		voice->channel_params->set_analog_like(true);
+		voice->channel_params->set_analog_balance(0);
+		voice->channel_params->get_operator_params(0)->set_detune2(0);
+		voice->channel_params->get_operator_params(1)->set_detune2(0);
 	}
 	return voice;
 }
@@ -739,87 +499,16 @@ void SiONVoice::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("get_mml", "index", "chip_type", "append_postfix"), &SiONVoice::get_mml, DEFVAL(SiONChipType::CHIP_AUTO), DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("set_by_mml", "mml"), &SiONVoice::set_by_mml);
-
-	ClassDB::bind_method(D_METHOD("set_pms_guitar", "attack_rate", "decay_rate", "total_level", "fixed_pitch", "wave_shape", "tension"), &SiONVoice::set_pms_guitar, DEFVAL(48), DEFVAL(48), DEFVAL(0), DEFVAL(0), DEFVAL(20), DEFVAL(8));
-	ClassDB::bind_method(D_METHOD("set_ks_extended",
-			"exciter_type", "exciter_color", "exciter_length", "exciter_shape", "exciter_drive", "exciter_pitch_follow", "exciter_randomness",
-			"loop_filter_mode", "loop_damping", "loop_brightness", "loop_loss", "loop_tone_tilt",
-			"stiffness", "dispersion", "bend", "odd_even",
-			"body_type", "body_amount", "body_tune", "body_width",
-			"pitch_drift", "pitch_drop", "pick_bend", "tension_mod", "keytrack", "glide",
-			"release_mode"),
-			&SiONVoice::set_ks_extended,
-			DEFVAL(0), DEFVAL(50), DEFVAL(50), DEFVAL(50), DEFVAL(0), DEFVAL(100), DEFVAL(0),
-			DEFVAL(0), DEFVAL(50), DEFVAL(50), DEFVAL(2), DEFVAL(50),
-			DEFVAL(0), DEFVAL(0), DEFVAL(50), DEFVAL(50),
-			DEFVAL(0), DEFVAL(0), DEFVAL(50), DEFVAL(50),
-			DEFVAL(0), DEFVAL(0), DEFVAL(50), DEFVAL(50), DEFVAL(100), DEFVAL(0),
-			DEFVAL(0));
-	ClassDB::bind_method(D_METHOD("set_guitar6", "character_seed", "character_variation", "string_damp", "string_damp_variation", "plug_damp", "plug_damp_variation", "string_tension", "stereo_spread", "body_bypass"), &SiONVoice::set_guitar6, DEFVAL(65535.0), DEFVAL(0.5), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.5), DEFVAL(0.25), DEFVAL(0.0), DEFVAL(0.2), DEFVAL(false));
-	ClassDB::bind_method(D_METHOD("set_monolith",
-			"sub_shape", "sub_level", "sub_drive", "pitch_drop",
-			"osc1_shape", "osc2_shape",
-			"mass", "bite", "shape",
-			"drive_mode", "grind",
-			"motion_target", "motion_amount", "motion_rate",
-			"width", "low_lock", "lens", "glide",
-			"sub_octave"),
-			&SiONVoice::set_monolith,
-			DEFVAL(0), DEFVAL(80), DEFVAL(0), DEFVAL(0),
-			DEFVAL(0), DEFVAL(0),
-			DEFVAL(40), DEFVAL(40), DEFVAL(0),
-			DEFVAL(0), DEFVAL(0),
-			DEFVAL(0), DEFVAL(0), DEFVAL(40),
-			DEFVAL(0), DEFVAL(100), DEFVAL(0), DEFVAL(0),
-			DEFVAL(0));
 	const IronParams iron_defaults;
 	const int *d = iron_defaults.values;
-	ClassDB::bind_method(D_METHOD("set_iron",
-			"voicing", "pick_attack", "pick_position", "palm_mute", "mute_velocity",
-			"sustain_ms", "release_ms", "stiffness", "pickup_position",
-			"gain", "tight_hz", "bass_db", "mid_db", "treble_db",
-			"cabinet", "mic", "humanize", "timing_ms",
-			"pick_scrape", "pick_bend_cents", "fret_noise"),
-			&SiONVoice::set_iron,
-			DEFVAL(d[0]), DEFVAL(d[1]), DEFVAL(d[2]), DEFVAL(d[3]), DEFVAL(d[4]),
-			DEFVAL(d[5]), DEFVAL(d[6]), DEFVAL(d[7]), DEFVAL(d[8]),
-			DEFVAL(d[9]), DEFVAL(d[10]), DEFVAL(d[11]), DEFVAL(d[12]), DEFVAL(d[13]),
-			DEFVAL(d[14]), DEFVAL(d[15]), DEFVAL(d[16]), DEFVAL(d[17]),
-			DEFVAL(d[18]), DEFVAL(d[19]), DEFVAL(d[20]));
 	const TalusParams talus_defaults;
 	const int *t = talus_defaults.values;
-	ClassDB::bind_method(D_METHOD("set_talus",
-			"strike_level", "strike_hardness", "strike_velocity", "noise_level", "noise_decay_ms", "noise_color_hz",
-			"tone_level", "tone_pitch_cents", "tone_shape", "tone_decay_ms", "variation", "model",
-			"tune_semitones", "fine_cents", "keytrack", "decay_ms", "damping", "position",
-			"stiffness", "low_cut_hz", "cut_hz", "cut_db", "tension_cents", "drive",
-			"wires_level", "wires_tension", "wires_tone_hz", "wires_decay_ms", "head", "direct",
-			"release_mode", "release_ms", "body_level", "body_hz", "body_decay_ms"),
-			&SiONVoice::set_talus,
-			DEFVAL(t[0]), DEFVAL(t[1]), DEFVAL(t[2]), DEFVAL(t[3]), DEFVAL(t[4]), DEFVAL(t[5]),
-			DEFVAL(t[6]), DEFVAL(t[7]), DEFVAL(t[8]), DEFVAL(t[9]), DEFVAL(t[10]), DEFVAL(t[11]),
-			DEFVAL(t[12]), DEFVAL(t[13]), DEFVAL(t[14]), DEFVAL(t[15]), DEFVAL(t[16]), DEFVAL(t[17]),
-			DEFVAL(t[18]), DEFVAL(t[19]), DEFVAL(t[20]), DEFVAL(t[21]), DEFVAL(t[22]), DEFVAL(t[23]),
-			DEFVAL(t[24]), DEFVAL(t[25]), DEFVAL(t[26]), DEFVAL(t[27]), DEFVAL(t[28]), DEFVAL(t[29]),
-			DEFVAL(t[30]), DEFVAL(t[31]), DEFVAL(t[32]), DEFVAL(t[33]), DEFVAL(t[34]));
-	ClassDB::bind_method(D_METHOD("set_analog_like", "connection_type", "wave_shape1", "wave_shape2", "balance", "pitch_difference"), &SiONVoice::set_analog_like, DEFVAL(1), DEFVAL(1), DEFVAL(0), DEFVAL(0));
-
-	ClassDB::bind_method(D_METHOD("set_envelope", "attack_rate", "decay_rate", "sustain_rate", "release_rate", "sustain_level", "total_level"), &SiONVoice::set_envelope);
-	ClassDB::bind_method(D_METHOD("set_filter_envelope", "filter_type", "cutoff", "resonance", "attack_rate", "decay_rate1", "decay_rate2", "release_rate", "decay_cutoff1", "decay_cutoff2", "sustain_cutoff", "release_cutoff"), &SiONVoice::set_filter_envelope, DEFVAL(0), DEFVAL(128), DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(128), DEFVAL(64), DEFVAL(32), DEFVAL(128));
 	ClassDB::bind_method(D_METHOD("set_pitch_envelope", "envelope", "loop_point", "step"), &SiONVoice::set_pitch_envelope, DEFVAL(-1), DEFVAL(1));
-	ClassDB::bind_method(D_METHOD("set_amplitude_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_amplitude_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
-	ClassDB::bind_method(D_METHOD("set_pitch_modulation", "depth", "end_depth", "delay", "term"), &SiONVoice::set_pitch_modulation, DEFVAL(0), DEFVAL(0), DEFVAL(0), DEFVAL(0));
-
-	ClassDB::bind_method(D_METHOD("set_operator_super_wave", "operator_index", "count", "spread"), &SiONVoice::set_operator_super_wave);
-
-	ClassDB::bind_method(D_METHOD("set_wave_table_index", "index"), &SiONVoice::set_wave_table_index);
-	ClassDB::bind_method(D_METHOD("get_wave_table_index"), &SiONVoice::get_wave_table_index);
 
 	ClassDB::bind_method(D_METHOD("clone"), &SiONVoice::clone);
 
 	ClassDB::bind_method(D_METHOD("set_sampler_wave", "index", "data", "ignore_note_off", "pan", "src_channel_count", "channel_count", "fixed_pitch"), &SiONVoice::set_sampler_wave, DEFVAL(false), DEFVAL(0), DEFVAL(2), DEFVAL(0), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("set_sampler_voice", "data", "ignore_note_off", "channel_count"), &SiONVoice::set_sampler_voice, DEFVAL(false), DEFVAL(2));
-	ClassDB::bind_method(D_METHOD("set_sampler_table", "table"), &SiONVoice::set_sampler_table);
 	ClassDB::bind_method(D_METHOD("get_sampler_data", "note_number"), &SiONVoice::get_sampler_data);
 
 	ClassDB::bind_method(D_METHOD("set_pitch_shift", "shift"), &SiONVoice::set_pitch_shift);
@@ -851,29 +540,4 @@ SiONVoice::SiONVoice(SiONModuleType p_module_type, int p_channel_num, int p_atta
 		channel_params->get_operator_params(1)->set_pulse_generator_type(p_wave_shape2);
 		channel_params->get_operator_params(1)->set_detune2(p_pitch_shift2);
 	}
-}
-
-Ref<SiOPMWaveSamplerData> SiONVoice::get_sampler_data(int p_note_number) const {
-	if (get_module_type() != SiONModuleType::MODULE_SAMPLE) {
-		return Ref<SiOPMWaveSamplerData>();
-	}
-
-	if (wave_data.is_null()) {
-		return Ref<SiOPMWaveSamplerData>();
-	}
-
-	// Case 1: wave_data is a direct sampler data object
-	Ref<SiOPMWaveSamplerData> sd = wave_data;
-	if (sd.is_valid()) {
-		return sd;
-	}
-
-	// Case 2: wave_data is a sampler table
-	Ref<SiOPMWaveSamplerTable> tbl = wave_data;
-	if (tbl.is_valid()) {
-		int idx = p_note_number & (SiOPMRefTable::NOTE_TABLE_SIZE - 1);
-		return tbl->get_sample(idx);
-	}
-
-	return Ref<SiOPMWaveSamplerData>();
 }

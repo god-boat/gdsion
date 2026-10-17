@@ -214,9 +214,17 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 	SiMMLRefTable::initialize();
 	SiMMLTrack::initialize();
 	EngineParamSchema::register_schema(SiOPMChannelStrata::get_engine_param_schema());
+	EngineParamSchema::register_schema(SiOPMChannelFM::get_scc_engine_param_schema());
+	EngineParamSchema::register_schema(SiOPMChannelSampler::get_engine_param_schema());
+	EngineParamSchema::register_schema(SiOPMChannelMonolith::get_engine_param_schema());
+	EngineParamSchema::register_schema(SiOPMChannelGuitar6::get_engine_param_schema());
+	EngineParamSchema::register_schema(SiOPMChannelKS::get_engine_param_schema());
+	EngineParamSchema::register_schema(SiOPMChannelIron::get_engine_param_schema());
+	EngineParamSchema::register_schema(SiOPMChannelTalus::get_engine_param_schema());
+
 	for (const KeyValue<SiONModuleType, SiMMLChannelSettings *> &entry : SiMMLRefTable::get_instance()->channel_settings_map) {
 		const int kind = entry.key;
-		if (kind == SiONModuleType::MODULE_STRATA) continue;
+		if (EngineParamSchema::find_engine(kind) != nullptr) continue;
 		const SiMMLChannelSettings *settings = entry.value;
 		const SiOPMChannelManager::ChannelType channel_type = settings->get_channel_type();
 		const EngineParamSchema &shared = channel_type == SiOPMChannelManager::CHANNEL_FM || channel_type == SiOPMChannelManager::CHANNEL_KS

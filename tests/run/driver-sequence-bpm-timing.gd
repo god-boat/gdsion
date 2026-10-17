@@ -46,7 +46,7 @@ func _assert_sequence_duration(scene_tree: SceneTree, label: String, mml: String
 	if voice == null:
 		await _cleanup_driver(scene_tree, driver, renderer)
 		return
-	voice.set_envelope(63, 0, 0, 63, 0, 0)
+	voice.get_channel_params().get_operator_params(0).set_attack_rate(63)
 
 	var tracks := driver.sequence_on(data, voice, 0, 0, 1, 0, false)
 	_assert_equal("%s: track count" % label, tracks.size(), 1)

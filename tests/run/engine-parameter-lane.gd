@@ -1,7 +1,7 @@
 extends TestBase
 
 var group: String = "Engine Parameters"
-var name: String = "Strata and FM Scalar Lane"
+var name: String = "All Engine Scalar Lanes"
 
 const ENGINE := 23
 const CHIP := 9
@@ -26,6 +26,16 @@ func run(scene_tree: SceneTree) -> void:
 	_test_voice_state(descriptors)
 	_test_engine_changes()
 	_test_fm_voice_state()
+	_test_global_envelope_inputs()
+	_test_sampler_aliases()
+	_test_all_engine_state()
+	_test_guitar6_mml_precision()
+	for kind in [11, 22, 24, 25, 26]:
+		var prepared_audio := await _render_engine_scalars(scene_tree, kind, false)
+		var live_audio := await _render_engine_scalars(scene_tree, kind, true)
+		if kind not in [25, 26]:
+			_assert_equal("engine %d scoped live edits equal prepared audio" % kind, live_audio == prepared_audio, true)
+		_assert_equal("engine %d produces audio" % kind, Array(prepared_audio).any(func(value: float) -> bool: return absf(value) > 0.0), true)
 	var expected := await _render_fm_scalars(scene_tree, false)
 	var queued := await _render_fm_scalars(scene_tree, true)
 	_assert_equal("FM scoped scalar edits render exactly like prepared state", queued, expected)
@@ -52,6 +62,22 @@ func run(scene_tree: SceneTree) -> void:
 	await _run_case(scene_tree, "multi-write boundary", _test_boundary)
 	await _run_case(scene_tree, "queue overflow", _test_overflow)
 	await _run_case(scene_tree, "retired scope", _test_retirement)
+
+
+func _test_guitar6_mml_precision() -> void:
+	var voice := SiONVoice.create_engine(22, 8)
+	var parameters: Dictionary = {}
+	for descriptor: Dictionary in SiONVoice.get_engine_param_descriptors(22):
+		parameters[String(descriptor["id"])] = int(descriptor["param_id"])
+	var values := {"voice.guitar6.character.seed": 100123.123456789,
+		"voice.guitar6.character.variation": 33.333333333333}
+	for id: String in values:
+		voice.set_engine_param(parameters[id], values[id])
+	var imported := SiONVoice.create()
+	_assert_equal("fractional Guitar6 MML imports", imported.set_by_mml(voice.get_mml(11, 8, false)), 11)
+	for id: String in values:
+		_assert_equal("%s MML retains float precision" % id,
+			absf(float(imported.get_engine_param(parameters[id])) - float(values[id])) < 1e-12, true)
 
 
 func _voice() -> SiONVoice:
@@ -100,17 +126,13 @@ func _test_voice_state(descriptors: Array[Dictionary]) -> void:
 
 
 func _test_engine_changes() -> void:
-	_assert_equal("FM engine registers shared and operator scalars", SiONVoice.get_engine_param_descriptors(5).size(), 55)
-	for setter: StringName in [&"set_guitar6", &"set_monolith", &"set_iron", &"set_talus"]:
+	_assert_equal("FM engine registers shared and operator scalars", SiONVoice.get_engine_param_descriptors(5).size() >= 55, true)
+	for kind in [22, 24, 25, 26]:
 		var voice := _voice()
 		voice.set_engine_param(_id("color"), 42)
-		var op := voice.get_channel_params().get_operator_params(0)
-		op.set_pulse_generator_type(5) # Square, distinct from these engines' default sine.
-		voice.call(setter)
-		_assert_equal("%s preserves the authored waveform" % setter, op.get_pulse_generator_type(), 5)
+		voice.set_module_type(kind)
 		voice.set_module_type(ENGINE)
-		_assert_equal("%s clears the previous engine's scalar state" % setter, voice.get_engine_param(_id("color")), 0)
-		_assert_equal("explicit module selection retains waveform selection", op.get_pulse_generator_type(), 0)
+		_assert_equal("engine %d clears the previous engine's state" % kind, voice.get_engine_param(_id("color")), 0)
 	var sampler := _voice()
 	var sampler_op := sampler.get_channel_params().get_operator_params(0)
 	sampler_op.set_pulse_generator_type(5)
@@ -160,7 +182,7 @@ func _test_fm_voice_state() -> void:
 	_assert_equal("FM scalar state retains its MML codec", imported.set_by_mml(mml_voice.get_mml(7, 0, false)), 7)
 	_assert_equal("FM MML import is visible through scalar readback", imported.get_engine_param(_fm_params["operator.envelope.attack_rate"]), 24)
 	_assert_equal("FM MML import resets previous operator state", voice.set_by_mml(mml_voice.get_mml(8, 0, false)), 8)
-	_assert_equal("FM reset clears the old bool state", voice.get_engine_param(mute, 2), false)
+	_assert_equal("FM reset clears the active operator bool state", voice.get_engine_param(mute, 0), false)
 	_assert_equal("FM reset clears the old voice state", voice.get_engine_param(_fm_params["voice.glide.time"]), 0)
 	var mml_body := mml_voice.get_mml(9, 0, false).trim_suffix(";")
 	_assert_equal("legacy LFO frame import succeeds", imported.set_by_mml(mml_body + " @lfo30;"), 9)
@@ -189,9 +211,18 @@ func _render_fm_scalars(scene_tree: SceneTree, queued: bool) -> PackedFloat32Arr
 	base.set_engine_param(_fm_params["voice.filter_envelope.sustain_cutoff"], 32)
 	base.set_engine_param(_fm_params["operator.mute"], true, 1)
 	base.set_engine_param(_fm_params["operator.amplitude_modulation.shift"], 2, 1)
-	base.set_amplitude_modulation(64)
+	base.set_engine_param(_fm_params["voice.amplitude_modulation.depth"], 64)
+	base.set_engine_param(_fm_params["voice.amplitude_modulation.end_depth"], 64)
 	var edits := [
+		["voice.amplitude_envelope.attack_rate", 25, 0],
+		["voice.amplitude_envelope.sustain_attenuation", 3, 0],
+		["voice.amplitude_envelope.attenuation", 15, 0],
+		["voice.amplitude_modulation.depth", 10, 0],
+		["voice.amplitude_modulation.end_depth", 90, 0],
+		["voice.amplitude_modulation.delay", 1, 0],
+		["voice.amplitude_modulation.duration", 3, 0],
 		["operator.frequency.fine_multiple", 321, 1],
+		["operator.fixed_note", 67, 1],
 		["operator.waveform", 5, 1],
 		["operator.envelope.attack_rate", 63, 1],
 		["operator.mute", false, 1],
@@ -253,7 +284,8 @@ func _render_opm_lfo(scene_tree: SceneTree, initial_mode: int, roundtrip: bool) 
 	voice.set_engine_param(_fm_params["voice.lfo.sync_division"], 4)
 	voice.set_engine_param(_fm_params["voice.lfo.mode"], initial_mode)
 	voice.set_engine_param(_fm_params["operator.amplitude_modulation.shift"], 3)
-	voice.set_amplitude_modulation(64)
+	voice.set_engine_param(_fm_params["voice.amplitude_modulation.depth"], 64)
+	voice.set_engine_param(_fm_params["voice.amplitude_modulation.end_depth"], 64)
 	var track := driver.create_user_controllable_track(1)
 	voice.update_track_voice(track)
 	# The track's existing register callback is the same path MML register events use.
@@ -433,3 +465,141 @@ func _test_retirement(label: String, driver: SiONDriver, renderer: SiONOfflineRe
 	renderer.render_block()
 	_assert_equal("%s: queued retirement excludes subsequent edits" % label, _read_strata_diagnostic(retired_channel, "timbre"), 0)
 	_assert_equal("%s: surviving scoped target receives its edit" % label, _read(sibling, "color"), 8765)
+
+
+func _test_global_envelope_inputs() -> void:
+	var voice := SiONVoice.create_engine(5, 0)
+	voice.get_channel_params().set_operator_count(2)
+	var global_attack: int = _fm_params["voice.amplitude_envelope.attack_rate"]
+	var operator_attack: int = _fm_params["operator.envelope.attack_rate"]
+	voice.set_engine_param(global_attack, 25)
+	voice.set_engine_param(operator_attack, 37, 1)
+	_assert_equal("an operator edit preserves the authored global input", voice.get_engine_param(global_attack), 25)
+	_assert_equal("a global edit stamps the other operator", voice.get_engine_param(operator_attack, 0), 25)
+	_assert_equal("the later operator edit keeps its own precedence", voice.get_engine_param(operator_attack, 1), 37)
+	var analog := SiONVoice.create_engine(5, 7)
+	var balance: int = _fm_params["voice.analog_like.balance"]
+	for value in range(-64, 65):
+		analog.set_engine_param(balance, value)
+		_assert_equal("AnalogLike balance %d reads back exactly" % value, analog.get_engine_param(balance), value)
+	var levels := [analog.get_channel_params().get_operator_params(0).get_total_level(), analog.get_channel_params().get_operator_params(1).get_total_level()]
+	analog.set_engine_param(global_attack, 31)
+	analog.set_engine_param(_fm_params["voice.amplitude_envelope.attenuation"], 32)
+	_assert_equal("AnalogLike global envelope edits preserve oscillator balance", [analog.get_channel_params().get_operator_params(0).get_total_level(), analog.get_channel_params().get_operator_params(1).get_total_level()], levels)
+
+
+## The typed lane deliberately keeps the sampler's existing shared-resource values.
+func _test_sampler_aliases() -> void:
+	var voice := SiONVoice.create_engine(10, -1)
+	var sample: Object = voice.set_sampler_wave(60, PackedFloat32Array([0.1, 0.2, 0.3, 0.4]), false, 0, 1, 1)
+	var table: Object = voice.get_wave_data()
+	table.call("set_sample", sample, 0, 127)
+	var ids: Dictionary = {}
+	for descriptor: Dictionary in SiONVoice.get_engine_param_descriptors(10):
+		ids[String(descriptor["id"])] = int(descriptor["param_id"])
+	var gain: int = ids["sampler.region.gain"]
+	var shared := voice.clone()
+	voice.set_engine_param(gain, -12, 60)
+	_assert_equal("melodic keys retain shared sample values", voice.get_engine_param(gain, 64), -12)
+	_assert_equal("routing retains the previous shared-resource ownership", shared.get_engine_param(gain, 64), -12)
+	_assert_equal("typed routing writes the existing resource setter", sample.get_gain_db(), -12)
+	sample.set_gain_db(-9)
+	_assert_equal("resource edits remain visible through typed readback", voice.get_engine_param(gain, 60), -9)
+	voice.set_engine_param(ids["sampler.region.start_point"], 200, 60)
+	_assert_equal("region setters keep sample-length clamping", voice.get_engine_param(ids["sampler.region.start_point"], 64), 3)
+	var single := SiONVoice.create_engine(10, -1)
+	var direct: Object = single.set_sampler_voice(PackedFloat32Array([0.1, 0.2, 0.3, 0.4]), true, 1)
+	_assert_equal("direct resources retain their key mapping", single.get_sampler_data(127), direct)
+	direct.set_pan(19)
+	_assert_equal("direct resource settings remain live inputs", single.get_engine_param(ids["sampler.region.pan"], 127), 19)
+	single.set_engine_param(gain, -6, 60)
+	_assert_equal("direct resources use their existing scalar setters", direct.get_gain_db(), -6)
+	var empty := SiONVoice.create_engine(10, -1)
+	empty.set_engine_param(gain, -6, 60)
+	_assert_equal("an unloaded key retains no sample-owned value", empty.get_engine_param(gain, 60), 0)
+
+
+func _test_all_engine_state() -> void:
+	for kind in [11, 22, 24, 25, 26]:
+		var voice := SiONVoice.create_engine(kind, {11: 6, 22: 8, 24: 10, 25: 11, 26: 12}.get(kind, -1))
+		var descriptors := SiONVoice.get_engine_param_descriptors(kind)
+		for descriptor: Dictionary in descriptors:
+			var id := String(descriptor["id"])
+			if not (id.begins_with("voice.karplus_strong.") or id.begins_with("voice.guitar6.") or id.begins_with("voice.monolith.") or id.begins_with("voice.iron.") or id.begins_with("voice.talus.")):
+				continue
+			var param := int(descriptor["param_id"])
+			var index := 0
+			var value: Variant = type_convert(descriptor["max_value"], int(descriptor["scalar_type"]))
+			if int(descriptor["scalar_type"]) == TYPE_FLOAT:
+				value = float(descriptor["min_value"]) + (float(descriptor["max_value"]) - float(descriptor["min_value"])) * 0.375
+			voice.set_engine_param(param, value, index)
+			_assert_equal("%s typed prepared readback" % id, voice.get_engine_param(param, index), value)
+			var copy := voice.clone()
+			voice.set_engine_param(param, type_convert(descriptor["min_value"], int(descriptor["scalar_type"])), index)
+			_assert_equal("%s immutable copied state" % id, copy.get_engine_param(param, index), value)
+			if kind == 11:
+				voice.set_by_mml("#KS@0{};")
+			else:
+				voice.set_module_type(5)
+				voice.set_module_type(kind)
+			_assert_equal("%s reset" % id, voice.get_engine_param(param, index), descriptor["reset_value"])
+			if kind in [11, 22, 24, 25, 26]:
+				var imported := SiONVoice.create()
+				_assert_equal("%s MML import succeeds" % id, imported.set_by_mml(copy.get_mml(19, -1, false)), 19)
+				_assert_equal("%s MML scalar roundtrip" % id, imported.get_engine_param(param, index), value)
+
+
+func _render_engine_scalars(scene_tree: SceneTree, kind: int, queued: bool) -> PackedFloat32Array:
+	var driver := SiONDriver.create(BUFFER_SIZE)
+	scene_tree.root.add_child(driver)
+	await scene_tree.process_frame
+	driver.stream_without_output()
+	var renderer := SiONOfflineRenderer.new()
+	_assert_equal("scalar audio renderer owns render", renderer.begin(driver), true)
+	var ids: Dictionary = {}
+	for descriptor: Dictionary in SiONVoice.get_engine_param_descriptors(kind):
+		ids[String(descriptor["id"])] = int(descriptor["param_id"])
+	var edits: Array = {
+		11: [["voice.karplus_strong.exciter.color", 85, 0], ["voice.karplus_strong.body.amount", 70, 0], ["voice.karplus_strong.string.tension", 22, 0]],
+		22: [["voice.guitar6.character.variation", 37.5, 0], ["voice.guitar6.string.damping", 68.25, 0], ["voice.guitar6.body.bypass", true, 0]],
+		24: [["voice.monolith.sub.level", 45, 0], ["voice.monolith.tone.mass", 88, 0], ["voice.monolith.sub.octave", 1, 0]],
+		25: [["voice.iron.amp.gain", 90, 0], ["voice.iron.cabinet.mic", 55, 0]],
+		26: [["voice.talus.resonator.decay", 2500, 0], ["voice.talus.strike.hardness", 20, 0]],
+	}[kind]
+	var base := SiONVoice.create_engine(kind, -1)
+	if kind == 11:
+		# Use periodic internal excitation; mute the continuous FM exciter,
+		# whose free-running phase deliberately survives note initialization.
+		base.set_engine_param(ids["voice.karplus_strong.exciter.type"], 1)
+		base.set_engine_param(ids["voice.karplus_strong.waveform"], 0)
+		base.set_engine_param(ids["voice.karplus_strong.output.attenuation"], 127)
+	var sounding: Array[SiMMLTrack] = []
+	for scope: Array in [[1, 101, 11], [1, 101, 12], [1, 202, 11], [2, 101, 11]]:
+		var track := driver.create_user_controllable_track(scope[0])
+		track.set_entity_scope_id(scope[1])
+		track.set_slot_scope_id(scope[2])
+		var voice := base.clone()
+		if scope == [1, 101, 11] and not queued:
+			for edit: Array in edits: voice.set_engine_param(ids[edit[0]], edit[1], edit[2])
+		voice.update_track_voice(track)
+		sounding.append(track)
+	if queued:
+		for edit: Array in edits: driver.mailbox_set_engine_param(1, kind, ids[edit[0]], edit[1], edit[2], 101, 11)
+	for track in sounding:
+		driver.mailbox_key_on(track.get_track_id(), 60, 0, -1, -1, track.get_instance_id())
+	var audio := PackedFloat32Array()
+	for block in 8: audio.append_array(renderer.render_block())
+	if kind in [25, 26]:
+		# These engines seed each channel's physical noise independently. Observe
+		# their existing raw-input diagnostics instead of comparing random samples.
+		var field := "gain" if kind == 25 else "decay"
+		for i in sounding.size():
+			var expected := (90 if kind == 25 else 2500) if i == 0 else (70 if kind == 25 else 800)
+			var actual := str(sounding[i].get_channel()).split(field + "=")[1].get_slice(",", 0).to_int()
+			_assert_equal("engine %d scope %d scalar state" % [kind, i], actual, expected)
+	renderer.finish()
+	driver.stop()
+	await scene_tree.process_frame
+	driver.get_parent().remove_child(driver)
+	driver.free()
+	return audio

@@ -60,6 +60,7 @@ class TranslatorUtil {
 	static OperatorParamsSizes _get_operator_params_sizes(const Ref<SiOPMChannelParams> &p_params);
 
 public:
+	static String format_mml_float(double p_value);
 	// Schema declaration order, then instance order, is the append-only MML layout.
 	static String get_engine_params_as_mml(const EngineParamState &p_params);
 	static bool parse_engine_params(EngineParamState &p_params, const String &p_data_string);

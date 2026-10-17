@@ -210,7 +210,47 @@ protected:
 	String _to_string() const;
 
 public:
-	void set_talus_params(const TalusParams &p_params);
+	enum EngineParameter : uint32_t {
+		PARAM_STRIKE_LEVEL = 0x800,
+		PARAM_STRIKE_HARDNESS = 0x801,
+		PARAM_STRIKE_VELOCITY = 0x802,
+		PARAM_NOISE_LEVEL = 0x803,
+		PARAM_NOISE_DECAY = 0x804,
+		PARAM_NOISE_COLOR = 0x805,
+		PARAM_TONE_LEVEL = 0x806,
+		PARAM_TONE_PITCH = 0x807,
+		PARAM_TONE_SHAPE = 0x808,
+		PARAM_TONE_DECAY = 0x809,
+		PARAM_STRIKE_VARIATION = 0x80a,
+		PARAM_RESONATOR_MODEL = 0x80b,
+		PARAM_RESONATOR_TUNE = 0x80c,
+		PARAM_RESONATOR_FINE = 0x80d,
+		PARAM_RESONATOR_KEYTRACK = 0x80e,
+		PARAM_RESONATOR_DECAY = 0x80f,
+		PARAM_RESONATOR_DAMPING = 0x810,
+		PARAM_RESONATOR_POSITION = 0x811,
+		PARAM_RESONATOR_STIFFNESS = 0x812,
+		PARAM_RESONATOR_LOW_CUT = 0x813,
+		PARAM_RESONATOR_CUT_FREQ = 0x814,
+		PARAM_RESONATOR_CUT_DEPTH = 0x815,
+		PARAM_RESONATOR_TENSION = 0x816,
+		PARAM_RESONATOR_DRIVE = 0x817,
+		PARAM_WIRES_LEVEL = 0x818,
+		PARAM_WIRES_TENSION = 0x819,
+		PARAM_WIRES_TONE = 0x81a,
+		PARAM_WIRES_DECAY = 0x81b,
+		PARAM_OUTPUT_HEAD = 0x81c,
+		PARAM_OUTPUT_DIRECT = 0x81d,
+		PARAM_RELEASE_MODE = 0x81e,
+		PARAM_RELEASE_TIME = 0x81f,
+		PARAM_BODY_LEVEL = 0x820,
+		PARAM_BODY_FREQ = 0x821,
+		PARAM_BODY_DECAY = 0x822,
+	};
+	static const EngineParamSchema &get_engine_param_schema();
+	virtual void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) override;
+
+	void _refresh_coefficients();
 	const TalusParams &get_talus_params() const { return _params; }
 
 	virtual int get_pitch() const override { return _current_pitch; }

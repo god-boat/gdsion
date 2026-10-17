@@ -27,21 +27,24 @@
 #include "sequencer/simml_ref_table.h"
 #include "utils/godot_util.h"
 
+String TranslatorUtil::format_mml_float(double p_value) {
+	std::ostringstream number;
+	number.imbue(std::locale::classic());
+	number << std::setprecision(std::numeric_limits<double>::max_digits10) << p_value;
+	return String(number.str().c_str());
+}
+
 String TranslatorUtil::get_engine_params_as_mml(const EngineParamState &p_params) {
 	PackedStringArray parts;
 	const EngineParamSchema &schema = *p_params.schema();
 	for (int i = 0; i < schema.count; i++) {
 		const EngineParamDescriptor &d = schema.parameters[i];
+		if (!d.uses_local_state() || !d.applies_on_voice) continue;
 		for (int index = 0; index < d.instance_count; index++) {
 			EngineParamValue value = p_params.get(d.id, index);
 			switch (value.type) {
 				case EngineParamType::INT: parts.push_back(itos(value.integer)); break;
-				case EngineParamType::FLOAT: {
-					std::ostringstream number;
-					number.imbue(std::locale::classic());
-					number << std::setprecision(std::numeric_limits<double>::max_digits10) << value.real;
-					parts.push_back(String(number.str().c_str()));
-				} break;
+				case EngineParamType::FLOAT: parts.push_back(format_mml_float(value.real)); break;
 				case EngineParamType::BOOL: parts.push_back(value.boolean ? "1" : "0"); break;
 			}
 		}
@@ -58,6 +61,7 @@ bool TranslatorUtil::parse_engine_params(EngineParamState &p_params, const Strin
 	int position = 0;
 	for (int i = 0; i < schema.count; i++) {
 		const EngineParamDescriptor &d = schema.parameters[i];
+		if (!d.uses_local_state() || !d.applies_on_voice) continue;
 		for (int index = 0; index < d.instance_count && position < parts.size(); index++) {
 			String token = parts[position++].strip_edges();
 			EngineParamValue value;
@@ -81,6 +85,7 @@ bool TranslatorUtil::parse_engine_params(EngineParamState &p_params, const Strin
 		}
 	}
 	// Omitted trailing values retain the schema reset, including nonzero resets.
+	ERR_FAIL_COND_V_MSG(position != parts.size(), false, "Too many engine MML parameters.");
 	p_params = parsed;
 	return true;
 }
@@ -430,6 +435,7 @@ void TranslatorUtil::_set_al_params_by_array(const Ref<SiOPMChannelParams> &p_pa
 	op_params1->set_pulse_generator_type(_sanitize_param_loop(p_data[2], 0, 511, "W2"));
 
 	int balance = _sanitize_param_clamp(p_data[3], -64, 64, "BL");
+	p_params->set_analog_balance(balance);
 	int (&tl_table)[129] = SiOPMRefTable::get_instance()->eg_linear_to_total_level_table;
 	op_params0->total_level = tl_table[64 - balance];
 	op_params1->total_level = tl_table[balance + 64];
@@ -494,7 +500,7 @@ void TranslatorUtil::parse_ks_params(const Ref<SiOPMChannelParams> &p_params, co
 		if (parts.size() >= 3 && !parts[2].is_empty()) r_decay_rate  = _sanitize_param_loop(parts[2].to_int(), 0, 63,  "DR");
 		if (parts.size() >= 4 && !parts[3].is_empty()) r_total_level = _sanitize_param_loop(parts[3].to_int(), 0, 127, "TL");
 		if (parts.size() >= 5 && !parts[4].is_empty()) r_fixed_pitch = _sanitize_param_loop(parts[4].to_int(), 0, 127, "FN");
-		if (parts.size() >= 6 && !parts[5].is_empty()) r_tension     = _sanitize_param_loop(parts[5].to_int(), 0, 64,  "TN");
+		if (parts.size() >= 6 && !parts[5].is_empty()) r_tension     = _sanitize_param_clamp(parts[5].to_int(), 0, 63, "TN");
 	}
 
 	// Initialize p_params to reflect a 1-operator SiOPM channel with KS-friendly defaults
@@ -858,7 +864,7 @@ Vector<int> TranslatorUtil::get_al_params(const Ref<SiOPMChannelParams> &p_param
 	Ref<SiOPMOperatorParams> op_params0 = p_params->operator_params[0];
 	Ref<SiOPMOperatorParams> op_params1 = p_params->operator_params[1];
 
-	int level_balance = _balance_total_levels(op_params0->total_level, op_params1->total_level);
+	int level_balance = p_params->get_analog_balance();
 
 	Vector<int> res = {
 		p_params->algorithm,
@@ -1282,7 +1288,7 @@ String TranslatorUtil::get_al_params_as_mml(const Ref<SiOPMChannelParams> &p_par
 	mml += _format_mml_digit(op_params0->pulse_generator_type) + p_separator;
 	mml += _format_mml_digit(op_params1->pulse_generator_type) + p_separator;
 
-	int balanced_levels = _balance_total_levels(op_params0->total_level, op_params1->total_level);
+	int balanced_levels = p_params->get_analog_balance();
 	mml += _format_mml_digit(balanced_levels)                  + p_separator;
 	mml += _format_mml_digit(op_params1->detune2)              + p_separator;
 

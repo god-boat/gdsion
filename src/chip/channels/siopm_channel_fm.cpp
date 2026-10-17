@@ -5,6 +5,8 @@
 /***************************************************/
 
 #include "siopm_channel_fm.h"
+#include "sion_enums.h"
+#include "utils/translator_util.h"
 
 #include <godot_cpp/core/class_db.hpp>
 #include "chip/channels/siopm_operator.h"
@@ -23,6 +25,40 @@
 
 const EngineParamSchema &SiOPMChannelFM::get_shared_engine_param_schema() {
 	static const EngineParamDescriptor parameters[] = {
+		{GLOBAL_ATTACK, "voice.amplitude_envelope.attack_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(58), 1, true,
+			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_attack_rate(int(value.integer)); },
+			load_engine_param, false},
+		{GLOBAL_DECAY, "voice.amplitude_envelope.decay_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_decay_rate(int(value.integer)); },
+			load_engine_param, false},
+		{GLOBAL_SUSTAIN, "voice.amplitude_envelope.sustain_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_sustain_rate(int(value.integer)); },
+			load_engine_param, false},
+		{GLOBAL_RELEASE, "voice.amplitude_envelope.release_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(63), 1, true,
+			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_release_rate(int(value.integer)); },
+			load_engine_param, false},
+		{GLOBAL_SUSTAIN_ATTENUATION, "voice.amplitude_envelope.sustain_attenuation", EngineParamType::INT, 0, 15, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_sustain_level(int(value.integer)); },
+			load_engine_param, false},
+		{GLOBAL_ATTENUATION, "voice.amplitude_envelope.attenuation", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); if (voice.get_channel_params()->is_analog_like()) return; for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_total_level(int(value.integer)); },
+			load_engine_param, false},
+		{AL_CONNECTION, "voice.analog_like.connection_mode", EngineParamType::INT, 0, 3, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_algorithm(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_algorithm()); }},
+		{AL_WAVEFORM_A, "voice.analog_like.waveform_a", EngineParamType::INT, 0, 255, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->get_operator_params(0)->set_pulse_generator_type(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_pulse_generator_type()); }},
+		{AL_WAVEFORM_B, "voice.analog_like.waveform_b", EngineParamType::INT, 0, 255, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->get_operator_params(1)->set_pulse_generator_type(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(1)->get_pulse_generator_type()); }},
+		{AL_BALANCE, "voice.analog_like.balance", EngineParamType::INT, -64, 64, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_analog_balance(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_analog_balance()); }},
+		{AL_DETUNE, "voice.analog_like.detune", EngineParamType::INT, -62, 61, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->get_operator_params(1)->set_detune2(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(1)->get_detune2()); }},
+
 		{ALGORITHM, "voice.algorithm", EngineParamType::INT, 0, 15, EngineParamValue::from_int(0), 1, true,
 			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_algorithm(int(value.integer)); },
 			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_algorithm()); }},
@@ -78,8 +114,8 @@ const EngineParamSchema &SiOPMChannelFM::get_shared_engine_param_schema() {
 			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_initial_phase(int(value.integer)); },
 			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_initial_phase()); }},
 		{FIXED_NOTE, "operator.fixed_note", EngineParamType::INT, -1, 127, EngineParamValue::from_int(0), 4, true,
-			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_fixed_pitch(int(value.integer)); },
-			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_fixed_pitch()); }},
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_fixed_pitch(int(value.integer) * 64); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_fixed_pitch() / 64); }},
 		{UNISON_COUNT, "operator.unison.voice_count", EngineParamType::INT, 1, 16, EngineParamValue::from_int(1), 4, true,
 			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_super_count(int(value.integer)); },
 			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(index)->get_super_count()); }},
@@ -111,6 +147,37 @@ static _FORCE_INLINE_ int _safe_log_lookup(class SiOPMRefTable *p_table, int p_i
 void SiOPMChannelFM::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
 	SiOPMOperator *op = _operators[p_index];
 	switch (p_id) {
+		case GLOBAL_ATTACK:
+			for (int i = 0; i < _operator_count; i++) _operators[i]->set_attack_rate(int(p_value.integer));
+			return;
+		case GLOBAL_DECAY:
+			for (int i = 0; i < _operator_count; i++) _operators[i]->set_decay_rate(int(p_value.integer));
+			return;
+		case GLOBAL_SUSTAIN:
+			for (int i = 0; i < _operator_count; i++) _operators[i]->set_sustain_rate(int(p_value.integer));
+			return;
+		case GLOBAL_RELEASE:
+			for (int i = 0; i < _operator_count; i++) _operators[i]->set_release_rate(int(p_value.integer));
+			return;
+		case GLOBAL_SUSTAIN_ATTENUATION:
+			for (int i = 0; i < _operator_count; i++) _operators[i]->set_sustain_level(int(p_value.integer));
+			return;
+		case GLOBAL_ATTENUATION:
+			if (_process_function_type >= PROCESS_ANALOG_LIKE && _process_function_type < PROCESS_ANALOG_LIKE + 4) return;
+			for (int i = 0; i < _operator_count; i++) _operators[i]->set_total_level(int(p_value.integer));
+			return;
+
+		case AL_CONNECTION: set_algorithm(2, true, int(p_value.integer)); return;
+		case AL_WAVEFORM_A: apply_engine_param(WAVEFORM, 0, p_value); return;
+		case AL_WAVEFORM_B: apply_engine_param(WAVEFORM, 1, p_value); return;
+		case AL_BALANCE: {
+			int (&table)[129] = _table->eg_linear_to_total_level_table;
+			_operators[0]->set_total_level(table[64 - int(p_value.integer)]);
+			_operators[1]->set_total_level(table[64 + int(p_value.integer)]);
+		} return;
+		case AL_DETUNE: _operators[1]->set_ptss_detune(int(p_value.integer)); return;
+		case SCC_WAVETABLE: apply_engine_param(WAVEFORM, 0, EngineParamValue::from_int(SiONPulseGeneratorType::PULSE_CUSTOM + int(p_value.integer))); return;
+
 		case ALGORITHM: {
 			const int feedback = _scalar_feedback;
 			const int connection = _scalar_feedback_connection;
@@ -135,7 +202,7 @@ void SiOPMChannelFM::apply_engine_param(uint32_t p_id, int p_index, EngineParamV
 		case TRANSPOSE: op->set_ptss_detune(int(p_value.integer)); return;
 		case AM_SHIFT: op->set_amplitude_modulation_shift(int(p_value.integer)); return;
 		case PHASE: op->set_key_on_phase(int(p_value.integer)); return;
-		case FIXED_NOTE: op->set_fixed_pitch_index(int(p_value.integer)); return;
+		case FIXED_NOTE: op->set_fixed_pitch_index(int(p_value.integer) * 64); return;
 		case UNISON_COUNT: op->set_super_wave(int(p_value.integer), op->get_super_spread()); return;
 		case UNISON_DETUNE: op->set_super_wave(op->get_super_count(), int(p_value.integer)); return;
 		case UNISON_STEREO: op->set_super_stereo_spread(int(p_value.integer)); return;
@@ -2081,4 +2148,32 @@ static _FORCE_INLINE_ int _safe_log_lookup(class SiOPMRefTable *p_table, int p_i
 		}
 	}
 	return p_table->log_table[p_index];
+}
+
+// Non-FM channels retain preparation fields exposed by the shared catalog, but
+// do not advertise an FM live operation that their DSP does not implement.
+const EngineParamSchema &SiOPMChannelFM::get_prepared_engine_param_schema() {
+	static const std::vector<EngineParamDescriptor> parameters = [] {
+		std::vector<EngineParamDescriptor> result;
+		const EngineParamSchema &fm = get_shared_engine_param_schema();
+		for (int i = 0; i < fm.count; i++) {
+			result.push_back(fm.parameters[i]);
+			result.back().realtime = false;
+		}
+		return result;
+	}();
+	static const EngineParamSchema schema = {-1, parameters.data(), int(parameters.size()), &SiOPMChannelBase::get_shared_engine_param_schema()};
+	return schema;
+}
+
+const EngineParamSchema &SiOPMChannelFM::get_scc_engine_param_schema() {
+	static const EngineParamDescriptor parameters[] = {
+		{SCC_WAVETABLE, "voice.scc.wavetable.index", EngineParamType::INT, 0, 255, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->get_operator_params(0)->set_pulse_generator_type(SiONPulseGeneratorType::PULSE_CUSTOM + int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_pulse_generator_type() - SiONPulseGeneratorType::PULSE_CUSTOM); }},
+
+
+	};
+	static const EngineParamSchema schema = {SiONModuleType::MODULE_SCC, parameters, int(std::size(parameters)), &SiOPMChannelFM::get_shared_engine_param_schema()};
+	return schema;
 }

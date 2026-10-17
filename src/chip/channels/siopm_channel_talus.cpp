@@ -1,4 +1,7 @@
 #include "siopm_channel_talus.h"
+#include "chip/channels/siopm_channel_fm.h"
+#include "sion_enums.h"
+#include <iterator>
 
 #include <cmath>
 #include <complex>
@@ -426,9 +429,8 @@ double SiOPMChannelTalus::_tick_resonator(double p_input, bool p_excited) {
 // Params
 // ---------------------------------------------------------------------------
 
-void SiOPMChannelTalus::set_talus_params(const TalusParams &p_params) {
-	_params = p_params;
-	const int *values = p_params.values;
+void SiOPMChannelTalus::_refresh_coefficients() {
+	const int *values = _params.values;
 
 	_strike_level = CLAMP(values[TalusParams::STRIKE_LEVEL], 0, 100) * 0.01;
 	_hardness = CLAMP(values[TalusParams::STRIKE_HARDNESS], 0, 100) * 0.01;
@@ -721,7 +723,8 @@ void SiOPMChannelTalus::initialize(SiOPMChannelBase *p_prev, int p_buffer_index)
 	_expression = 1.0;
 
 	reset();
-	set_talus_params(TalusParams());
+	_params = TalusParams();
+	_refresh_coefficients();
 
 	_process_function = Callable(this, "_process_talus");
 }
@@ -761,4 +764,55 @@ SiOPMChannelTalus::SiOPMChannelTalus(SiOPMSoundChip *p_chip) :
 
 	_loop.prepare(DELAY_LINE_SAMPLES);
 	_process_function = Callable(this, "_process_talus");
+}
+
+const EngineParamSchema &SiOPMChannelTalus::get_engine_param_schema() {
+	static const EngineParamDescriptor parameters[] = {
+		{PARAM_STRIKE_LEVEL, "voice.talus.strike.level", EngineParamType::INT, 0, 100, EngineParamValue::from_int(100), 1, true},
+		{PARAM_STRIKE_HARDNESS, "voice.talus.strike.hardness", EngineParamType::INT, 0, 100, EngineParamValue::from_int(60), 1, true},
+		{PARAM_STRIKE_VELOCITY, "voice.talus.strike.velocity", EngineParamType::INT, 0, 100, EngineParamValue::from_int(80), 1, true},
+		{PARAM_NOISE_LEVEL, "voice.talus.noise.level", EngineParamType::INT, 0, 100, EngineParamValue::from_int(30), 1, true},
+		{PARAM_NOISE_DECAY, "voice.talus.noise.decay", EngineParamType::INT, 1, 200, EngineParamValue::from_int(8), 1, true},
+		{PARAM_NOISE_COLOR, "voice.talus.noise.color", EngineParamType::INT, 200, 16000, EngineParamValue::from_int(3000), 1, true},
+		{PARAM_TONE_LEVEL, "voice.talus.tone.level", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_TONE_PITCH, "voice.talus.tone.pitch", EngineParamType::INT, -2400, 2400, EngineParamValue::from_int(0), 1, true},
+		{PARAM_TONE_SHAPE, "voice.talus.tone.shape", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_TONE_DECAY, "voice.talus.tone.decay", EngineParamType::INT, 1, 200, EngineParamValue::from_int(10), 1, true},
+		{PARAM_STRIKE_VARIATION, "voice.talus.strike.variation", EngineParamType::INT, 0, 100, EngineParamValue::from_int(20), 1, true},
+		{PARAM_RESONATOR_MODEL, "voice.talus.resonator.model", EngineParamType::INT, 0, 4, EngineParamValue::from_int(0), 1, true},
+		{PARAM_RESONATOR_TUNE, "voice.talus.resonator.tune", EngineParamType::INT, -48, 48, EngineParamValue::from_int(0), 1, true},
+		{PARAM_RESONATOR_FINE, "voice.talus.resonator.fine", EngineParamType::INT, -100, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_RESONATOR_KEYTRACK, "voice.talus.resonator.keytrack", EngineParamType::INT, 0, 100, EngineParamValue::from_int(100), 1, true},
+		{PARAM_RESONATOR_DECAY, "voice.talus.resonator.decay", EngineParamType::INT, 20, 10000, EngineParamValue::from_int(800), 1, true},
+		{PARAM_RESONATOR_DAMPING, "voice.talus.resonator.damping", EngineParamType::INT, 0, 100, EngineParamValue::from_int(40), 1, true},
+		{PARAM_RESONATOR_POSITION, "voice.talus.resonator.position", EngineParamType::INT, 0, 100, EngineParamValue::from_int(30), 1, true},
+		{PARAM_RESONATOR_STIFFNESS, "voice.talus.resonator.stiffness", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_RESONATOR_LOW_CUT, "voice.talus.resonator.low_cut", EngineParamType::INT, 1, 2000, EngineParamValue::from_int(1), 1, true},
+		{PARAM_RESONATOR_CUT_FREQ, "voice.talus.resonator.cut_freq", EngineParamType::INT, 100, 12000, EngineParamValue::from_int(2000), 1, true},
+		{PARAM_RESONATOR_CUT_DEPTH, "voice.talus.resonator.cut_depth", EngineParamType::INT, -24, 0, EngineParamValue::from_int(0), 1, true},
+		{PARAM_RESONATOR_TENSION, "voice.talus.resonator.tension", EngineParamType::INT, 0, 1200, EngineParamValue::from_int(0), 1, true},
+		{PARAM_RESONATOR_DRIVE, "voice.talus.resonator.drive", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_WIRES_LEVEL, "voice.talus.wires.level", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_WIRES_TENSION, "voice.talus.wires.tension", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_WIRES_TONE, "voice.talus.wires.tone", EngineParamType::INT, 1000, 12000, EngineParamValue::from_int(5000), 1, true},
+		{PARAM_WIRES_DECAY, "voice.talus.wires.decay", EngineParamType::INT, 5, 800, EngineParamValue::from_int(120), 1, true},
+		{PARAM_OUTPUT_HEAD, "voice.talus.output.head", EngineParamType::INT, 0, 100, EngineParamValue::from_int(100), 1, true},
+		{PARAM_OUTPUT_DIRECT, "voice.talus.output.direct", EngineParamType::INT, 0, 100, EngineParamValue::from_int(20), 1, true},
+		{PARAM_RELEASE_MODE, "voice.talus.release.mode", EngineParamType::INT, 0, 1, EngineParamValue::from_int(0), 1, true},
+		{PARAM_RELEASE_TIME, "voice.talus.release.time", EngineParamType::INT, 5, 2000, EngineParamValue::from_int(80), 1, true},
+		{PARAM_BODY_LEVEL, "voice.talus.body.level", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_BODY_FREQ, "voice.talus.body.freq", EngineParamType::INT, 40, 1000, EngineParamValue::from_int(110), 1, true},
+		{PARAM_BODY_DECAY, "voice.talus.body.decay", EngineParamType::INT, 20, 2000, EngineParamValue::from_int(250), 1, true},
+	};
+	static const EngineParamSchema schema = {SiONModuleType::MODULE_TALUS, parameters, int(std::size(parameters)), &SiOPMChannelFM::get_prepared_engine_param_schema()};
+	return schema;
+}
+
+void SiOPMChannelTalus::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
+	if (p_id >= 0x800 && p_id < 0x823) {
+		_params.values[p_id - 0x800] = int(p_value.integer);
+		_refresh_coefficients();
+		return;
+	}
+	SiOPMChannelBase::apply_engine_param(p_id, p_index, p_value);
 }

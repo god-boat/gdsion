@@ -7,9 +7,7 @@
 #ifndef SIOPM_IRON_PARAMS_H
 #define SIOPM_IRON_PARAMS_H
 
-// The Iron channel's grouped params, in slot order. SiONVoice::set_iron,
-// the driver mailbox and MML all carry them as this positional tuple, so the
-// defaults below are the engine's one copy of them.
+// Iron channel raw inputs and template content. Scalar transport carries IDs.
 struct IronParams {
 	enum Slot {
 		VOICING, // 0 single, 1 power (root + fifth), 2 power + octave, 3 octaves.

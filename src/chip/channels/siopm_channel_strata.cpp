@@ -1,3 +1,4 @@
+#include "chip/channels/siopm_channel_fm.h"
 #include "siopm_channel_strata.h"
 
 #include "sion_enums.h"
@@ -42,7 +43,7 @@ const EngineParamSchema &SiOPMChannelStrata::get_engine_param_schema() {
 		{TIMBRE, "voice.strata.timbre", EngineParamType::INT, 0, 32767, EngineParamValue::from_int(0), 1, true},
 		{COLOR, "voice.strata.color", EngineParamType::INT, 0, 32767, EngineParamValue::from_int(0), 1, true},
 	};
-	static const EngineParamSchema schema = {SiONModuleType::MODULE_STRATA, parameters, int(std::size(parameters)), &SiOPMChannelBase::get_shared_engine_param_schema()};
+	static const EngineParamSchema schema = {SiONModuleType::MODULE_STRATA, parameters, int(std::size(parameters)), &SiOPMChannelFM::get_prepared_engine_param_schema()};
 	return schema;
 }
 

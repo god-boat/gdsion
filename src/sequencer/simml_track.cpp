@@ -160,6 +160,15 @@ void SiMMLTrack::reset_volume_offset() {
 
 void SiMMLTrack::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
 	switch (p_id) {
+		case SiMMLVoice::AMPLITUDE_MOD_DEPTH: _modulation[false].depth = int(p_value.integer); _refresh_modulation(false); return;
+		case SiMMLVoice::AMPLITUDE_MOD_END_DEPTH: _modulation[false].end_depth = int(p_value.integer); _refresh_modulation(false); return;
+		case SiMMLVoice::AMPLITUDE_MOD_DELAY: _modulation[false].delay = int(p_value.integer); _refresh_modulation(false); return;
+		case SiMMLVoice::AMPLITUDE_MOD_DURATION: _modulation[false].term = int(p_value.integer); _refresh_modulation(false); return;
+		case SiMMLVoice::PITCH_MOD_DEPTH: _modulation[true].depth = int(p_value.integer); _refresh_modulation(true); return;
+		case SiMMLVoice::PITCH_MOD_END_DEPTH: _modulation[true].end_depth = int(p_value.integer); _refresh_modulation(true); return;
+		case SiMMLVoice::PITCH_MOD_DELAY: _modulation[true].delay = int(p_value.integer); _refresh_modulation(true); return;
+		case SiMMLVoice::PITCH_MOD_DURATION: _modulation[true].term = int(p_value.integer); _refresh_modulation(true); return;
+
 		case SiMMLVoice::PITCH_BEND: set_pitch_bend(int(p_value.integer)); return;
 		case SiMMLVoice::GLIDE_TIME: set_portament_ms(int(p_value.integer)); return;
 		case SiMMLVoice::GLIDE_MODE: set_portament_time_mode(int(p_value.integer)); return;
@@ -255,32 +264,7 @@ void SiMMLTrack::set_pan(int p_value) {
 
 // Envelopes.
 
-SinglyLinkedList<int> *SiMMLTrack::_make_modulation_table(int p_depth, int p_end_depth, int p_delay, int p_term) {
-	SinglyLinkedList<int> *list = memnew(SinglyLinkedList<int>(p_delay + p_term + 1));
 
-	SinglyLinkedList<int>::Element *element = list->front();
-	if (p_delay != 0) {
-		for (int i = 0; i < p_delay; i++) {
-			element->value = p_depth;
-			element = element->next();
-		}
-	}
-
-	if (p_term != 0) {
-		int depth = p_depth << FIXED_BITS;
-		int step = ((p_end_depth << FIXED_BITS) - depth) / p_term;
-
-		for (int i = 0; i < p_term; i++) {
-			element->value = depth >> FIXED_BITS;
-			depth += step;
-			element = element->next();
-		}
-	}
-
-	element->value = p_end_depth;
-
-	return list;
-}
 
 void SiMMLTrack::set_portament(int p_frame) {
 	_setting_sweep_step[1] = p_frame;
@@ -359,43 +343,36 @@ void SiMMLTrack::set_release_sweep(int p_sweep) {
 }
 
 void SiMMLTrack::set_modulation_envelope(bool p_is_pitch_mod, int p_depth, int p_end_depth, int p_delay, int p_term) {
-	Vector<SinglyLinkedList<int> *> *table = (p_is_pitch_mod ? &_table_envelope_mod_pitch : &_table_envelope_mod_amp);
+	ModulationEnvelope &envelope = _modulation[p_is_pitch_mod];
+	envelope.depth = p_depth;
+	envelope.end_depth = p_end_depth;
+	envelope.delay = p_delay;
+	envelope.term = p_term;
+	_refresh_modulation(p_is_pitch_mod);
+}
 
-	// Free previous table.
-	SinglyLinkedList<int> *old_table = table->get(1);
-	if (old_table) {
-		memdelete(old_table);
-	}
-
-	if (p_depth != p_end_depth) {
-		if (p_term > 0) {
-			// Create ramp envelope from depth to end_depth over term steps.
-			table->set(1, _make_modulation_table(p_depth, p_end_depth, p_delay, p_term));
-			_enable_envelope_mode(1);
-		} else {
-			// term=0 means instant jump to end_depth.
-			table->set(1, nullptr);
-
-			if (p_is_pitch_mod) {
-				_channel->set_pitch_modulation(p_end_depth);
-			} else {
-				_channel->set_amplitude_modulation(p_end_depth);
-			}
-
-			_disable_envelope_mode(1);
-		}
+void SiMMLTrack::_refresh_modulation(bool p_pitch) {
+	ModulationEnvelope &envelope = _modulation[p_pitch];
+	envelope.position = 0;
+	envelope.active = envelope.ramps() && _channel->is_note_on();
+	if (envelope.ramps()) {
+		_enable_envelope_mode(1);
+		if (_channel->is_note_on() && _process_mode != ProcessMode::ENVELOPE) _update_process(1);
 	} else {
-		// depth == end_depth, just set static modulation.
-		table->set(1, nullptr);
-
-		if (p_is_pitch_mod) {
-			_channel->set_pitch_modulation(p_depth);
-		} else {
-			_channel->set_amplitude_modulation(p_depth);
-		}
-
+		const int depth = envelope.depth == envelope.end_depth ? envelope.depth : envelope.end_depth;
+		if (p_pitch) _channel->set_pitch_modulation(depth);
+		else _channel->set_amplitude_modulation(depth);
 		_disable_envelope_mode(1);
 	}
+}
+
+int SiMMLTrack::_step_modulation(ModulationEnvelope &p_envelope) {
+	const int position = p_envelope.position++ - p_envelope.delay;
+	if (position < 0) return p_envelope.depth;
+	if (position >= p_envelope.term) { p_envelope.active = false; return p_envelope.end_depth; }
+	const int scale = 1 << FIXED_BITS;
+	const int step = ((p_envelope.end_depth - p_envelope.depth) * scale) / p_envelope.term;
+	return (p_envelope.depth * scale + step * position) >> FIXED_BITS;
 }
 
 void SiMMLTrack::_store_envelope_clock(EnvelopeClockSetting *p_settings, int p_phase, const Ref<SiMMLEnvelopeTable> &p_table, int p_step, int p_time_mode, int p_time_value) {
@@ -829,8 +806,8 @@ void SiMMLTrack::_disable_envelope_mode(int p_note_on) {
 
 	// When all envelopes are off, update the process mode.
 	if (!_setting_pns_or[p_note_on] &&
-			!_table_envelope_mod_amp[p_note_on] &&
-			!_table_envelope_mod_pitch[p_note_on] &&
+			!(p_note_on == 1 && _modulation[0].ramps()) &&
+			!(p_note_on == 1 && _modulation[1].ramps()) &&
 			!_setting_envelope_exp[p_note_on] &&
 			!_setting_envelope_filter[p_note_on] &&
 			!_setting_envelope_voice[p_note_on]) {
@@ -957,19 +934,8 @@ void SiMMLTrack::_process_envelope_tick() {
 		_advance_envelope_runtime_clock(_runtime_clock_voice, _setting_clock_voice[_active_envelope_phase]);
 	}
 
-	// Update modulations.
-	if (_envelope_mod_amp && _envelope_mod_amp->get()) {
-		_channel->set_amplitude_modulation(_envelope_mod_amp->get()->value);
-		_envelope_mod_amp->next();
-	} else {
-		_envelope_mod_amp = nullptr;
-	}
-	if (_envelope_mod_pitch && _envelope_mod_pitch->get()) {
-		_channel->set_pitch_modulation(_envelope_mod_pitch->get()->value);
-		_envelope_mod_pitch->next();
-	} else {
-		_envelope_mod_pitch = nullptr;
-	}
+	if (_modulation[0].active) _channel->set_amplitude_modulation(_step_modulation(_modulation[0]));
+	if (_modulation[1].active) _channel->set_pitch_modulation(_step_modulation(_modulation[1]));
 
 }
 
@@ -1243,15 +1209,9 @@ void SiMMLTrack::_update_process(int p_key_on) {
 	_restart_envelope_runtime_clock(_runtime_clock_pitch, _setting_clock_pitch[p_key_on]);
 	_restart_envelope_runtime_clock(_runtime_clock_filter, _setting_clock_filter[p_key_on]);
 
-	// Set modulation envelopes.
-	// The cursor reset matches the original behavior, but maybe it's unnecessary.
-	_envelope_mod_amp   = _table_envelope_mod_amp[p_key_on];
-	if (_envelope_mod_amp) {
-		_envelope_mod_amp->front();
-	}
-	_envelope_mod_pitch = _table_envelope_mod_pitch[p_key_on];
-	if (_envelope_mod_pitch) {
-		_envelope_mod_pitch->front();
+	for (ModulationEnvelope &envelope : _modulation) {
+		envelope.position = 0;
+		envelope.active = p_key_on == 1 && envelope.ramps();
 	}
 
 	// Set sweep.
@@ -1448,6 +1408,8 @@ void SiMMLTrack::reset(int p_buffer_index) {
 	// Initialize parameters.
 
 	_note_shift = 0;
+	_modulation[0] = {};
+	_modulation[1] = {};
 	_pitch_shift = 0;
 	_quantize_ratio = 1;
 	_quantize_count = 0;
@@ -1495,8 +1457,8 @@ void SiMMLTrack::reset(int p_buffer_index) {
 	_envelope_note = _envelope_zero_table->get_front();
 	_envelope_pitch = _envelope_zero_table->get_front();
 	_envelope_filter = nullptr;
-	_envelope_mod_amp = nullptr;
-	_envelope_mod_pitch = nullptr;
+
+
 
 	// Reset envelope tables.
 	for (int i = 0; i < 2; i++) {
@@ -1525,8 +1487,7 @@ void SiMMLTrack::reset(int p_buffer_index) {
 		_setting_sweep_step[i] = 0;
 		_setting_sweep_end[i]  = 0;
 
-		_table_envelope_mod_amp.write[i] = nullptr;
-		_table_envelope_mod_pitch.write[i] = nullptr;
+
 	}
 
 	// Clear generic note-envelope bindings. Track reset must release the strong
@@ -1627,8 +1588,7 @@ SiMMLTrack::SiMMLTrack() {
 	_setting_envelope_pitch.resize_zeroed(2);
 	_setting_envelope_filter.resize_zeroed(2);
 
-	_table_envelope_mod_amp.resize_zeroed(2);
-	_table_envelope_mod_pitch.resize_zeroed(2);
+
 }
 
 SiMMLTrack::~SiMMLTrack() {

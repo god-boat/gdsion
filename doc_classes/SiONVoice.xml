@@ -36,7 +36,7 @@
 			<param index="0" name="module_type" type="int" enum="SiONModuleType" />
 			<param index="1" name="chip_type" type="int" enum="SiONChipType" />
 			<description>
-				Creates native engine structure without looking up a preset. Registered scalar parameters start with their schema's reset values and use [method set_engine_param]. Unmigrated parameters use the existing voice, channel and operator setters. Use [constant SiONDriver.CHIP_AUTO] for engines identified only by their module. Analog-like voices start with two operators; other modules start with one.
+				Creates native engine structure without looking up a preset. Registered scalar parameters start with their schema's reset values and use [method set_engine_param]. Use [constant SiONDriver.CHIP_AUTO] for engines identified only by their module. Analog-like voices start with two operators; other modules start with one.
 			</description>
 		</method>
 		<method name="get_engine_param_descriptors" qualifiers="static">
@@ -117,61 +117,11 @@
 				Returns a configuration of this voice as an array of integers. The voice is treated as an OPX voice.
 			</description>
 		</method>
-		<method name="set_amplitude_modulation">
-			<return type="void" />
-			<param index="0" name="depth" type="int" default="0" />
-			<param index="1" name="end_depth" type="int" default="0" />
-			<param index="2" name="delay" type="int" default="0" />
-			<param index="3" name="term" type="int" default="0" />
-			<description>
-				Sets amplitude modulation parameters.
-			</description>
-		</method>
-		<method name="set_analog_like">
-			<return type="void" />
-			<param index="0" name="connection_type" type="int" />
-			<param index="1" name="wave_shape1" type="int" default="1" />
-			<param index="2" name="wave_shape2" type="int" default="1" />
-			<param index="3" name="balance" type="int" default="0" />
-			<param index="4" name="pitch_difference" type="int" default="0" />
-			<description>
-				Sets analoge-like parameters.
-			</description>
-		</method>
 		<method name="set_by_mml">
 			<return type="int" />
 			<param index="0" name="mml" type="String" />
 			<description>
 				Sets this voice by an MML string.
-			</description>
-		</method>
-		<method name="set_envelope">
-			<return type="void" />
-			<param index="0" name="attack_rate" type="int" />
-			<param index="1" name="decay_rate" type="int" />
-			<param index="2" name="sustain_rate" type="int" />
-			<param index="3" name="release_rate" type="int" />
-			<param index="4" name="sustain_level" type="int" />
-			<param index="5" name="total_level" type="int" />
-			<description>
-				Sets envelope parameters.
-			</description>
-		</method>
-		<method name="set_filter_envelope">
-			<return type="void" />
-			<param index="0" name="filter_type" type="int" default="0" />
-			<param index="1" name="cutoff" type="int" default="128" />
-			<param index="2" name="resonance" type="int" default="0" />
-			<param index="3" name="attack_rate" type="int" default="0" />
-			<param index="4" name="decay_rate1" type="int" default="0" />
-			<param index="5" name="decay_rate2" type="int" default="0" />
-			<param index="6" name="release_rate" type="int" default="0" />
-			<param index="7" name="decay_cutoff1" type="int" default="128" />
-			<param index="8" name="decay_cutoff2" type="int" default="64" />
-			<param index="9" name="sustain_cutoff" type="int" default="32" />
-			<param index="10" name="release_cutoff" type="int" default="128" />
-			<description>
-				Sets filter envelope parameters.
 			</description>
 		</method>
 		<method name="set_params">
@@ -221,28 +171,6 @@
 			<param index="0" name="args" type="int[]" />
 			<description>
 				Sets the configuration of this voice as an array of integers. The voice is treated as an OPX voice.
-			</description>
-		</method>
-		<method name="set_pitch_modulation">
-			<return type="void" />
-			<param index="0" name="depth" type="int" default="0" />
-			<param index="1" name="end_depth" type="int" default="0" />
-			<param index="2" name="delay" type="int" default="0" />
-			<param index="3" name="term" type="int" default="0" />
-			<description>
-				Sets pitch modulation parameters.
-			</description>
-		</method>
-		<method name="set_pms_guitar">
-			<return type="void" />
-			<param index="0" name="attack_rate" type="int" default="48" />
-			<param index="1" name="decay_rate" type="int" default="48" />
-			<param index="2" name="total_level" type="int" default="0" />
-			<param index="3" name="fixed_pitch" type="int" default="0" />
-			<param index="4" name="wave_shape" type="int" default="20" />
-			<param index="5" name="tension" type="int" default="8" />
-			<description>
-				Sets PMS guitar parameters. Set [param fixed_pitch] to 0 to make the selected waveform follow played notes; a positive value holds the waveform at that MIDI note.
 			</description>
 		</method>
 	</methods>

@@ -17,10 +17,15 @@ root with its venv:
 - `build.py` compiles the real channel sources, Talus and Iron, against the
   headers in `stubs/` into `out/talus_render.exe`. It also builds
   `out/iron_baseline.exe` from Iron as committed at `--iron-rev` (default
-  `HEAD`), so a change to a shared `dsp/` block shows up as an Iron diff.
+  `HEAD`), including that revision's DSP headers, test driver and stubs. The
+  baseline uses its own API; current tests use channel scalar IDs.
 - `render_main.cpp` drives a channel from a text script (commands listed at
   its top). The stub base class keeps the engine's idle gate, and the pipes
   carry the same integers the engine's do.
+- The scalar payload comes from the real `engine_params.h`. Prepared voice
+  storage, FM schema inheritance and Godot enum registration are outside this
+  channel harness; their fixtures abort if called. The native engine-parameter
+  suite covers that integration.
 - `harness.py` builds those scripts (`Job`) and runs them. It reads the
   param slots and defaults from `siopm_talus_params.h`.
 - `model.py` is a reference model in Python and numpy, written from the design.

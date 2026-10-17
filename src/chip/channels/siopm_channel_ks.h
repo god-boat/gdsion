@@ -25,6 +25,45 @@ class SiOPMChannelKS : public SiOPMChannelFM {
 	static const int KS_BUFFER_SIZE = 5400;
 
 public:
+	enum EngineParameter : uint32_t {
+		PMS_ATTACK = 0x630,
+		PMS_DECAY = 0x631,
+		PMS_ATTENUATION = 0x632,
+		PMS_FIXED_NOTE = 0x633,
+		PMS_WAVEFORM = 0x634,
+		PMS_TENSION = 0x635,
+
+		PARAM_EXCITER_TYPE = 0x600,
+		PARAM_EXCITER_COLOR = 0x601,
+		PARAM_EXCITER_LENGTH = 0x602,
+		PARAM_EXCITER_SHAPE = 0x603,
+		PARAM_EXCITER_DRIVE = 0x604,
+		PARAM_EXCITER_PITCH_FOLLOW = 0x605,
+		PARAM_EXCITER_RANDOMNESS = 0x606,
+		PARAM_LOOP_FILTER_MODE = 0x607,
+		PARAM_LOOP_FILTER_DAMPING = 0x608,
+		PARAM_LOOP_FILTER_BRIGHTNESS = 0x609,
+		PARAM_LOOP_FILTER_LOSS = 0x60a,
+		PARAM_LOOP_FILTER_TONE_TILT = 0x60b,
+		PARAM_STRING_STIFFNESS = 0x60c,
+		PARAM_STRING_DISPERSION = 0x60d,
+		PARAM_STRING_BEND = 0x60e,
+		PARAM_STRING_ODD_EVEN = 0x60f,
+		PARAM_BODY_TYPE = 0x610,
+		PARAM_BODY_AMOUNT = 0x611,
+		PARAM_BODY_TUNE = 0x612,
+		PARAM_BODY_WIDTH = 0x613,
+		PARAM_PITCH_DRIFT = 0x614,
+		PARAM_PITCH_DROP = 0x615,
+		PARAM_PITCH_PICK_BEND = 0x616,
+		PARAM_PITCH_TENSION_MOD = 0x617,
+		PARAM_PITCH_KEYTRACK = 0x618,
+		PARAM_PITCH_GLIDE = 0x619,
+		PARAM_RELEASE_MODE = 0x61a,
+	};
+	static const EngineParamSchema &get_engine_param_schema();
+	virtual void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) override;
+
 	enum KSSeedType {
 		KS_SEED_DEFAULT = 0,
 		KS_SEED_FM = 1,
@@ -236,21 +275,6 @@ public:
 
 	virtual void set_release_rate(int p_value) override;
 	virtual void set_fixed_pitch(int p_value) override;
-
-	// Aggregate setter for the extended resonator params. Takes the raw nominal
-	// ranges stored by the voice/mailbox (mostly unipolar 0-100 and bipolar
-	// 0-100 centered at 50; randomness intentionally supports overrange) and
-	// performs the normalization internally, so call sites don't.
-	void set_ks_extended_params(
-			int p_exciter_type, int p_exciter_color, int p_exciter_length,
-			int p_exciter_shape, int p_exciter_drive, int p_exciter_pitch_follow, int p_exciter_randomness,
-			int p_loop_filter_mode, int p_loop_damping, int p_loop_brightness,
-			int p_loop_loss, int p_loop_tone_tilt,
-			int p_stiffness, int p_dispersion, int p_bend, int p_odd_even,
-			int p_body_type, int p_body_amount, int p_body_tune, int p_body_width,
-			int p_pitch_drift, int p_pitch_drop, int p_pick_bend,
-			int p_tension_mod, int p_keytrack, int p_glide,
-			int p_release_mode);
 
 	// Exciter.
 	void set_exciter_type(ExciterType p_type) { _exciter_type = p_type; }

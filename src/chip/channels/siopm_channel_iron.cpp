@@ -1,4 +1,7 @@
 #include "siopm_channel_iron.h"
+#include "chip/channels/siopm_channel_fm.h"
+#include "sion_enums.h"
+#include <iterator>
 
 #include <cmath>
 #include <godot_cpp/core/class_db.hpp>
@@ -439,9 +442,8 @@ void SiOPMChannelIron::_clear_amp() {
 // Params
 // ---------------------------------------------------------------------------
 
-void SiOPMChannelIron::set_iron_params(const IronParams &p_params) {
-	_params = p_params;
-	const int *values = p_params.values;
+void SiOPMChannelIron::_refresh_coefficients() {
+	const int *values = _params.values;
 
 	_voicing = CLAMP(values[IronParams::VOICING], 0, VOICING_COUNT - 1);
 	_pick_attack = CLAMP(values[IronParams::PICK_ATTACK], 0, 100) * 0.01;
@@ -732,7 +734,8 @@ void SiOPMChannelIron::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) 
 	_random_step = _random_seed;
 
 	reset();
-	set_iron_params(IronParams());
+	_params = IronParams();
+	_refresh_coefficients();
 
 	_process_function = Callable(this, "_process_iron");
 }
@@ -777,4 +780,41 @@ SiOPMChannelIron::SiOPMChannelIron(SiOPMSoundChip *p_chip) :
 		string.scrape_comb.prepare(SCRAPE_COMB_SAMPLES);
 	}
 	_process_function = Callable(this, "_process_iron");
+}
+
+const EngineParamSchema &SiOPMChannelIron::get_engine_param_schema() {
+	static const EngineParamDescriptor parameters[] = {
+		{PARAM_PICK_VOICING, "voice.iron.pick.voicing", EngineParamType::INT, 0, 3, EngineParamValue::from_int(0), 1, true},
+		{PARAM_PICK_ATTACK, "voice.iron.pick.attack", EngineParamType::INT, 0, 100, EngineParamValue::from_int(60), 1, true},
+		{PARAM_PICK_POSITION, "voice.iron.pick.position", EngineParamType::INT, 0, 100, EngineParamValue::from_int(20), 1, true},
+		{PARAM_MUTE_AMOUNT, "voice.iron.mute.amount", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_MUTE_VELOCITY, "voice.iron.mute.velocity", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_STRING_SUSTAIN, "voice.iron.string.sustain", EngineParamType::INT, 200, 12000, EngineParamValue::from_int(4000), 1, true},
+		{PARAM_STRING_RELEASE, "voice.iron.string.release", EngineParamType::INT, 5, 500, EngineParamValue::from_int(40), 1, true},
+		{PARAM_STRING_STIFFNESS, "voice.iron.string.stiffness", EngineParamType::INT, 0, 100, EngineParamValue::from_int(30), 1, true},
+		{PARAM_PICKUP_POSITION, "voice.iron.pickup.position", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_AMP_GAIN, "voice.iron.amp.gain", EngineParamType::INT, 0, 100, EngineParamValue::from_int(70), 1, true},
+		{PARAM_AMP_TIGHT, "voice.iron.amp.tight", EngineParamType::INT, 20, 1000, EngineParamValue::from_int(400), 1, true},
+		{PARAM_AMP_BASS, "voice.iron.amp.bass", EngineParamType::INT, -12, 12, EngineParamValue::from_int(0), 1, true},
+		{PARAM_AMP_MID, "voice.iron.amp.mid", EngineParamType::INT, -12, 12, EngineParamValue::from_int(0), 1, true},
+		{PARAM_AMP_TREBLE, "voice.iron.amp.treble", EngineParamType::INT, -12, 12, EngineParamValue::from_int(0), 1, true},
+		{PARAM_CABINET_TYPE, "voice.iron.cabinet.type", EngineParamType::INT, 0, 3, EngineParamValue::from_int(0), 1, true},
+		{PARAM_CABINET_MIC, "voice.iron.cabinet.mic", EngineParamType::INT, 0, 100, EngineParamValue::from_int(30), 1, true},
+		{PARAM_HUMANIZE_AMOUNT, "voice.iron.humanize.amount", EngineParamType::INT, 0, 100, EngineParamValue::from_int(35), 1, true},
+		{PARAM_HUMANIZE_TIMING, "voice.iron.humanize.timing", EngineParamType::INT, 0, 30, EngineParamValue::from_int(4), 1, true},
+		{PARAM_PICK_SCRAPE, "voice.iron.pick.scrape", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_PICK_BEND, "voice.iron.pick.bend", EngineParamType::INT, 0, 100, EngineParamValue::from_int(20), 1, true},
+		{PARAM_FRET_NOISE, "voice.iron.fret.noise", EngineParamType::INT, 0, 100, EngineParamValue::from_int(40), 1, true},
+	};
+	static const EngineParamSchema schema = {SiONModuleType::MODULE_IRON, parameters, int(std::size(parameters)), &SiOPMChannelFM::get_prepared_engine_param_schema()};
+	return schema;
+}
+
+void SiOPMChannelIron::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
+	if (p_id >= 0x700 && p_id < 0x715) {
+		_params.values[p_id - 0x700] = int(p_value.integer);
+		_refresh_coefficients();
+		return;
+	}
+	SiOPMChannelBase::apply_engine_param(p_id, p_index, p_value);
 }

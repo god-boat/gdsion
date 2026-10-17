@@ -5,6 +5,8 @@
 /***************************************************/
 
 #include "siopm_channel_ks.h"
+#include "chip/siopm_operator_params.h"
+#include <iterator>
 
 #include <cmath>
 #include "sion_enums.h"
@@ -601,44 +603,7 @@ void SiOPMChannelKS::set_body_width(double p_value) {
 // the scaling at every call site. Most KS params use 0-100 nominal ranges;
 // randomness intentionally over-ranges to let the exciter vary more strongly.
 
-void SiOPMChannelKS::set_ks_extended_params(
-		int p_exciter_type, int p_exciter_color, int p_exciter_length,
-		int p_exciter_shape, int p_exciter_drive, int p_exciter_pitch_follow, int p_exciter_randomness,
-		int p_loop_filter_mode, int p_loop_damping, int p_loop_brightness,
-		int p_loop_loss, int p_loop_tone_tilt,
-		int p_stiffness, int p_dispersion, int p_bend, int p_odd_even,
-		int p_body_type, int p_body_amount, int p_body_tune, int p_body_width,
-		int p_pitch_drift, int p_pitch_drop, int p_pick_bend,
-		int p_tension_mod, int p_keytrack, int p_glide,
-		int p_release_mode) {
-	set_exciter_type((ExciterType)p_exciter_type);
-	set_exciter_color(p_exciter_color * 0.01);
-	set_exciter_length(p_exciter_length * 0.01);
-	set_exciter_shape(p_exciter_shape * 0.01);
-	set_exciter_drive(p_exciter_drive * 0.01);
-	set_exciter_pitch_follow(p_exciter_pitch_follow * 0.01);
-	set_exciter_randomness(p_exciter_randomness * 0.01);
-	set_loop_filter_mode((LoopFilterMode)p_loop_filter_mode);
-	set_loop_damping(p_loop_damping * 0.01);
-	set_loop_brightness(p_loop_brightness * 0.01);
-	set_loop_loss(p_loop_loss * 0.01);
-	set_loop_tone_tilt((p_loop_tone_tilt - 50) * 0.02);
-	set_stiffness(p_stiffness * 0.01);
-	set_dispersion(p_dispersion * 0.01);
-	set_bend((p_bend - 50) * 0.02);
-	set_odd_even_balance(p_odd_even * 0.01);
-	set_body_type((BodyType)p_body_type);
-	set_body_amount(p_body_amount * 0.01);
-	set_body_tune(p_body_tune * 0.01);
-	set_body_width(p_body_width * 0.01);
-	set_pitch_drift(p_pitch_drift * 0.01);
-	set_pitch_drop(p_pitch_drop * 0.01);
-	set_pick_bend((p_pick_bend - 50) * 0.02);
-	set_tension_mod((p_tension_mod - 50) * 0.02);
-	set_pitch_keytrack(p_keytrack * 0.01);
-	set_pitch_glide(p_glide * 0.01);
-	set_release_mode((ReleaseMode)p_release_mode);
-}
+
 
 // =============================================================================
 // Original API (preserved)
@@ -1414,4 +1379,95 @@ SiOPMChannelKS::SiOPMChannelKS(SiOPMSoundChip *p_chip) : SiOPMChannelFM(p_chip) 
 	_ks_delay_buffer.resize_zeroed(KS_BUFFER_SIZE);
 	_loop_comb_buffer.resize(KS_COMB_BUFFER_SIZE);
 	_loop_comb_buffer.fill(0.0);
+}
+
+const EngineParamSchema &SiOPMChannelKS::get_engine_param_schema() {
+	static const EngineParamDescriptor parameters[] = {
+		{PMS_ATTACK, "voice.karplus_strong.envelope.attack_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(48), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->get_operator_params(0)->set_attack_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_attack_rate()); }},
+		{PMS_DECAY, "voice.karplus_strong.envelope.decay_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(48), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->get_operator_params(0)->set_decay_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_decay_rate()); }},
+		{PMS_ATTENUATION, "voice.karplus_strong.output.attenuation", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->get_operator_params(0)->set_total_level(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_total_level()); }},
+		{PMS_FIXED_NOTE, "voice.karplus_strong.pitch.fixed_note", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->get_operator_params(0)->set_fixed_pitch(int(value.integer) * 64); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_fixed_pitch() / 64); }},
+		{PMS_WAVEFORM, "voice.karplus_strong.waveform", EngineParamType::INT, 0, 511, EngineParamValue::from_int(20), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->get_operator_params(0)->set_pulse_generator_type(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_pulse_generator_type()); }},
+		{PMS_TENSION, "voice.karplus_strong.string.tension", EngineParamType::INT, 0, 63, EngineParamValue::from_int(8), 1, true},
+
+		{PARAM_EXCITER_TYPE, "voice.karplus_strong.exciter.type", EngineParamType::INT, 0, 6, EngineParamValue::from_int(0), 1, true},
+		{PARAM_EXCITER_COLOR, "voice.karplus_strong.exciter.color", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_EXCITER_LENGTH, "voice.karplus_strong.exciter.length", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_EXCITER_SHAPE, "voice.karplus_strong.exciter.shape", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_EXCITER_DRIVE, "voice.karplus_strong.exciter.drive", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_EXCITER_PITCH_FOLLOW, "voice.karplus_strong.exciter.pitch_follow", EngineParamType::INT, 0, 100, EngineParamValue::from_int(100), 1, true},
+		{PARAM_EXCITER_RANDOMNESS, "voice.karplus_strong.exciter.randomness", EngineParamType::INT, 0, 200, EngineParamValue::from_int(0), 1, true},
+		{PARAM_LOOP_FILTER_MODE, "voice.karplus_strong.loop_filter.mode", EngineParamType::INT, 0, 6, EngineParamValue::from_int(0), 1, true},
+		{PARAM_LOOP_FILTER_DAMPING, "voice.karplus_strong.loop_filter.damping", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_LOOP_FILTER_BRIGHTNESS, "voice.karplus_strong.loop_filter.brightness", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_LOOP_FILTER_LOSS, "voice.karplus_strong.loop_filter.loss", EngineParamType::INT, 0, 100, EngineParamValue::from_int(2), 1, true},
+		{PARAM_LOOP_FILTER_TONE_TILT, "voice.karplus_strong.loop_filter.tone_tilt", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_STRING_STIFFNESS, "voice.karplus_strong.string.stiffness", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_STRING_DISPERSION, "voice.karplus_strong.string.dispersion", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_STRING_BEND, "voice.karplus_strong.string.bend", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_STRING_ODD_EVEN, "voice.karplus_strong.string.odd_even", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_BODY_TYPE, "voice.karplus_strong.body.type", EngineParamType::INT, 0, 7, EngineParamValue::from_int(0), 1, true},
+		{PARAM_BODY_AMOUNT, "voice.karplus_strong.body.amount", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_BODY_TUNE, "voice.karplus_strong.body.tune", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_BODY_WIDTH, "voice.karplus_strong.body.width", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_PITCH_DRIFT, "voice.karplus_strong.pitch.drift", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_PITCH_DROP, "voice.karplus_strong.pitch.drop", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_PITCH_PICK_BEND, "voice.karplus_strong.pitch.pick_bend", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_PITCH_TENSION_MOD, "voice.karplus_strong.pitch.tension_mod", EngineParamType::INT, 0, 100, EngineParamValue::from_int(50), 1, true},
+		{PARAM_PITCH_KEYTRACK, "voice.karplus_strong.pitch.keytrack", EngineParamType::INT, 0, 200, EngineParamValue::from_int(100), 1, true},
+		{PARAM_PITCH_GLIDE, "voice.karplus_strong.pitch.glide", EngineParamType::INT, 0, 100, EngineParamValue::from_int(0), 1, true},
+		{PARAM_RELEASE_MODE, "voice.karplus_strong.release.mode", EngineParamType::INT, 0, 4, EngineParamValue::from_int(0), 1, true},
+	};
+	static const EngineParamSchema schema = {SiONModuleType::MODULE_KS, parameters, int(std::size(parameters)), &SiOPMChannelFM::get_shared_engine_param_schema()};
+	return schema;
+}
+
+void SiOPMChannelKS::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
+	switch (p_id) {
+
+		case PMS_ATTACK: _active_operator->set_attack_rate(int(p_value.integer)); return;
+		case PMS_DECAY: _active_operator->set_decay_rate(MIN(int(p_value.integer), 48)); return;
+		case PMS_ATTENUATION: _active_operator->set_total_level(int(p_value.integer)); return;
+		case PMS_FIXED_NOTE: _active_operator->set_fixed_pitch_index(int(p_value.integer) << 6); _update_wave_pitch(); return;
+		case PMS_WAVEFORM: SiOPMChannelFM::apply_engine_param(WAVEFORM, 0, p_value); _update_wave_pitch(); return;
+		case PMS_TENSION: set_all_release_rate(int(p_value.integer)); return;
+		case PARAM_EXCITER_TYPE: set_exciter_type((ExciterType)int(p_value.integer)); return;
+		case PARAM_EXCITER_COLOR: set_exciter_color(int(p_value.integer) * 0.01); return;
+		case PARAM_EXCITER_LENGTH: set_exciter_length(int(p_value.integer) * 0.01); return;
+		case PARAM_EXCITER_SHAPE: set_exciter_shape(int(p_value.integer) * 0.01); return;
+		case PARAM_EXCITER_DRIVE: set_exciter_drive(int(p_value.integer) * 0.01); return;
+		case PARAM_EXCITER_PITCH_FOLLOW: set_exciter_pitch_follow(int(p_value.integer) * 0.01); return;
+		case PARAM_EXCITER_RANDOMNESS: set_exciter_randomness(int(p_value.integer) * 0.01); return;
+		case PARAM_LOOP_FILTER_MODE: set_loop_filter_mode((LoopFilterMode)int(p_value.integer)); return;
+		case PARAM_LOOP_FILTER_DAMPING: set_loop_damping(int(p_value.integer) * 0.01); return;
+		case PARAM_LOOP_FILTER_BRIGHTNESS: set_loop_brightness(int(p_value.integer) * 0.01); return;
+		case PARAM_LOOP_FILTER_LOSS: set_loop_loss(int(p_value.integer) * 0.01); return;
+		case PARAM_LOOP_FILTER_TONE_TILT: set_loop_tone_tilt((int(p_value.integer) - 50) * 0.02); return;
+		case PARAM_STRING_STIFFNESS: set_stiffness(int(p_value.integer) * 0.01); return;
+		case PARAM_STRING_DISPERSION: set_dispersion(int(p_value.integer) * 0.01); return;
+		case PARAM_STRING_BEND: set_bend((int(p_value.integer) - 50) * 0.02); return;
+		case PARAM_STRING_ODD_EVEN: set_odd_even_balance(int(p_value.integer) * 0.01); return;
+		case PARAM_BODY_TYPE: set_body_type((BodyType)int(p_value.integer)); return;
+		case PARAM_BODY_AMOUNT: set_body_amount(int(p_value.integer) * 0.01); return;
+		case PARAM_BODY_TUNE: set_body_tune(int(p_value.integer) * 0.01); return;
+		case PARAM_BODY_WIDTH: set_body_width(int(p_value.integer) * 0.01); return;
+		case PARAM_PITCH_DRIFT: set_pitch_drift(int(p_value.integer) * 0.01); return;
+		case PARAM_PITCH_DROP: set_pitch_drop(int(p_value.integer) * 0.01); return;
+		case PARAM_PITCH_PICK_BEND: set_pick_bend((int(p_value.integer) - 50) * 0.02); return;
+		case PARAM_PITCH_TENSION_MOD: set_tension_mod((int(p_value.integer) - 50) * 0.02); return;
+		case PARAM_PITCH_KEYTRACK: set_pitch_keytrack(int(p_value.integer) * 0.01); return;
+		case PARAM_PITCH_GLIDE: set_pitch_glide(int(p_value.integer) * 0.01); return;
+		case PARAM_RELEASE_MODE: set_release_mode((ReleaseMode)int(p_value.integer)); return;
+		default: SiOPMChannelFM::apply_engine_param(p_id, p_index, p_value); return;
+	}
 }

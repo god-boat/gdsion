@@ -19,6 +19,7 @@
 using namespace godot;
 
 class SiMMLTrack;
+class SiOPMWaveSamplerData;
 enum SiONChipType : signed int;
 enum SiONModuleType : unsigned int;
 
@@ -94,77 +95,8 @@ protected:
 
 	SiONChipType chip_type = (SiONChipType)0;
 	int channel_num = -1;
-	// PMS guitar tension.
-	int pms_tension = 8;
-
-	// KS extended resonator params.
-	int ks_exciter_type = 0;
-	int ks_exciter_color = 50;
-	int ks_exciter_length = 50;
-	int ks_exciter_shape = 50;
-	int ks_exciter_drive = 0;
-	int ks_exciter_pitch_follow = 100;
-	int ks_exciter_randomness = 0;
-	int ks_loop_filter_mode = 0;
-	int ks_loop_damping = 50;
-	int ks_loop_brightness = 50;
-	int ks_loop_loss = 2;
-	int ks_loop_tone_tilt = 50;
-	int ks_stiffness = 0;
-	int ks_dispersion = 0;
-	int ks_bend = 50;
-	int ks_odd_even = 50;
-	int ks_body_type = 0;
-	int ks_body_amount = 0;
-	int ks_body_tune = 50;
-	int ks_body_width = 50;
-	int ks_pitch_drift = 0;
-	int ks_pitch_drop = 0;
-	int ks_pick_bend = 50;
-	int ks_tension_mod = 50;
-	int ks_keytrack = 100;
-	int ks_glide = 0;
-	int ks_release_mode = 0;
-
-	// Guitar6 physical model params.
-	double guitar6_character_seed = 65535.0;
-	double guitar6_character_variation = 0.5;
-	double guitar6_string_damp = 0.5;
-	double guitar6_string_damp_variation = 0.25;
-	double guitar6_plug_damp = 0.5;
-	double guitar6_plug_damp_variation = 0.25;
-	double guitar6_string_tension = 0.0;
-	double guitar6_stereo_spread = 0.2;
-	bool guitar6_body_bypass = false;
 
 	EngineParamState engine_params;
-
-	// Monolith bass engine params.
-	int monolith_sub_shape = 0;
-	int monolith_sub_level = 80;
-	int monolith_sub_drive = 0;
-	int monolith_pitch_drop = 0;
-	int monolith_osc1_shape = 0;
-	int monolith_osc2_shape = 0;
-	int monolith_mass = 40;
-	int monolith_bite = 40;
-	int monolith_shape = 0;
-	int monolith_drive_mode = 0;
-	int monolith_grind = 0;
-	int monolith_motion_target = 0;
-	int monolith_motion_amount = 0;
-	int monolith_motion_rate = 40;
-	int monolith_width = 0;
-	int monolith_low_lock = 100;
-	int monolith_lens = 0;
-	int monolith_glide = 0;
-	int monolith_sub_octave = 2;
-
-	// Iron distorted electric guitar params.
-	IronParams iron;
-
-	// Talus physical-model percussion params.
-	TalusParams talus;
 
 	void set_note_on_pitch_envelope(const Ref<SiMMLEnvelopeTable> &p_envelope, int p_step = 1) {
 		note_on_pitch_envelope = p_envelope;
@@ -207,6 +139,15 @@ public:
 		EXPRESSION = 0x109,
 		NOTE_OFFSET = 0x10a,
 		TONE_INDEX = 0x10b,
+		AMPLITUDE_MOD_DEPTH = 0x110,
+		AMPLITUDE_MOD_END_DEPTH = 0x111,
+		AMPLITUDE_MOD_DELAY = 0x112,
+		AMPLITUDE_MOD_DURATION = 0x113,
+		PITCH_MOD_DEPTH = 0x114,
+		PITCH_MOD_END_DEPTH = 0x115,
+		PITCH_MOD_DELAY = 0x116,
+		PITCH_MOD_DURATION = 0x117,
+
 	};
 	static const EngineParamSchema &get_shared_engine_param_schema();
 
@@ -240,6 +181,7 @@ public:
 	Ref<SiOPMChannelParams> get_channel_params() const { return channel_params; }
 	Ref<SiOPMWaveBase> get_wave_data() const { return wave_data; }
 	void set_wave_data(const Ref<SiOPMWaveBase> &p_data) { wave_data = p_data; }
+	Ref<SiOPMWaveSamplerData> get_sampler_data(int p_note_number) const;
 
 	bool is_fm_voice() const;
 	bool is_pcm_voice() const;

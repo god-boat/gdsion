@@ -17,6 +17,7 @@
 #include "chip/channels/siopm_channel_talus.h"
 #include "chip/channels/siopm_channel_guitar6.h"
 #include "chip/channels/siopm_channel_ks.h"
+#include "chip/wave/siopm_wave_sampler_data.h"
 #include "chip/channels/siopm_channel_base.h"
 #include "chip/siopm_operator_params.h"
 #include "chip/wave/siopm_wave_pcm_data.h"
@@ -34,6 +35,31 @@ using namespace godot;
 
 const EngineParamSchema &SiMMLVoice::get_shared_engine_param_schema() {
 	static const EngineParamDescriptor parameters[] = {
+		{AMPLITUDE_MOD_DEPTH, "voice.amplitude_modulation.depth", EngineParamType::INT, -128, 127, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.amplitude_modulation_depth = int(value.integer); voice.channel_params->set_amplitude_modulation_depth(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.amplitude_modulation_depth); }},
+		{AMPLITUDE_MOD_END_DEPTH, "voice.amplitude_modulation.end_depth", EngineParamType::INT, -128, 127, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.amplitude_modulation_depth_end = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.amplitude_modulation_depth_end); }},
+		{AMPLITUDE_MOD_DELAY, "voice.amplitude_modulation.delay", EngineParamType::INT, 0, 255, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.amplitude_modulation_delay = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.amplitude_modulation_delay); }},
+		{AMPLITUDE_MOD_DURATION, "voice.amplitude_modulation.duration", EngineParamType::INT, 0, 255, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.amplitude_modulation_term = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.amplitude_modulation_term); }},
+		{PITCH_MOD_DEPTH, "voice.pitch_modulation.depth", EngineParamType::INT, -128, 127, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.pitch_modulation_depth = int(value.integer); voice.channel_params->set_pitch_modulation_depth(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.pitch_modulation_depth); }},
+		{PITCH_MOD_END_DEPTH, "voice.pitch_modulation.end_depth", EngineParamType::INT, -128, 127, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.pitch_modulation_depth_end = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.pitch_modulation_depth_end); }},
+		{PITCH_MOD_DELAY, "voice.pitch_modulation.delay", EngineParamType::INT, 0, 255, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.pitch_modulation_delay = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.pitch_modulation_delay); }},
+		{PITCH_MOD_DURATION, "voice.pitch_modulation.duration", EngineParamType::INT, 0, 255, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.pitch_modulation_term = int(value.integer); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.pitch_modulation_term); }},
+
 		{PITCH_BEND, "voice.pitch_bend", EngineParamType::INT, -8192, 8191, EngineParamValue::from_int(0), 1, true,
 			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.pitch_bend = int(value.integer); },
 			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.pitch_bend); }},
@@ -99,6 +125,31 @@ bool SiMMLVoice::is_sampler_voice() const {
 	return sampler_table.is_valid();
 }
 
+Ref<SiOPMWaveSamplerData> SiMMLVoice::get_sampler_data(int p_note_number) const {
+	if (get_module_type() != SiONModuleType::MODULE_SAMPLE) {
+		return Ref<SiOPMWaveSamplerData>();
+	}
+
+	if (wave_data.is_null()) {
+		return Ref<SiOPMWaveSamplerData>();
+	}
+
+	// Case 1: wave_data is a direct sampler data object
+	Ref<SiOPMWaveSamplerData> sd = wave_data;
+	if (sd.is_valid()) {
+		return sd;
+	}
+
+	// Case 2: wave_data is a sampler table
+	Ref<SiOPMWaveSamplerTable> tbl = wave_data;
+	if (tbl.is_valid()) {
+		int idx = p_note_number & (SiOPMRefTable::NOTE_TABLE_SIZE - 1);
+		return tbl->get_sample(idx);
+	}
+
+	return Ref<SiOPMWaveSamplerData>();
+}
+
 bool SiMMLVoice::is_wave_table_voice() const {
 	Ref<SiOPMWaveTable> wave_table = wave_data;
 
@@ -161,25 +212,16 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 			SiOPMChannelKS *ks_ch = existing_ch ? dynamic_cast<SiOPMChannelKS *>(existing_ch) : nullptr;
 			if (!ks_ch) {
 				p_track->set_channel_module_type(SiONModuleType::MODULE_KS, 1);
-				ks_ch = dynamic_cast<SiOPMChannelKS *>(p_track->get_channel());
+				ks_ch = static_cast<SiOPMChannelKS *>(p_track->get_channel());
 			}
 			if (ks_ch) {
-				ks_ch->set_all_release_rate(pms_tension);
+				ks_ch->set_all_release_rate(int(engine_params.get(SiOPMChannelKS::PMS_TENSION, 0).integer));
 				ks_ch->set_channel_params(channel_params, update_volumes, true);
 				p_track->reset_volume_offset();
 				if (is_pcm_voice() && wave_data.is_valid()) {
 					ks_ch->set_wave_data(wave_data);
 				}
-				ks_ch->set_ks_extended_params(
-					ks_exciter_type, ks_exciter_color, ks_exciter_length,
-					ks_exciter_shape, ks_exciter_drive, ks_exciter_pitch_follow, ks_exciter_randomness,
-					ks_loop_filter_mode, ks_loop_damping, ks_loop_brightness,
-					ks_loop_loss, ks_loop_tone_tilt,
-					ks_stiffness, ks_dispersion, ks_bend, ks_odd_even,
-					ks_body_type, ks_body_amount, ks_body_tune, ks_body_width,
-					ks_pitch_drift, ks_pitch_drop, ks_pick_bend,
-					ks_tension_mod, ks_keytrack, ks_glide,
-					ks_release_mode);
+
 			}
 		} break;
 
@@ -190,10 +232,7 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 				g6_ch = dynamic_cast<SiOPMChannelGuitar6 *>(p_track->get_channel());
 			}
 			if (g6_ch) {
-				g6_ch->set_guitar6_params(guitar6_character_seed, guitar6_character_variation,
-						guitar6_string_damp, guitar6_string_damp_variation,
-						guitar6_plug_damp, guitar6_plug_damp_variation,
-						guitar6_string_tension, guitar6_stereo_spread, guitar6_body_bypass);
+				g6_ch->set_channel_params(channel_params, update_volumes, true);
 				p_track->reset_volume_offset();
 			}
 		} break;
@@ -217,14 +256,7 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 				mono_ch = dynamic_cast<SiOPMChannelMonolith *>(p_track->get_channel());
 			}
 			if (mono_ch) {
-				mono_ch->set_monolith_params(
-						monolith_sub_shape, monolith_sub_level, monolith_sub_drive, monolith_pitch_drop,
-						monolith_osc1_shape, monolith_osc2_shape,
-						monolith_mass, monolith_bite, monolith_shape,
-						monolith_drive_mode, monolith_grind,
-						monolith_motion_target, monolith_motion_amount, monolith_motion_rate,
-						monolith_width, monolith_low_lock, monolith_lens, monolith_glide,
-						monolith_sub_octave);
+
 				mono_ch->set_channel_params(channel_params, update_volumes, true);
 				p_track->reset_volume_offset();
 			}
@@ -236,7 +268,7 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 				p_track->set_channel_module_type(SiONModuleType::MODULE_IRON, 0);
 				iron_ch = dynamic_cast<SiOPMChannelIron *>(p_track->get_channel());
 			}
-			iron_ch->set_iron_params(iron);
+
 			iron_ch->set_channel_params(channel_params, update_volumes, true);
 			p_track->reset_volume_offset();
 		} break;
@@ -247,7 +279,7 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 				p_track->set_channel_module_type(SiONModuleType::MODULE_TALUS, 0);
 				talus_ch = dynamic_cast<SiOPMChannelTalus *>(p_track->get_channel());
 			}
-			talus_ch->set_talus_params(talus);
+
 			talus_ch->set_channel_params(channel_params, update_volumes, true);
 			p_track->reset_volume_offset();
 		} break;
@@ -287,6 +319,7 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 	p_track->set_engine_kind_id(module_type);
 	if (schema != nullptr) {
 		for (const EngineParamDescriptor *d : schema->local_parameters) {
+			if (!d->realtime || !d->applies_on_voice) continue;
 			for (int index = 0; index < d->instance_count; index++) {
 				p_track->get_channel()->apply_engine_param(d->id, index, engine_params.get(d->id, index));
 			}
@@ -351,50 +384,8 @@ void SiMMLVoice::reset() {
 
 	channel_params->initialize();
 	wave_data = Ref<SiOPMWaveBase>();
-	pms_tension = 8;
-
-	ks_exciter_type = 0;
-	ks_exciter_color = 50;
-	ks_exciter_length = 50;
-	ks_exciter_shape = 50;
-	ks_exciter_drive = 0;
-	ks_exciter_pitch_follow = 100;
-	ks_exciter_randomness = 0;
-	ks_loop_filter_mode = 0;
-	ks_loop_damping = 50;
-	ks_loop_brightness = 50;
-	ks_loop_loss = 2;
-	ks_loop_tone_tilt = 50;
-	ks_stiffness = 0;
-	ks_dispersion = 0;
-	ks_bend = 50;
-	ks_odd_even = 50;
-	ks_body_type = 0;
-	ks_body_amount = 0;
-	ks_body_tune = 50;
-	ks_body_width = 50;
-	ks_pitch_drift = 0;
-	ks_pitch_drop = 0;
-	ks_pick_bend = 50;
-	ks_tension_mod = 50;
-	ks_keytrack = 100;
-	ks_glide = 0;
-	ks_release_mode = 0;
-
-	guitar6_character_seed = 65535.0;
-	guitar6_character_variation = 0.5;
-	guitar6_string_damp = 0.5;
-	guitar6_string_damp_variation = 0.25;
-	guitar6_plug_damp = 0.5;
-	guitar6_plug_damp_variation = 0.25;
-	guitar6_string_tension = 0.0;
-	guitar6_stereo_spread = 0.2;
-	guitar6_body_bypass = false;
 
 	engine_params.reset(EngineParamSchema::find_engine(module_type));
-
-	iron = IronParams();
-	talus = TalusParams();
 
 	default_gate_time = NAN;
 	default_gate_ticks = -1;
@@ -462,70 +453,8 @@ void SiMMLVoice::copy_from(const Ref<SiMMLVoice> &p_source) {
 
 	channel_params->copy_from(p_source->channel_params);
 	wave_data = p_source->wave_data;
-	pms_tension = p_source->pms_tension;
-
-	ks_exciter_type = p_source->ks_exciter_type;
-	ks_exciter_color = p_source->ks_exciter_color;
-	ks_exciter_length = p_source->ks_exciter_length;
-	ks_exciter_shape = p_source->ks_exciter_shape;
-	ks_exciter_drive = p_source->ks_exciter_drive;
-	ks_exciter_pitch_follow = p_source->ks_exciter_pitch_follow;
-	ks_exciter_randomness = p_source->ks_exciter_randomness;
-	ks_loop_filter_mode = p_source->ks_loop_filter_mode;
-	ks_loop_damping = p_source->ks_loop_damping;
-	ks_loop_brightness = p_source->ks_loop_brightness;
-	ks_loop_loss = p_source->ks_loop_loss;
-	ks_loop_tone_tilt = p_source->ks_loop_tone_tilt;
-	ks_stiffness = p_source->ks_stiffness;
-	ks_dispersion = p_source->ks_dispersion;
-	ks_bend = p_source->ks_bend;
-	ks_odd_even = p_source->ks_odd_even;
-	ks_body_type = p_source->ks_body_type;
-	ks_body_amount = p_source->ks_body_amount;
-	ks_body_tune = p_source->ks_body_tune;
-	ks_body_width = p_source->ks_body_width;
-	ks_pitch_drift = p_source->ks_pitch_drift;
-	ks_pitch_drop = p_source->ks_pitch_drop;
-	ks_pick_bend = p_source->ks_pick_bend;
-	ks_tension_mod = p_source->ks_tension_mod;
-	ks_keytrack = p_source->ks_keytrack;
-	ks_glide = p_source->ks_glide;
-	ks_release_mode = p_source->ks_release_mode;
-
-	guitar6_character_seed = p_source->guitar6_character_seed;
-	guitar6_character_variation = p_source->guitar6_character_variation;
-	guitar6_string_damp = p_source->guitar6_string_damp;
-	guitar6_string_damp_variation = p_source->guitar6_string_damp_variation;
-	guitar6_plug_damp = p_source->guitar6_plug_damp;
-	guitar6_plug_damp_variation = p_source->guitar6_plug_damp_variation;
-	guitar6_string_tension = p_source->guitar6_string_tension;
-	guitar6_stereo_spread = p_source->guitar6_stereo_spread;
-	guitar6_body_bypass = p_source->guitar6_body_bypass;
 
 	engine_params = p_source->engine_params;
-
-	monolith_sub_shape = p_source->monolith_sub_shape;
-	monolith_sub_level = p_source->monolith_sub_level;
-	monolith_sub_drive = p_source->monolith_sub_drive;
-	monolith_pitch_drop = p_source->monolith_pitch_drop;
-	monolith_osc1_shape = p_source->monolith_osc1_shape;
-	monolith_osc2_shape = p_source->monolith_osc2_shape;
-	monolith_mass = p_source->monolith_mass;
-	monolith_bite = p_source->monolith_bite;
-	monolith_shape = p_source->monolith_shape;
-	monolith_drive_mode = p_source->monolith_drive_mode;
-	monolith_grind = p_source->monolith_grind;
-	monolith_motion_target = p_source->monolith_motion_target;
-	monolith_motion_amount = p_source->monolith_motion_amount;
-	monolith_motion_rate = p_source->monolith_motion_rate;
-	monolith_width = p_source->monolith_width;
-	monolith_low_lock = p_source->monolith_low_lock;
-	monolith_lens = p_source->monolith_lens;
-	monolith_glide = p_source->monolith_glide;
-	monolith_sub_octave = p_source->monolith_sub_octave;
-
-	iron = p_source->iron;
-	talus = p_source->talus;
 
 	default_gate_time = p_source->default_gate_time;
 	default_gate_ticks = p_source->default_gate_ticks;

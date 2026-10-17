@@ -1,4 +1,9 @@
 #include "siopm_channel_monolith.h"
+#include "chip/channels/siopm_channel_fm.h"
+#include "chip/siopm_operator_params.h"
+#include "sequencer/simml_voice.h"
+#include "sion_enums.h"
+#include <iterator>
 
 #include <cmath>
 #include <cstring>
@@ -506,34 +511,7 @@ void SiOPMChannelMonolith::_update_amp_envelope() {
 // Grouped param setter
 // ---------------------------------------------------------------------------
 
-void SiOPMChannelMonolith::set_monolith_params(
-		int p_sub_shape, int p_sub_level, int p_sub_drive, int p_pitch_drop,
-		int p_osc1_shape, int p_osc2_shape,
-		int p_mass, int p_bite, int p_shape,
-		int p_drive_mode, int p_grind,
-		int p_motion_target, int p_motion_amount, int p_motion_rate,
-		int p_width, int p_low_lock, int p_lens, int p_glide,
-		int p_sub_octave) {
-	_sub_shape = CLAMP(p_sub_shape, 0, SUB_SHAPE_MAX - 1);
-	_sub_level = CLAMP(p_sub_level, 0, 127);
-	_sub_drive = CLAMP(p_sub_drive, 0, 127);
-	_pitch_drop = CLAMP(p_pitch_drop, 0, 127);
-	_sub_octave = CLAMP(p_sub_octave, 0, 2);
-	_osc1_shape = CLAMP(p_osc1_shape, 0, OSC_SHAPE_MAX - 1);
-	_osc2_shape = CLAMP(p_osc2_shape, 0, OSC_SHAPE_MAX - 1);
-	_mass = CLAMP(p_mass, 0, 127);
-	_bite = CLAMP(p_bite, 0, 127);
-	_shape_warp = CLAMP(p_shape, 0, 127);
-	_drive_mode = CLAMP(p_drive_mode, 0, DRIVE_MODE_MAX - 1);
-	_grind = CLAMP(p_grind, 0, 127);
-	_motion_target_param = CLAMP(p_motion_target, 0, MOTION_TARGET_MAX - 1);
-	_motion_amount = CLAMP(p_motion_amount, 0, 127);
-	_motion_rate = CLAMP(p_motion_rate, 0, 127);
-	_width = CLAMP(p_width, 0, 127);
-	_low_lock = CLAMP(p_low_lock, 0, 127);
-	_lens = CLAMP(p_lens, 0, 127);
-	_glide_time = CLAMP(p_glide, 0, 127);
-
+void SiOPMChannelMonolith::_refresh_coefficients() {
 	// Recompute glide coefficient.
 	if (_glide_time > 0) {
 		double glide_ms = 5.0 + (double)_glide_time * 15.0;
@@ -1105,4 +1083,76 @@ SiOPMChannelMonolith::SiOPMChannelMonolith(SiOPMSoundChip *p_chip) :
 		SiOPMChannelBase(p_chip) {
 	_sample_rate = (_table ? (double)_table->sampling_rate : 44100.0);
 	_process_function = Callable(this, "_process_monolith");
+}
+
+const EngineParamSchema &SiOPMChannelMonolith::get_engine_param_schema() {
+	static const EngineParamDescriptor parameters[] = {
+
+		{PARAM_SUB_SHAPE, "voice.monolith.sub.shape", EngineParamType::INT, 0, 6, EngineParamValue::from_int(0), 1, true},
+		{PARAM_SUB_LEVEL, "voice.monolith.sub.level", EngineParamType::INT, 0, 127, EngineParamValue::from_int(80), 1, true},
+		{PARAM_SUB_DRIVE, "voice.monolith.sub.drive", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true},
+		{PARAM_PITCH_DROP, "voice.monolith.pitch.drop", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true},
+		{PARAM_OSCILLATOR_1_SHAPE, "voice.monolith.oscillator_1.shape", EngineParamType::INT, 0, 7, EngineParamValue::from_int(0), 1, true},
+		{PARAM_OSCILLATOR_2_SHAPE, "voice.monolith.oscillator_2.shape", EngineParamType::INT, 0, 7, EngineParamValue::from_int(0), 1, true},
+		{PARAM_TONE_MASS, "voice.monolith.tone.mass", EngineParamType::INT, 0, 127, EngineParamValue::from_int(40), 1, true},
+		{PARAM_TONE_BITE, "voice.monolith.tone.bite", EngineParamType::INT, 0, 127, EngineParamValue::from_int(40), 1, true},
+		{PARAM_TONE_SHAPE, "voice.monolith.tone.shape", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true},
+		{PARAM_DRIVE_MODE, "voice.monolith.drive.mode", EngineParamType::INT, 0, 5, EngineParamValue::from_int(0), 1, true},
+		{PARAM_DRIVE_GRIND, "voice.monolith.drive.grind", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true},
+		{PARAM_MOTION_TARGET, "voice.monolith.motion.target", EngineParamType::INT, 0, 7, EngineParamValue::from_int(0), 1, true},
+		{PARAM_MOTION_AMOUNT, "voice.monolith.motion.amount", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true},
+		{PARAM_MOTION_RATE, "voice.monolith.motion.rate", EngineParamType::INT, 0, 127, EngineParamValue::from_int(40), 1, true},
+		{PARAM_OUTPUT_WIDTH, "voice.monolith.output.width", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true},
+		{PARAM_OUTPUT_LOW_LOCK, "voice.monolith.output.low_lock", EngineParamType::INT, 0, 127, EngineParamValue::from_int(100), 1, true},
+		{PARAM_OUTPUT_LENS, "voice.monolith.output.lens", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true},
+		{PARAM_PITCH_GLIDE, "voice.monolith.pitch.glide", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true},
+		{PARAM_SUB_OCTAVE, "voice.monolith.sub.octave", EngineParamType::INT, 0, 2, EngineParamValue::from_int(2), 1, true},
+		{AMP_ATTACK, "voice.amplitude_envelope.attack_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(63), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_amplitude_attack_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_amplitude_attack_rate()); }},
+		{AMP_DECAY, "voice.amplitude_envelope.decay_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(63), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_amplitude_decay_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_amplitude_decay_rate()); }},
+		{AMP_SUSTAIN, "voice.amplitude_envelope.sustain_level", EngineParamType::INT, 0, 128, EngineParamValue::from_int(128), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_amplitude_sustain_level(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_amplitude_sustain_level()); }},
+		{AMP_RELEASE, "voice.amplitude_envelope.release_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(63), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_amplitude_release_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_amplitude_release_rate()); }},
+		{SiOPMChannelFM::MUTE, "operator.mute", EngineParamType::BOOL, 0, 1, EngineParamValue::from_bool(false), 4, false,
+			[](SiMMLVoice &voice, uint32_t, int index, EngineParamValue value) { voice.get_channel_params()->get_operator_params(index)->set_mute(value.boolean); },
+			[](const SiMMLVoice &voice, uint32_t, int index) { return EngineParamValue::from_bool(voice.get_channel_params()->get_operator_params(index)->get_mute()); }},
+	};
+	static const EngineParamSchema schema = {SiONModuleType::MODULE_MONOLITH, parameters, int(std::size(parameters)), &SiOPMChannelBase::get_shared_engine_param_schema()};
+	return schema;
+}
+
+void SiOPMChannelMonolith::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
+	switch (p_id) {
+		case AMP_ATTACK: _amp_attack_rate = int(p_value.integer); if (_amp_stage == AMP_STAGE_ATTACK) _configure_amp_stage(1.0, _amp_attack_rate); return;
+		case AMP_DECAY: _amp_decay_rate = int(p_value.integer); if (_amp_stage == AMP_STAGE_DECAY) _configure_amp_stage(double(_amp_sustain_level) / 128.0, _amp_decay_rate); return;
+		case AMP_SUSTAIN: _amp_sustain_level = int(p_value.integer); if (_amp_stage == AMP_STAGE_DECAY || _amp_stage == AMP_STAGE_SUSTAIN) _set_amp_stage(_amp_stage); return;
+		case AMP_RELEASE: _amp_release_rate = int(p_value.integer); if (_amp_stage == AMP_STAGE_RELEASE) _configure_amp_stage(0.0, _amp_release_rate); return;
+		case PARAM_SUB_SHAPE: _sub_shape = int(p_value.integer); break;
+		case PARAM_SUB_LEVEL: _sub_level = int(p_value.integer); break;
+		case PARAM_SUB_DRIVE: _sub_drive = int(p_value.integer); break;
+		case PARAM_PITCH_DROP: _pitch_drop = int(p_value.integer); break;
+		case PARAM_OSCILLATOR_1_SHAPE: _osc1_shape = int(p_value.integer); break;
+		case PARAM_OSCILLATOR_2_SHAPE: _osc2_shape = int(p_value.integer); break;
+		case PARAM_TONE_MASS: _mass = int(p_value.integer); break;
+		case PARAM_TONE_BITE: _bite = int(p_value.integer); break;
+		case PARAM_TONE_SHAPE: _shape_warp = int(p_value.integer); break;
+		case PARAM_DRIVE_MODE: _drive_mode = int(p_value.integer); break;
+		case PARAM_DRIVE_GRIND: _grind = int(p_value.integer); break;
+		case PARAM_MOTION_TARGET: _motion_target_param = int(p_value.integer); break;
+		case PARAM_MOTION_AMOUNT: _motion_amount = int(p_value.integer); break;
+		case PARAM_MOTION_RATE: _motion_rate = int(p_value.integer); break;
+		case PARAM_OUTPUT_WIDTH: _width = int(p_value.integer); break;
+		case PARAM_OUTPUT_LOW_LOCK: _low_lock = int(p_value.integer); break;
+		case PARAM_OUTPUT_LENS: _lens = int(p_value.integer); break;
+		case PARAM_PITCH_GLIDE: _glide_time = int(p_value.integer); break;
+		case PARAM_SUB_OCTAVE: _sub_octave = int(p_value.integer); break;
+		default: SiOPMChannelBase::apply_engine_param(p_id, p_index, p_value); return;
+	}
+	_refresh_coefficients();
 }

@@ -5,6 +5,9 @@
 /***************************************************/
 
 #include "siopm_channel_sampler.h"
+#include "sequencer/simml_voice.h"
+#include <cstdlib>
+#include <iterator>
 
 #include "sion_enums.h"
 #include "chip/siopm_channel_params.h"
@@ -922,4 +925,93 @@ void SiOPMChannelSampler::_recalc_pitch_step() {
 
 SiOPMChannelSampler::SiOPMChannelSampler(SiOPMSoundChip *p_chip) : SiOPMChannelBase(p_chip) {
 	// Empty.
+}
+
+static EngineParamValue read_region_param(const SiOPMWaveSamplerData &p_sample, uint32_t p_id) {
+	switch (p_id) {
+		case SiOPMChannelSampler::REGION_GAIN: return EngineParamValue::from_int(p_sample.get_gain_db());
+		case SiOPMChannelSampler::REGION_PAN: return EngineParamValue::from_int(p_sample.get_pan());
+		case SiOPMChannelSampler::REGION_START: return EngineParamValue::from_int(p_sample.get_start_point());
+		case SiOPMChannelSampler::REGION_END: return EngineParamValue::from_int(p_sample.get_end_point());
+		case SiOPMChannelSampler::REGION_MODE: return EngineParamValue::from_int(p_sample.get_ignore_note_off());
+		case SiOPMChannelSampler::REGION_LOOP: return EngineParamValue::from_int(p_sample.get_loop_point());
+		case SiOPMChannelSampler::REGION_ROOT: return EngineParamValue::from_int(p_sample.get_root_offset());
+		case SiOPMChannelSampler::REGION_COARSE: return EngineParamValue::from_int(p_sample.get_coarse_offset());
+		case SiOPMChannelSampler::REGION_FINE: return EngineParamValue::from_int(p_sample.get_fine_offset());
+		default: CRASH_NOW_MSG("Unknown sampler region parameter."); std::abort();
+	}
+}
+
+static void write_region_param(SiOPMWaveSamplerData &p_sample, uint32_t p_id, int p_value) {
+	switch (p_id) {
+		case SiOPMChannelSampler::REGION_GAIN: p_sample.set_gain_db(p_value); return;
+		case SiOPMChannelSampler::REGION_PAN: p_sample.set_pan(p_value); return;
+		case SiOPMChannelSampler::REGION_START: p_sample.set_start_point(p_value); return;
+		case SiOPMChannelSampler::REGION_END: p_sample.set_end_point(p_value); return;
+		case SiOPMChannelSampler::REGION_MODE: p_sample.set_ignore_note_off(p_value); return;
+		case SiOPMChannelSampler::REGION_LOOP: p_sample.set_loop_point(p_value); return;
+		case SiOPMChannelSampler::REGION_ROOT: p_sample.set_root_offset(p_value); return;
+		case SiOPMChannelSampler::REGION_COARSE: p_sample.set_coarse_offset(p_value); return;
+		case SiOPMChannelSampler::REGION_FINE: p_sample.set_fine_offset(p_value); return;
+		default: CRASH_NOW_MSG("Unknown sampler region parameter."); std::abort();
+	}
+}
+
+// Routing cutover only: sample resources retain their existing scalar ownership.
+// Empty keys have no loaded sample; writing them retains the existing no-op behavior.
+static void set_region_param(SiMMLVoice &p_voice, uint32_t p_id, int p_index, EngineParamValue p_value) {
+	const Ref<SiOPMWaveSamplerData> sample = p_voice.get_sampler_data(p_index);
+	if (sample.is_valid()) write_region_param(*sample.ptr(), p_id, int(p_value.integer));
+}
+
+static EngineParamValue get_region_param(const SiMMLVoice &p_voice, uint32_t p_id, int p_index) {
+	const Ref<SiOPMWaveSamplerData> sample = p_voice.get_sampler_data(p_index);
+	// An unloaded key exposes the schema's empty-region value, without creating a sample.
+	if (sample.is_null()) return SiOPMChannelSampler::get_engine_param_schema().find(p_id)->reset_value;
+	return read_region_param(*sample.ptr(), p_id);
+}
+
+const EngineParamSchema &SiOPMChannelSampler::get_engine_param_schema() {
+	static const EngineParamDescriptor parameters[] = {
+		{REGION_GAIN, "sampler.region.gain", EngineParamType::INT, -36, 36, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
+		{REGION_PAN, "sampler.region.pan", EngineParamType::INT, -64, 63, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
+		{REGION_START, "sampler.region.start_point", EngineParamType::INT, 0, 2147483647, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
+		{REGION_END, "sampler.region.end_point", EngineParamType::INT, -1, 2147483647, EngineParamValue::from_int(-1), 128, true, set_region_param, get_region_param},
+		{REGION_MODE, "sampler.region.playback_mode", EngineParamType::INT, 0, 1, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
+		{REGION_LOOP, "sampler.region.loop_point", EngineParamType::INT, -1, 2147483647, EngineParamValue::from_int(-1), 128, true, set_region_param, get_region_param},
+		{REGION_ROOT, "sampler.region.root_offset", EngineParamType::INT, -48, 48, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
+		{REGION_COARSE, "sampler.region.coarse_offset", EngineParamType::INT, -24, 24, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
+		{REGION_FINE, "sampler.region.fine_offset", EngineParamType::INT, -100, 100, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
+		{AMP_ATTACK, "voice.amplitude_envelope.attack_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(63), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_amplitude_attack_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_amplitude_attack_rate()); }},
+		{AMP_DECAY, "voice.amplitude_envelope.decay_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(63), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_amplitude_decay_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_amplitude_decay_rate()); }},
+		{AMP_SUSTAIN, "voice.amplitude_envelope.sustain_level", EngineParamType::INT, 0, 128, EngineParamValue::from_int(128), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_amplitude_sustain_level(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_amplitude_sustain_level()); }},
+		{AMP_RELEASE, "voice.amplitude_envelope.release_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(63), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_amplitude_release_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_amplitude_release_rate()); }},
+
+		{SLICE_MODE, "sampler.slice_detection.mode", EngineParamType::INT, 0, 1, EngineParamValue::from_int(1), 1, false},
+		{SLICE_SENSITIVITY, "sampler.slice_detection.sensitivity", EngineParamType::INT, 1, 100, EngineParamValue::from_int(75), 1, false},
+	};
+	static const EngineParamSchema schema = {SiONModuleType::MODULE_SAMPLE, parameters, int(std::size(parameters)), &SiOPMChannelBase::get_shared_engine_param_schema()};
+	return schema;
+}
+
+void SiOPMChannelSampler::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
+	switch (p_id) {
+		case AMP_ATTACK: set_amp_attack_rate(int(p_value.integer)); return;
+		case AMP_DECAY: set_amp_decay_rate(int(p_value.integer)); return;
+		case AMP_SUSTAIN: set_amp_sustain_level(int(p_value.integer)); return;
+		case AMP_RELEASE: set_amp_release_rate(int(p_value.integer)); return;
+		case REGION_GAIN: case REGION_PAN: case REGION_START: case REGION_END: case REGION_MODE:
+		case REGION_LOOP: case REGION_ROOT: case REGION_COARSE: case REGION_FINE: break;
+		default: SiOPMChannelBase::apply_engine_param(p_id, p_index, p_value); return;
+	}
+	const Ref<SiOPMWaveSamplerData> sample = resolve_sampler_data_for_note(p_index);
+	if (sample.is_valid()) write_region_param(*sample.ptr(), p_id, int(p_value.integer));
 }

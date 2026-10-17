@@ -29,6 +29,7 @@ func run(scene_tree: SceneTree) -> void:
 	await _run_case(scene_tree, "reset retaining effect streams", _case_reset.bind(false))
 	await _run_case(scene_tree, "synchronous tempo", _case_tempo)
 	await _run_case(scene_tree, "track mute", _case_mute)
+	await _run_case(scene_tree, "operator count scopes", _case_operator_count_scopes)
 
 
 func _run_case(scene_tree: SceneTree, label: String, body: Callable) -> void:
@@ -54,7 +55,7 @@ func _run_case(scene_tree: SceneTree, label: String, body: Callable) -> void:
 
 func _make_voice() -> SiONVoice:
 	var voice := SiONVoice.create()
-	voice.set_envelope(63, 0, 0, 63, 0, 0)
+	voice.get_channel_params().get_operator_params(0).set_attack_rate(63)
 	return voice
 
 
@@ -197,6 +198,49 @@ func _case_tempo(label: String, driver: SiONDriver, renderer: SiONOfflineRendere
 	_assert_equal("%s: a streaming tempo edit is synchronous" % label, driver.get_bpm(), 90.0)
 	renderer.render_block()
 	_assert_equal("%s: rendering preserves the edited tempo" % label, driver.get_bpm(), 90.0)
+
+
+func _case_operator_count_scopes(label: String, driver: SiONDriver, renderer: SiONOfflineRenderer) -> void:
+	var fm := SiONVoice.create_engine(5, 0)
+	fm.get_channel_params().set_operator_count(2)
+	var sampler := SiONVoice.create_engine(10, 0)
+	var samples := PackedFloat32Array()
+	samples.resize(BUFFER_SIZE * 32)
+	samples.fill(0.1)
+	sampler.set_sampler_voice(samples, true, 1)
+	var tracks: Array[SiMMLTrack] = []
+	for scope: Array in [[1, 101, 11], [1, 101, 12], [1, 202, 13], [1, 303, 14], [2, 101, 15]]:
+		var track := driver.create_user_controllable_track(scope[0])
+		track.set_entity_scope_id(scope[1])
+		track.set_slot_scope_id(scope[2])
+		var voice := sampler if tracks.size() == 3 else fm
+		voice.update_track_voice(track)
+		driver.mailbox_key_on(scope[0], 60, 0, -1, -1, track.get_instance_id())
+		tracks.append(track)
+	renderer.render_block()
+	driver.mailbox_set_fm_operator_count(1, 3, 0, false, 0, 0, 101)
+	renderer.render_block()
+	for index in [0, 1]:
+		_assert_equal("%s: every note on the selected leaf changes" % label,
+			str(tracks[index].get_channel()).contains("ops=3,"), true)
+	for index in [2, 4]:
+		_assert_equal("%s: sibling leaf and other track stay unchanged" % label,
+			str(tracks[index].get_channel()).contains("ops=2,"), true)
+	var sampler_channel: Object = tracks[3].get_channel()
+	_assert_equal("%s: sampler sibling retains its engine" % label,
+		sampler_channel.get_class(), "SiOPMChannelSampler")
+	# The public native API also permits track-wide commands. Those select FM
+	# channels while preserving non-FM siblings on a mixed-engine track.
+	driver.mailbox_set_fm_operator_count(1, 4, 0, false, 0, 0)
+	renderer.render_block()
+	for index in [0, 1, 2]:
+		_assert_equal("%s: explicit broadcast selects FM channels" % label,
+			str(tracks[index].get_channel()).contains("ops=4,"), true)
+	sampler_channel = tracks[3].get_channel()
+	_assert_equal("%s: explicit broadcast excludes the sampler" % label,
+		sampler_channel.get_class(), "SiOPMChannelSampler")
+	_assert_equal("%s: explicit broadcast stays on its logical track" % label,
+		str(tracks[4].get_channel()).contains("ops=2,"), true)
 
 
 func _case_mute(label: String, driver: SiONDriver, renderer: SiONOfflineRenderer) -> void:

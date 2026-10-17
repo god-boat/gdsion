@@ -4,7 +4,7 @@
 //   out <path>               Binary output: per job, an int32 count then the samples.
 //   rate <hz>                Sample rate for the next `channel`.
 //   channel talus|iron       Selects and initializes a channel; starts a job.
-//   params <ints...>         The grouped param tuple.
+//   params <ints...>         Engine inputs, applied through channel scalar IDs.
 //   pitch <int>              set_pitch, 64 units per semitone.
 //   expression <int>         offset_volume; 128 is full velocity.
 //   on | off                 note_on / note_off.
@@ -111,7 +111,7 @@ int main() {
 				for (int i = 0; i < (int)values.size() && i < TalusParams::SLOT_COUNT; i++) {
 					params.values[i] = values[i];
 				}
-				talus.set_talus_params(params);
+				for (int slot = 0; slot < TalusParams::SLOT_COUNT; slot++) talus.apply_engine_param(SiOPMChannelTalus::PARAM_STRIKE_LEVEL + slot, 0, EngineParamValue::from_int(params.values[slot]));
 			}
 #endif
 #ifdef HARNESS_IRON
@@ -120,7 +120,7 @@ int main() {
 				for (int i = 0; i < (int)values.size() && i < IronParams::SLOT_COUNT; i++) {
 					params.values[i] = values[i];
 				}
-				iron.set_iron_params(params);
+				for (int slot = 0; slot < IronParams::SLOT_COUNT; slot++) iron.apply_engine_param(SiOPMChannelIron::PARAM_PICK_VOICING + slot, 0, EngineParamValue::from_int(params.values[slot]));
 			}
 #endif
 		} else if (command == "pitch") {

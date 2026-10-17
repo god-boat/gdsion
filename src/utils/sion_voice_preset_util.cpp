@@ -1,3 +1,9 @@
+#include "chip/channels/siopm_channel_fm.h"
+#include "chip/channels/siopm_channel_ks.h"
+#include "chip/channels/siopm_channel_talus.h"
+#include "chip/channels/siopm_channel_iron.h"
+#include "chip/channels/siopm_channel_guitar6.h"
+#include "chip/channels/siopm_channel_monolith.h"
 /***************************************************/
 /* Part of GDSiON software synthesizer             */
 /* Copyright (c) 2024 Yuri Sizov and contributors  */
@@ -968,14 +974,13 @@ void SiONVoicePresetUtil::_create_ks_voice(const String &p_key,
 int tension = p_delay;
 
 // Build a proper KS pluck – noise burst, delay-line, damping, etc.
-Ref<SiONVoice> voice = memnew(SiONVoice);
-voice->set_pms_guitar(
-	/*attack_rate */ p_attack_rate,
-	/*decay_rate  */ p_decay_rate,
-	/*total_level */ p_total_level,
-	/*fixed_pitch */ 0,                         // Track the played note.
-	/*wave_shape  */ p_wave_shape,
-	/*tension     */ tension);
+Ref<SiONVoice> voice = SiONVoice::create_engine(SiONModuleType::MODULE_KS, SiONChipType::CHIP_PMS_GUITAR);
+voice->set_engine_param(SiOPMChannelKS::PMS_ATTACK, p_attack_rate);
+voice->set_engine_param(SiOPMChannelKS::PMS_DECAY, p_decay_rate);
+voice->set_engine_param(SiOPMChannelKS::PMS_ATTENUATION, p_total_level);
+voice->set_engine_param(SiOPMChannelKS::PMS_FIXED_NOTE, 0);
+voice->set_engine_param(SiOPMChannelKS::PMS_WAVEFORM, p_wave_shape);
+voice->set_engine_param(SiOPMChannelKS::PMS_TENSION, tension);
 
 // Fine-tune feedback, sustain and release.
 Ref<SiOPMChannelParams> ch_params = voice->get_channel_params();
@@ -995,12 +1000,16 @@ void SiONVoicePresetUtil::_create_guitar6_voice(const String &p_key, const Strin
 	double p_plug_damp, double p_plug_damp_variation,
 	double p_string_tension, double p_stereo_spread, bool p_body_bypass) {
 
-	Ref<SiONVoice> voice = memnew(SiONVoice);
-	voice->set_guitar6(p_character_seed, p_character_variation,
-		p_string_damp, p_string_damp_variation,
-		p_plug_damp, p_plug_damp_variation,
-		p_string_tension, p_stereo_spread, p_body_bypass);
-
+	Ref<SiONVoice> voice = SiONVoice::create_engine(SiONModuleType::MODULE_GUITAR6, SiONChipType::CHIP_GUITAR6);
+	voice->set_engine_param(SiOPMChannelGuitar6::PARAM_CHARACTER_SEED, p_character_seed);
+	voice->set_engine_param(SiOPMChannelGuitar6::PARAM_CHARACTER_VARIATION, p_character_variation * 100.0);
+	voice->set_engine_param(SiOPMChannelGuitar6::PARAM_STRING_DAMPING, p_string_damp * 100.0);
+	voice->set_engine_param(SiOPMChannelGuitar6::PARAM_STRING_DAMPING_VARIATION, p_string_damp_variation * 100.0);
+	voice->set_engine_param(SiOPMChannelGuitar6::PARAM_PLUG_DAMPING, p_plug_damp * 100.0);
+	voice->set_engine_param(SiOPMChannelGuitar6::PARAM_PLUG_DAMPING_VARIATION, p_plug_damp_variation * 100.0);
+	voice->set_engine_param(SiOPMChannelGuitar6::PARAM_STRING_TENSION, p_string_tension * 100.0);
+	voice->set_engine_param(SiOPMChannelGuitar6::PARAM_OUTPUT_STEREO_SPREAD, p_stereo_spread * 100.0);
+	voice->set_engine_param(SiOPMChannelGuitar6::PARAM_BODY_BYPASS, p_body_bypass);
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
 }
@@ -1013,27 +1022,39 @@ void SiONVoicePresetUtil::_create_monolith_voice(const String &p_key, const Stri
 		int p_motion_target, int p_motion_amount, int p_motion_rate,
 		int p_width, int p_low_lock, int p_lens, int p_glide) {
 
-	Ref<SiONVoice> voice = memnew(SiONVoice);
-	voice->set_monolith(p_sub_shape, p_sub_level, p_sub_drive, p_pitch_drop,
-			p_osc1_shape, p_osc2_shape,
-			p_mass, p_bite, p_shape,
-			p_drive_mode, p_grind,
-			p_motion_target, p_motion_amount, p_motion_rate,
-			p_width, p_low_lock, p_lens, p_glide);
+	Ref<SiONVoice> voice = SiONVoice::create_engine(SiONModuleType::MODULE_MONOLITH, SiONChipType::CHIP_MONOLITH);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_SUB_SHAPE, p_sub_shape);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_SUB_LEVEL, p_sub_level);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_SUB_DRIVE, p_sub_drive);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_PITCH_DROP, p_pitch_drop);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_OSCILLATOR_1_SHAPE, p_osc1_shape);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_OSCILLATOR_2_SHAPE, p_osc2_shape);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_TONE_MASS, p_mass);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_TONE_BITE, p_bite);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_TONE_SHAPE, p_shape);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_DRIVE_MODE, p_drive_mode);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_DRIVE_GRIND, p_grind);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_MOTION_TARGET, p_motion_target);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_MOTION_AMOUNT, p_motion_amount);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_MOTION_RATE, p_motion_rate);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_OUTPUT_WIDTH, p_width);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_OUTPUT_LOW_LOCK, p_low_lock);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_OUTPUT_LENS, p_lens);
+	voice->set_engine_param(SiOPMChannelMonolith::PARAM_PITCH_GLIDE, p_glide);
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
 }
 
 void SiONVoicePresetUtil::_create_iron_voice(const String &p_key, const String &p_name, const IronParams &p_params) {
-	Ref<SiONVoice> voice = memnew(SiONVoice);
-	voice->set_iron_params(p_params);
+	Ref<SiONVoice> voice = SiONVoice::create_engine(SiONModuleType::MODULE_IRON, SiONChipType::CHIP_IRON);
+	for (int i = 0; i < IronParams::SLOT_COUNT; i++) voice->set_engine_param(0x700 + i, p_params.values[i]);
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
 }
 
 void SiONVoicePresetUtil::_create_talus_voice(const String &p_key, const String &p_name, const TalusParams &p_params) {
-	Ref<SiONVoice> voice = memnew(SiONVoice);
-	voice->set_talus_params(p_params);
+	Ref<SiONVoice> voice = SiONVoice::create_engine(SiONModuleType::MODULE_TALUS, SiONChipType::CHIP_TALUS);
+	for (int i = 0; i < TalusParams::SLOT_COUNT; i++) voice->set_engine_param(0x800 + i, p_params.values[i]);
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
 }
@@ -1088,15 +1109,21 @@ void SiONVoicePresetUtil::_create_percussive_voice(const String &p_key, const St
 	}
 
 	voice->set_release_sweep(p_release_sweep);
-	voice->set_filter_envelope(0, p_cutoff, p_resonance);
+	voice->set_engine_param(SiOPMChannelBase::FILTER_TYPE, 0);
+	voice->set_engine_param(SiOPMChannelBase::FILTER_CUTOFF, p_cutoff);
+	voice->set_engine_param(SiOPMChannelBase::FILTER_RESONANCE, p_resonance);
 
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
 }
 
 void SiONVoicePresetUtil::_create_analog_voice(const String &p_key, const String &p_name, int p_connection_type, int p_wave_shape1, int p_wave_shape2, int p_balance, int p_pitch_diff) {
-	Ref<SiONVoice> voice = memnew(SiONVoice);
-	voice->set_analog_like(p_connection_type, p_wave_shape1, p_wave_shape2, p_balance, p_pitch_diff);
+	Ref<SiONVoice> voice = SiONVoice::create_engine(SiONModuleType::MODULE_FM, SiONChipType::CHIP_ANALOG_LIKE);
+	voice->set_engine_param(SiOPMChannelFM::AL_CONNECTION, p_connection_type);
+	voice->set_engine_param(SiOPMChannelFM::AL_WAVEFORM_A, p_wave_shape1);
+	voice->set_engine_param(SiOPMChannelFM::AL_WAVEFORM_B, p_wave_shape2);
+	voice->set_engine_param(SiOPMChannelFM::AL_BALANCE, p_balance);
+	voice->set_engine_param(SiOPMChannelFM::AL_DETUNE, p_pitch_diff);
 
 	voice->set_name(p_name);
 	_register_voice(p_key, voice);
@@ -1129,7 +1156,12 @@ void SiONVoicePresetUtil::_create_wave_table_voice(const String &p_key, const St
 	// update_track_voice to call set_wave_data() AFTER set_channel_params(),
 	// clobbering the operator's PG type with stale data when voiceParams overrides
 	// the wave shape to a different table index.
-	voice->set_envelope(p_attack_rate, p_decay_rate, p_sustain_rate, p_release_rate, p_sustain_level, p_total_level + 4);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_ATTACK, p_attack_rate);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_DECAY, p_decay_rate);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_SUSTAIN, p_sustain_rate);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_RELEASE, p_release_rate);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_SUSTAIN_ATTENUATION, p_sustain_level);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_ATTENUATION, p_total_level + 4);
 	voice->get_channel_params()->get_operator_params(0)->set_multiple(p_multiple);
 
 	voice->set_name(p_name);
@@ -1146,7 +1178,12 @@ void SiONVoicePresetUtil::_create_pcm_voice(const String &p_key, const String &p
 
 void SiONVoicePresetUtil::_create_single_drum_voice(const String &p_key, const String &p_name, int p_wave_shape, int p_attack_rate, int p_decay_rate, int p_sustain_rate, int p_release_rate, int p_sustain_level, int p_total_level, int p_release_sweep, double p_fine_multiple) {
 	Ref<SiONVoice> voice = memnew(SiONVoice(SiONModuleType::MODULE_GENERIC_PG, p_wave_shape));
-	voice->set_envelope(p_attack_rate, p_decay_rate, p_sustain_rate, p_release_rate, p_sustain_level, p_total_level);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_ATTACK, p_attack_rate);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_DECAY, p_decay_rate);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_SUSTAIN, p_sustain_rate);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_RELEASE, p_release_rate);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_SUSTAIN_ATTENUATION, p_sustain_level);
+	voice->set_engine_param(SiOPMChannelFM::GLOBAL_ATTENUATION, p_total_level);
 	voice->get_channel_params()->get_operator_params(0)->set_fine_multiple((int)(p_fine_multiple * 128));
 	voice->set_release_sweep(p_release_sweep);
 

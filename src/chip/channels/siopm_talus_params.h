@@ -7,9 +7,7 @@
 #ifndef SIOPM_TALUS_PARAMS_H
 #define SIOPM_TALUS_PARAMS_H
 
-// The Talus channel's grouped params, in slot order. SiONVoice::set_talus,
-// the driver mailbox and MML all carry them as this positional tuple, so the
-// defaults below are the engine's one copy of them.
+// Talus channel raw inputs and template content. Scalar transport carries IDs.
 struct TalusParams {
 	enum Slot {
 		STRIKE_LEVEL, // Percent.

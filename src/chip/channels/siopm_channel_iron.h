@@ -206,7 +206,33 @@ protected:
 	String _to_string() const;
 
 public:
-	void set_iron_params(const IronParams &p_params);
+	enum EngineParameter : uint32_t {
+		PARAM_PICK_VOICING = 0x700,
+		PARAM_PICK_ATTACK = 0x701,
+		PARAM_PICK_POSITION = 0x702,
+		PARAM_MUTE_AMOUNT = 0x703,
+		PARAM_MUTE_VELOCITY = 0x704,
+		PARAM_STRING_SUSTAIN = 0x705,
+		PARAM_STRING_RELEASE = 0x706,
+		PARAM_STRING_STIFFNESS = 0x707,
+		PARAM_PICKUP_POSITION = 0x708,
+		PARAM_AMP_GAIN = 0x709,
+		PARAM_AMP_TIGHT = 0x70a,
+		PARAM_AMP_BASS = 0x70b,
+		PARAM_AMP_MID = 0x70c,
+		PARAM_AMP_TREBLE = 0x70d,
+		PARAM_CABINET_TYPE = 0x70e,
+		PARAM_CABINET_MIC = 0x70f,
+		PARAM_HUMANIZE_AMOUNT = 0x710,
+		PARAM_HUMANIZE_TIMING = 0x711,
+		PARAM_PICK_SCRAPE = 0x712,
+		PARAM_PICK_BEND = 0x713,
+		PARAM_FRET_NOISE = 0x714,
+	};
+	static const EngineParamSchema &get_engine_param_schema();
+	virtual void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) override;
+
+	void _refresh_coefficients();
 	const IronParams &get_iron_params() const { return _params; }
 
 	virtual int get_pitch() const override { return _current_pitch; }

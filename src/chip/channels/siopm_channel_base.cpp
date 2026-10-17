@@ -79,6 +79,33 @@ const EngineParamSchema &SiOPMChannelBase::get_shared_engine_param_schema() {
 	return schema;
 }
 
+void SiOPMChannelBase::set_channel_params(const Ref<SiOPMChannelParams> &p_params, bool p_with_volume, bool p_with_modulation) {
+	set_frequency_ratio(p_params->get_envelope_frequency_ratio());
+	if (p_with_modulation) {
+		initialize_lfo(p_params->get_lfo_wave_shape());
+		set_lfo_rate_value(p_params->get_lfo_rate_value());
+		set_lfo_time_value(p_params->get_lfo_time_value());
+		set_lfo_beat_value(p_params->get_lfo_beat_value());
+		set_lfo_time_mode(p_params->get_lfo_time_mode());
+		set_amplitude_modulation(p_params->get_amplitude_modulation_depth());
+		set_pitch_modulation(p_params->get_pitch_modulation_depth());
+	}
+	if (p_with_volume) {
+		_has_effect_send = false;
+		for (int i = 0; i < SiOPMSoundChip::STREAM_SEND_SIZE; i++) {
+			_volumes.write[i] = p_params->get_master_volume(i);
+			if (i > 0 && _volumes[i] > 0) _has_effect_send = true;
+		}
+		_pan = p_params->get_pan();
+	}
+	set_instrument_gain_db(p_params->get_instrument_gain_db());
+	set_filter_type(p_params->get_filter_type());
+	set_sv_filter(p_params->get_filter_cutoff(), p_params->get_filter_resonance(),
+		p_params->get_filter_attack_rate(), p_params->get_filter_decay_rate1(), p_params->get_filter_decay_rate2(),
+		p_params->get_filter_release_rate(), p_params->get_filter_decay_offset1(), p_params->get_filter_decay_offset2(),
+		p_params->get_filter_sustain_offset(), p_params->get_filter_release_offset());
+}
+
 void SiOPMChannelBase::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
 	const int value = int(p_value.integer);
 	switch (p_id) {

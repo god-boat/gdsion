@@ -372,148 +372,17 @@ private:
 		double vol_linear = 1.0;
 		bool has_pan = false;
 		int pan = 0;
-		// Sampler ADSR (channel-level)
-		bool has_amp_attack = false;
-		int amp_attack = 0;
-		bool has_amp_decay = false;
-		int amp_decay = 0;
-		bool has_amp_sustain = false;
-		int amp_sustain = 128;
-		bool has_amp_release = false;
-		int amp_release = 0;
-		// Sampler-specific params (apply to the addressed sampler-table slot)
-		bool has_sampler_start_point = false;
-		int sampler_start_point = 0;
-		bool has_sampler_end_point = false;
-		int sampler_end_point = 0;
-		bool has_sampler_loop_point = false;
-		int sampler_loop_point = -1;
-		bool has_sampler_root_offset = false;
-		int sampler_root_offset = 0;
-		bool has_sampler_coarse_offset = false;
-		int sampler_coarse_offset = 0;
-		bool has_sampler_fine_offset = false;
-		int sampler_fine_offset = 0;
-		bool has_sampler_ignore_note_off = false;
-		bool sampler_ignore_note_off = false;
-		bool has_sampler_pan = false;
-		int sampler_pan = 0;
-		bool has_sampler_gain_db = false;
-		int sampler_gain_db = 0;
 		bool has_fm_operator_count = false;
 		int fm_operator_count = 1;
 		int fm_algorithm = 0;
 		bool fm_analog_like = false;
 		int fm_feedback = 0;
 		int fm_feedback_connection = 0;
-		// Sampler table slot (pad note); -1 means no indexed target.
-		int target_index = -1;
-		// Channel modulation (FM-only currently)
-		bool has_ch_am = false;
-		int ch_am_depth = 0;
-		bool has_ch_pm = false;
-		int ch_pm_depth = 0;
-		// Full modulation envelope tuples.
-		bool has_amplitude_modulation = false;
-		int amplitude_modulation_depth = 0;
-		int amplitude_modulation_depth_end = 0;
-		int amplitude_modulation_delay = 0;
-		int amplitude_modulation_term = 0;
-		bool has_pitch_modulation = false;
-		int pitch_modulation_depth = 0;
-		int pitch_modulation_depth_end = 0;
-		int pitch_modulation_delay = 0;
-		int pitch_modulation_term = 0;
 		// Fixed-size scalar payload; contains no refcounted or allocating data.
 		int engine_kind_id = -1;
 		uint32_t engine_param_id = 0;
 		int engine_param_index = 0;
 		EngineParamValue engine_value;
-		// KS extended resonator params
-		bool has_pms_guitar = false;
-		int pms_attack_rate = 48;
-		int pms_decay_rate = 48;
-		int pms_total_level = 0;
-		int pms_fixed_pitch = 0;
-		int pms_wave_shape = 20;
-		int pms_tension = 8;
-		bool has_ks_extended = false;
-		int ks_exciter_type = 0;
-		int ks_exciter_color = 50;
-		int ks_exciter_length = 50;
-		int ks_exciter_shape = 50;
-		int ks_exciter_drive = 0;
-		int ks_exciter_pitch_follow = 100;
-		int ks_exciter_randomness = 0;
-		int ks_loop_filter_mode = 0;
-		int ks_loop_damping = 50;
-		int ks_loop_brightness = 50;
-		int ks_loop_loss = 2;
-		int ks_loop_tone_tilt = 50;
-		int ks_stiffness = 0;
-		int ks_dispersion = 0;
-		int ks_bend = 50;
-		int ks_odd_even = 50;
-		int ks_body_type = 0;
-		int ks_body_amount = 0;
-		int ks_body_tune = 50;
-		int ks_body_width = 50;
-		int ks_pitch_drift = 0;
-		int ks_pitch_drop = 0;
-		int ks_pick_bend = 50;
-		int ks_tension_mod = 50;
-		int ks_keytrack = 100;
-		int ks_glide = 0;
-		int ks_release_mode = 0;
-		// Guitar6 grouped params
-		bool has_guitar6 = false;
-		double guitar6_character_seed = 65535.0;
-		double guitar6_character_variation = 0.5;
-		double guitar6_string_damp = 0.5;
-		double guitar6_string_damp_variation = 0.25;
-		double guitar6_plug_damp = 0.5;
-		double guitar6_plug_damp_variation = 0.25;
-		double guitar6_string_tension = 0.0;
-		double guitar6_stereo_spread = 0.2;
-		bool guitar6_body_bypass = false;
-		// Monolith bass engine grouped params
-		bool has_monolith = false;
-		int monolith_sub_shape = 0;
-		int monolith_sub_level = 80;
-		int monolith_sub_drive = 0;
-		int monolith_pitch_drop = 0;
-		int monolith_osc1_shape = 0;
-		int monolith_osc2_shape = 0;
-		int monolith_mass = 40;
-		int monolith_bite = 40;
-		int monolith_shape = 0;
-		int monolith_drive_mode = 0;
-		int monolith_grind = 0;
-		int monolith_motion_target = 0;
-		int monolith_motion_amount = 0;
-		int monolith_motion_rate = 40;
-		int monolith_width = 0;
-		int monolith_low_lock = 100;
-		int monolith_lens = 0;
-		int monolith_glide = 0;
-		int monolith_sub_octave = 2;
-		// Iron distorted electric guitar grouped params
-		bool has_iron = false;
-		IronParams iron;
-		// Talus physical-model percussion grouped params
-		bool has_talus = false;
-		TalusParams talus;
-		// Analog-Like (AL) live params
-		bool has_al_connection = false;
-		int al_connection = 0;
-		bool has_al_ws1 = false;
-		int al_ws1 = 0;
-		bool has_al_ws2 = false;
-		int al_ws2 = 0;
-		bool has_al_balance = false;
-		int al_balance = 0;
-		bool has_al_detune2 = false;
-		int al_detune2 = 0;
 		// Note control commands (executed on audio thread)
 		bool has_key_on = false;
 		int key_on_note = 0;
@@ -908,82 +777,9 @@ public:
 	// ScopeAddressingPlan).
 	void mailbox_set_track_volume(int p_track_id, double p_linear_volume, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_track_pan(int p_track_id, int p_pan, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_amp_attack_rate(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_amp_decay_rate(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_amp_sustain_level(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_amp_release_rate(int p_track_id, int p_value, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	// Sampler-specific params (apply to the addressed sampler table slot on playing channels;
-	// p_target_index is the table slot / pad note, independent of the live note)
-	void mailbox_set_sampler_start_point(int p_track_id, int p_target_index, int p_start, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_end_point(int p_track_id, int p_target_index, int p_end, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_loop_point(int p_track_id, int p_target_index, int p_loop, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_root_offset(int p_track_id, int p_target_index, int p_semitones, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_coarse_offset(int p_track_id, int p_target_index, int p_semitones, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_fine_offset(int p_track_id, int p_target_index, int p_cents, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_ignore_note_off(int p_track_id, int p_target_index, bool p_ignore, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_pan(int p_track_id, int p_target_index, int p_pan, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_sampler_gain_db(int p_track_id, int p_target_index, int p_db, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// FM operator params (by operator index)
 	void mailbox_set_fm_operator_count(int p_track_id, int p_operator_count, int p_algorithm, bool p_analog_like, int p_feedback, int p_feedback_connection, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_ch_am_depth(int p_track_id, int p_depth, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_ch_pm_depth(int p_track_id, int p_depth, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_amplitude_modulation(int p_track_id, int p_depth, int p_end_depth, int p_delay, int p_term, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_pitch_modulation(int p_track_id, int p_depth, int p_end_depth, int p_delay, int p_term, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_engine_param(int p_track_id, int p_engine_kind_id, int p_param_id, const Variant &p_value, int p_index = 0, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	// KS base voice mailbox
-	void mailbox_set_pms_guitar(int p_track_id, int p_attack_rate, int p_decay_rate, int p_total_level, int p_fixed_pitch, int p_wave_shape, int p_tension, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	// KS extended resonator mailbox
-	void mailbox_set_ks_extended(int p_track_id,
-			int p_exciter_type, int p_exciter_color, int p_exciter_length,
-			int p_exciter_shape, int p_exciter_drive, int p_exciter_pitch_follow, int p_exciter_randomness,
-			int p_loop_filter_mode, int p_loop_damping, int p_loop_brightness,
-			int p_loop_loss, int p_loop_tone_tilt,
-			int p_stiffness, int p_dispersion, int p_bend, int p_odd_even,
-			int p_body_type, int p_body_amount, int p_body_tune, int p_body_width,
-			int p_pitch_drift, int p_pitch_drop, int p_pick_bend,
-			int p_tension_mod, int p_keytrack, int p_glide,
-			int p_release_mode,
-			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	// Monolith bass engine mailbox
-	void mailbox_set_monolith_params(int p_track_id,
-			int p_sub_shape, int p_sub_level, int p_sub_drive, int p_pitch_drop,
-			int p_osc1_shape, int p_osc2_shape,
-			int p_mass, int p_bite, int p_shape,
-			int p_drive_mode, int p_grind,
-			int p_motion_target, int p_motion_amount, int p_motion_rate,
-			int p_width, int p_low_lock, int p_lens, int p_glide,
-			int p_sub_octave,
-			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	// Iron distorted electric guitar mailbox
-	void mailbox_set_iron_params(int p_track_id,
-			int p_voicing, int p_pick_attack, int p_pick_position, int p_palm_mute, int p_mute_velocity,
-			int p_sustain_ms, int p_release_ms, int p_stiffness, int p_pickup_position,
-			int p_gain, int p_tight_hz, int p_bass_db, int p_mid_db, int p_treble_db,
-			int p_cabinet, int p_mic, int p_humanize, int p_timing_ms,
-			int p_pick_scrape, int p_pick_bend_cents, int p_fret_noise,
-			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	// Talus physical-model percussion mailbox
-	void mailbox_set_talus_params(int p_track_id,
-			int p_strike_level, int p_strike_hardness, int p_strike_velocity, int p_noise_level, int p_noise_decay_ms, int p_noise_color_hz,
-			int p_tone_level, int p_tone_pitch_cents, int p_tone_shape, int p_tone_decay_ms, int p_variation, int p_model,
-			int p_tune_semitones, int p_fine_cents, int p_keytrack, int p_decay_ms, int p_damping, int p_position,
-			int p_stiffness, int p_low_cut_hz, int p_cut_hz, int p_cut_db, int p_tension_cents, int p_drive,
-			int p_wires_level, int p_wires_tension, int p_wires_tone_hz, int p_wires_decay_ms, int p_head, int p_direct,
-			int p_release_mode, int p_release_ms, int p_body_level, int p_body_hz, int p_body_decay_ms,
-			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	// Guitar6 physical model mailbox
-	void mailbox_set_guitar6(int p_track_id,
-			double p_character_seed, double p_character_variation,
-			double p_string_damp, double p_string_damp_variation,
-			double p_plug_damp, double p_plug_damp_variation,
-			double p_string_tension, double p_stereo_spread, bool p_body_bypass,
-			int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	// Analog-Like (AL) mailboxes
-	void mailbox_set_ch_al_connection(int p_track_id, int p_connection, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_ch_al_ws1(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_ch_al_ws2(int p_track_id, int p_wave_shape, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_ch_al_balance(int p_track_id, int p_balance, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_ch_al_detune2(int p_track_id, int p_detune2, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// Stream channel params (apply to SiOPMChannelStream on playing channels)
 	void mailbox_stream_set_gain(int p_track_id, double p_gain);
 	void mailbox_stream_set_pan(int p_track_id, int p_pan);

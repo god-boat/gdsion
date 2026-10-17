@@ -22,6 +22,35 @@ class SiOPMChannelMonolith : public SiOPMChannelBase {
 	GDCLASS(SiOPMChannelMonolith, SiOPMChannelBase)
 
 public:
+	enum EngineParameter : uint32_t {
+		AMP_ATTACK = 0x420,
+		AMP_DECAY = 0x421,
+		AMP_SUSTAIN = 0x422,
+		AMP_RELEASE = 0x423,
+
+		PARAM_SUB_SHAPE = 0x400,
+		PARAM_SUB_LEVEL = 0x401,
+		PARAM_SUB_DRIVE = 0x402,
+		PARAM_PITCH_DROP = 0x403,
+		PARAM_OSCILLATOR_1_SHAPE = 0x404,
+		PARAM_OSCILLATOR_2_SHAPE = 0x405,
+		PARAM_TONE_MASS = 0x406,
+		PARAM_TONE_BITE = 0x407,
+		PARAM_TONE_SHAPE = 0x408,
+		PARAM_DRIVE_MODE = 0x409,
+		PARAM_DRIVE_GRIND = 0x40a,
+		PARAM_MOTION_TARGET = 0x40b,
+		PARAM_MOTION_AMOUNT = 0x40c,
+		PARAM_MOTION_RATE = 0x40d,
+		PARAM_OUTPUT_WIDTH = 0x40e,
+		PARAM_OUTPUT_LOW_LOCK = 0x40f,
+		PARAM_OUTPUT_LENS = 0x410,
+		PARAM_PITCH_GLIDE = 0x411,
+		PARAM_SUB_OCTAVE = 0x412,
+	};
+	static const EngineParamSchema &get_engine_param_schema();
+	virtual void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) override;
+
 	enum SubShape {
 		SUB_SINE = 0,
 		SUB_TRIANGLE = 1,
@@ -68,7 +97,7 @@ public:
 	};
 
 private:
-	// Grouped-setter parameters.
+	// Engine-local inputs.
 	int _sub_shape = SUB_SINE;
 	int _sub_level = 80;
 	int _sub_drive = 0;
@@ -209,14 +238,7 @@ protected:
 	String _to_string() const;
 
 public:
-	void set_monolith_params(
-			int p_sub_shape, int p_sub_level, int p_sub_drive, int p_pitch_drop,
-			int p_osc1_shape, int p_osc2_shape,
-			int p_mass, int p_bite, int p_shape,
-			int p_drive_mode, int p_grind,
-			int p_motion_target, int p_motion_amount, int p_motion_rate,
-			int p_width, int p_low_lock, int p_lens, int p_glide,
-			int p_sub_octave);
+	void _refresh_coefficients();
 
 	int get_monolith_sub_shape() const { return _sub_shape; }
 	int get_monolith_sub_level() const { return _sub_level; }

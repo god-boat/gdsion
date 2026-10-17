@@ -18,7 +18,6 @@ using namespace godot;
 class SiOPMWaveTable;
 class SiOPMWavePCMData;
 class SiOPMWaveSamplerData;
-class SiOPMWaveSamplerTable;
 enum SiONChipType : signed int;
 enum SiONModuleType : unsigned int;
 
@@ -71,65 +70,9 @@ public:
 	Ref<SiOPMWaveSamplerData> set_sampler_voice(const Variant &p_data, bool p_ignore_note_off = false, int p_channel_count = 2);
 	Ref<SiOPMWaveSamplerData> set_sampler_wave(int p_index, const Variant &p_data, bool p_ignore_note_off = false, int p_pan = 0, int p_src_channel_count = 2, int p_channel_count = 0, bool p_fixed_pitch = false);
 
-	// NEW: Access sampler data for a given MIDI note (0-127).
-	Ref<SiOPMWaveSamplerData> get_sampler_data(int p_note_number) const;
 
-	void set_sampler_table(const Ref<SiOPMWaveSamplerTable> &p_table);
-
-	void set_pms_guitar(int p_attack_rate = 48, int p_decay_rate = 48, int p_total_level = 0, int p_fixed_pitch = 0, int p_wave_shape = 20, int p_tension = 8);
-	void set_ks_extended(
-			int p_exciter_type = 0, int p_exciter_color = 50, int p_exciter_length = 50,
-			int p_exciter_shape = 50, int p_exciter_drive = 0, int p_exciter_pitch_follow = 100, int p_exciter_randomness = 0,
-			int p_loop_filter_mode = 0, int p_loop_damping = 50, int p_loop_brightness = 50,
-			int p_loop_loss = 2, int p_loop_tone_tilt = 50,
-			int p_stiffness = 0, int p_dispersion = 0, int p_bend = 50, int p_odd_even = 50,
-			int p_body_type = 0, int p_body_amount = 0, int p_body_tune = 50, int p_body_width = 50,
-			int p_pitch_drift = 0, int p_pitch_drop = 0, int p_pick_bend = 50,
-			int p_tension_mod = 50, int p_keytrack = 100, int p_glide = 0,
-			int p_release_mode = 0);
-	void set_guitar6(double p_character_seed = 65535, double p_character_variation = 0.5,
-			double p_string_damp = 0.5, double p_string_damp_variation = 0.25,
-			double p_plug_damp = 0.5, double p_plug_damp_variation = 0.25,
-			double p_string_tension = 0.0, double p_stereo_spread = 0.2, bool p_body_bypass = false);
-	void set_monolith(
-			int p_sub_shape = 0, int p_sub_level = 80, int p_sub_drive = 0, int p_pitch_drop = 0,
-			int p_osc1_shape = 0, int p_osc2_shape = 0,
-			int p_mass = 40, int p_bite = 40, int p_shape = 0,
-			int p_drive_mode = 0, int p_grind = 0,
-			int p_motion_target = 0, int p_motion_amount = 0, int p_motion_rate = 40,
-			int p_width = 0, int p_low_lock = 100, int p_lens = 0, int p_glide = 0,
-			int p_sub_octave = 0);
-	void set_iron(int p_voicing, int p_pick_attack, int p_pick_position, int p_palm_mute, int p_mute_velocity,
-			int p_sustain_ms, int p_release_ms, int p_stiffness, int p_pickup_position,
-			int p_gain, int p_tight_hz, int p_bass_db, int p_mid_db, int p_treble_db,
-			int p_cabinet, int p_mic, int p_humanize, int p_timing_ms,
-			int p_pick_scrape, int p_pick_bend_cents, int p_fret_noise);
-	void set_iron_params(const IronParams &p_params);
-	void set_talus(
-			int p_strike_level, int p_strike_hardness, int p_strike_velocity, int p_noise_level, int p_noise_decay_ms, int p_noise_color_hz,
-			int p_tone_level, int p_tone_pitch_cents, int p_tone_shape, int p_tone_decay_ms, int p_variation, int p_model,
-			int p_tune_semitones, int p_fine_cents, int p_keytrack, int p_decay_ms, int p_damping, int p_position,
-			int p_stiffness, int p_low_cut_hz, int p_cut_hz, int p_cut_db, int p_tension_cents, int p_drive,
-			int p_wires_level, int p_wires_tension, int p_wires_tone_hz, int p_wires_decay_ms, int p_head, int p_direct,
-			int p_release_mode, int p_release_ms, int p_body_level, int p_body_hz, int p_body_decay_ms);
-	void set_talus_params(const TalusParams &p_params);
-	void set_analog_like(int p_connection_type, int p_wave_shape1 = 1, int p_wave_shape2 = 1, int p_balance = 0, int p_pitch_difference = 0);
-
-	void set_envelope(int p_attack_rate, int p_decay_rate, int p_sustain_rate, int p_release_rate, int p_sustain_level, int p_total_level);
-	void set_filter_envelope(int p_filter_type = 0, int p_cutoff = 128, int p_resonance = 0, int p_attack_rate = 0, int p_decay_rate1 = 0, int p_decay_rate2 = 0, int p_release_rate = 0, int p_decay_cutoff1 = 128, int p_decay_cutoff2 = 64, int p_sustain_cutoff = 32, int p_release_cutoff = 128);
 	void set_pitch_envelope(TypedArray<int> p_envelope, int p_loop_point = -1, int p_step = 1);
-	void set_amplitude_modulation(int p_depth = 0, int p_end_depth = 0, int p_delay = 0, int p_term = 0);
-	void set_pitch_modulation(int p_depth = 0, int p_end_depth = 0, int p_delay = 0, int p_term = 0);
 
-	void set_operator_super_wave(int p_operator_index, int p_count, int p_spread);
-
-	// --- SCC (MODULE_SCC) wavetable index ----------------------------------
-	// Selects which registered custom wavetable this voice plays. Writes both
-	// voice-level channel_num (used during channel rebind) and operator 0's
-	// pulse_generator_type = PULSE_CUSTOM + index (the value actually applied
-	// to the track via set_channel_params).
-	void set_wave_table_index(int p_index);
-	int get_wave_table_index();
 
 	// --- pitch_shift accessor ------------------------------------------------
 	int get_pitch_shift() const { return pitch_shift; }

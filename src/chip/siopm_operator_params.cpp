@@ -25,8 +25,6 @@ void SiOPMOperatorParams::set_multiple(int p_value) {
 void SiOPMOperatorParams::set_ssg_envelope_control(int p_value) {
 	if (p_value >= SSGEnvelopeControl::SSG_MAX) {
 		ssg_envelope_control = SSGEnvelopeControl::SSG_IGNORE;
-	} else if (p_value < SSGEnvelopeControl::SSG_REPEAT_TO_ZERO) {
-		ssg_envelope_control = SSGEnvelopeControl::SSG_DISABLED;
 	} else {
 		ssg_envelope_control = p_value;
 	}

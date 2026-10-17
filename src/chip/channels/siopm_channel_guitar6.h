@@ -147,10 +147,21 @@ protected:
 	String _to_string() const;
 
 public:
-	void set_guitar6_params(double p_character_seed, double p_character_variation,
-			double p_string_damp, double p_string_damp_variation,
-			double p_plug_damp, double p_plug_damp_variation,
-			double p_string_tension, double p_stereo_spread, bool p_body_bypass);
+	enum EngineParameter : uint32_t {
+		PARAM_CHARACTER_SEED = 0x500,
+		PARAM_CHARACTER_VARIATION = 0x501,
+		PARAM_STRING_DAMPING = 0x502,
+		PARAM_STRING_DAMPING_VARIATION = 0x503,
+		PARAM_PLUG_DAMPING = 0x504,
+		PARAM_PLUG_DAMPING_VARIATION = 0x505,
+		PARAM_STRING_TENSION = 0x506,
+		PARAM_OUTPUT_STEREO_SPREAD = 0x507,
+		PARAM_BODY_BYPASS = 0x508,
+	};
+	static const EngineParamSchema &get_engine_param_schema();
+	virtual void apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) override;
+
+
 
 	void pluck_string(int p_string_index, int p_tab_index, double p_velocity, int p_target_sample);
 
