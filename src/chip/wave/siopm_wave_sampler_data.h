@@ -44,7 +44,8 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
 	// Wave positions in the sample count.
 	int _start_point = 0;
 	int _end_point = 0;
-	int _loop_point = -1; // -1 means no looping.
+	int _loop_point = 0;
+	bool _loop_enabled = false;
 	int _auto_start_point = 0;
 	int _auto_end_point = 0;
 
@@ -52,9 +53,6 @@ class SiOPMWaveSamplerData : public SiOPMWaveBase {
 	int _seek_head_silence();
 	int _seek_end_gap();
 	void _cache_effective_window_defaults();
-	int _clamp_authored_start_point(int p_start) const;
-	int _clamp_authored_end_point(int p_end) const;
-	int _clamp_authored_loop_point(int p_loop) const;
 
 protected:
 	static void _bind_methods();
@@ -63,7 +61,8 @@ public:
 	struct PlaybackWindow {
 		int start_point = 0;
 		int end_point = 0;
-		int loop_point = -1;
+		int loop_point = 0;
+		bool loop_enabled = false;
 		int boundary_fade_samples = 0;
 		bool ignore_note_off = false;
 	};
@@ -96,13 +95,14 @@ public:
 	int get_start_point() const { return _start_point; }
 	int get_end_point() const { return _end_point; }
 	int get_loop_point() const { return _loop_point; }
+	bool get_loop_enabled() const { return _loop_enabled; }
+	void set_loop_enabled(bool p_enabled) { _loop_enabled = p_enabled; }
 	PlaybackWindow resolve_playback_window() const;
 	int get_initial_sample_index(double p_phase = 0) const;
 
 	void set_start_point(int p_start);
 	void set_end_point(int p_end);
 	void set_loop_point(int p_loop);
-	void slice(int p_start_point, int p_end_point, int p_loop_point);
 
 	// Create a shallow copy that shares the underlying sample buffer.
 	Ref<SiOPMWaveSamplerData> duplicate() const;

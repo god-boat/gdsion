@@ -28,6 +28,14 @@ func run(scene_tree: SceneTree) -> void:
 	_test_fm_voice_state()
 	_test_global_envelope_inputs()
 	_test_sampler_aliases()
+	var looping := await _render_sampler_loop(scene_tree, false, true)
+	var live_looping := await _render_sampler_loop(scene_tree, true, true)
+	var one_shot := await _render_sampler_loop(scene_tree, false, false)
+	_assert_equal("sampler live loop enable matches prepared playback", live_looping, looping)
+	_assert_equal("enabled sampler loops beyond the sample end",
+		Array(looping.slice(looping.size() - 512)).any(func(value: float) -> bool: return absf(value) > 0.0), true)
+	_assert_equal("disabled sampler ends with a retained loop position",
+		Array(one_shot.slice(one_shot.size() - 512)).all(func(value: float) -> bool: return value == 0.0), true)
 	_test_all_engine_state()
 	_test_guitar6_mml_precision()
 	for kind in [11, 22, 24, 25, 26]:
@@ -498,6 +506,20 @@ func _test_sampler_aliases() -> void:
 	for descriptor: Dictionary in SiONVoice.get_engine_param_descriptors(10):
 		ids[String(descriptor["id"])] = int(descriptor["param_id"])
 	var gain: int = ids["sampler.region.gain"]
+	var loop_point: int = ids["sampler.region.loop_point"]
+	var loop_enabled: int = ids["sampler.region.loop_enabled"]
+	_assert_equal("new sampler loop position is nonnegative", voice.get_engine_param(loop_point, 60), 0)
+	_assert_equal("new sampler looping is disabled", voice.get_engine_param(loop_enabled, 60), false)
+	voice.set_engine_param(loop_point, 2, 60)
+	voice.set_engine_param(loop_enabled, true, 60)
+	voice.set_engine_param(loop_enabled, false, 60)
+	_assert_equal("disabling a loop retains its position", voice.get_engine_param(loop_point, 60), 2)
+	voice.set_engine_param(loop_enabled, true, 60)
+	var loop_copy: Object = sample.duplicate()
+	voice.set_engine_param(loop_enabled, false, 60)
+	_assert_equal("sample duplication retains loop enable independently", loop_copy.get_loop_enabled(), true)
+	_assert_equal("sample duplication retains loop position", loop_copy.get_loop_point(), 2)
+	_assert_equal("enable writes preserve their boolean type", typeof(voice.get_engine_param(loop_enabled, 60)), TYPE_BOOL)
 	var shared := voice.clone()
 	voice.set_engine_param(gain, -12, 60)
 	_assert_equal("melodic keys retain shared sample values", voice.get_engine_param(gain, 64), -12)
@@ -517,6 +539,43 @@ func _test_sampler_aliases() -> void:
 	var empty := SiONVoice.create_engine(10, -1)
 	empty.set_engine_param(gain, -6, 60)
 	_assert_equal("an unloaded key retains no sample-owned value", empty.get_engine_param(gain, 60), 0)
+	_assert_equal("an unloaded key exposes disabled looping", empty.get_engine_param(loop_enabled, 60), false)
+
+
+func _render_sampler_loop(scene_tree: SceneTree, queued: bool, enabled: bool) -> PackedFloat32Array:
+	var driver := SiONDriver.create(BUFFER_SIZE)
+	scene_tree.root.add_child(driver)
+	await scene_tree.process_frame
+	driver.stream_without_output()
+	var renderer := SiONOfflineRenderer.new()
+	_assert_equal("sampler loop renderer owns render", renderer.begin(driver), true)
+	var ids: Dictionary = {}
+	for descriptor: Dictionary in SiONVoice.get_engine_param_descriptors(10):
+		ids[String(descriptor["id"])] = int(descriptor["param_id"])
+	var voice := SiONVoice.create_engine(10, -1)
+	var source := PackedFloat32Array()
+	source.resize(1024)
+	source.fill(0.25)
+	voice.set_sampler_wave(60, source, false, 0, 1, 1)
+	voice.set_engine_param(ids["sampler.region.loop_point"], 256, 60)
+	if not queued:
+		voice.set_engine_param(ids["sampler.region.loop_enabled"], enabled, 60)
+	var track := driver.create_user_controllable_track(1)
+	track.set_entity_scope_id(101)
+	track.set_slot_scope_id(11)
+	voice.update_track_voice(track)
+	if queued:
+		driver.mailbox_set_engine_param(1, 10, ids["sampler.region.loop_enabled"], enabled, 60, 101, 11)
+	driver.mailbox_key_on(track.get_track_id(), 60, 0, -1, -1, track.get_instance_id())
+	var audio := PackedFloat32Array()
+	for block in 8:
+		audio.append_array(renderer.render_block())
+	renderer.finish()
+	driver.stop()
+	await scene_tree.process_frame
+	driver.get_parent().remove_child(driver)
+	driver.free()
+	return audio
 
 
 func _test_all_engine_state() -> void:

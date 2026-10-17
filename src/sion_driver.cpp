@@ -217,8 +217,11 @@ void SiONDriver::_start_background_sample() {
 	// Play sound with fade in.
 	if (_background_sample_data.is_valid()) {
 		_background_voice->set_wave_data(_background_sample_data);
+		_background_sample_data->set_loop_enabled(_background_loop_point != -1);
 		if (_background_loop_point != -1) {
-			_background_sample_data->slice(-1, -1, _background_loop_point * _sample_rate);
+			_background_sample_data->set_start_point(-1);
+			_background_sample_data->set_end_point(-1);
+			_background_sample_data->set_loop_point(int(_background_loop_point * _sample_rate));
 		}
 
 		_background_track = sequencer->create_controllable_track(SiMMLTrack::DRIVER_BACKGROUND, false);

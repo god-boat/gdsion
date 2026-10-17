@@ -365,7 +365,7 @@ void SiOPMChannelSampler::buffer(int p_length) {
 	for (int i = 0; i < p_length; i++) {
 		// End/loop handling.
 		if (_sample_index_fp >= end_point) {
-			if (loop_point >= 0) {
+			if (playback_window.loop_enabled) {
 				_sample_index_fp = loop_point + (_sample_index_fp - end_point);
 			} else if (_amp_stage != AMP_STAGE_IDLE) {
 				// Sample reached its end (one-shot).
@@ -935,6 +935,7 @@ static EngineParamValue read_region_param(const SiOPMWaveSamplerData &p_sample, 
 		case SiOPMChannelSampler::REGION_END: return EngineParamValue::from_int(p_sample.get_end_point());
 		case SiOPMChannelSampler::REGION_MODE: return EngineParamValue::from_int(p_sample.get_ignore_note_off());
 		case SiOPMChannelSampler::REGION_LOOP: return EngineParamValue::from_int(p_sample.get_loop_point());
+		case SiOPMChannelSampler::REGION_LOOP_ENABLED: return EngineParamValue::from_bool(p_sample.get_loop_enabled());
 		case SiOPMChannelSampler::REGION_ROOT: return EngineParamValue::from_int(p_sample.get_root_offset());
 		case SiOPMChannelSampler::REGION_COARSE: return EngineParamValue::from_int(p_sample.get_coarse_offset());
 		case SiOPMChannelSampler::REGION_FINE: return EngineParamValue::from_int(p_sample.get_fine_offset());
@@ -942,17 +943,22 @@ static EngineParamValue read_region_param(const SiOPMWaveSamplerData &p_sample, 
 	}
 }
 
-static void write_region_param(SiOPMWaveSamplerData &p_sample, uint32_t p_id, int p_value) {
+static void write_region_param(SiOPMWaveSamplerData &p_sample, uint32_t p_id, EngineParamValue p_value) {
+	if (p_id == SiOPMChannelSampler::REGION_LOOP_ENABLED) {
+		p_sample.set_loop_enabled(p_value.boolean);
+		return;
+	}
+	const int value = int(p_value.integer);
 	switch (p_id) {
-		case SiOPMChannelSampler::REGION_GAIN: p_sample.set_gain_db(p_value); return;
-		case SiOPMChannelSampler::REGION_PAN: p_sample.set_pan(p_value); return;
-		case SiOPMChannelSampler::REGION_START: p_sample.set_start_point(p_value); return;
-		case SiOPMChannelSampler::REGION_END: p_sample.set_end_point(p_value); return;
-		case SiOPMChannelSampler::REGION_MODE: p_sample.set_ignore_note_off(p_value); return;
-		case SiOPMChannelSampler::REGION_LOOP: p_sample.set_loop_point(p_value); return;
-		case SiOPMChannelSampler::REGION_ROOT: p_sample.set_root_offset(p_value); return;
-		case SiOPMChannelSampler::REGION_COARSE: p_sample.set_coarse_offset(p_value); return;
-		case SiOPMChannelSampler::REGION_FINE: p_sample.set_fine_offset(p_value); return;
+		case SiOPMChannelSampler::REGION_GAIN: p_sample.set_gain_db(value); return;
+		case SiOPMChannelSampler::REGION_PAN: p_sample.set_pan(value); return;
+		case SiOPMChannelSampler::REGION_START: p_sample.set_start_point(value); return;
+		case SiOPMChannelSampler::REGION_END: p_sample.set_end_point(value); return;
+		case SiOPMChannelSampler::REGION_MODE: p_sample.set_ignore_note_off(value); return;
+		case SiOPMChannelSampler::REGION_LOOP: p_sample.set_loop_point(value); return;
+		case SiOPMChannelSampler::REGION_ROOT: p_sample.set_root_offset(value); return;
+		case SiOPMChannelSampler::REGION_COARSE: p_sample.set_coarse_offset(value); return;
+		case SiOPMChannelSampler::REGION_FINE: p_sample.set_fine_offset(value); return;
 		default: CRASH_NOW_MSG("Unknown sampler region parameter."); std::abort();
 	}
 }
@@ -961,7 +967,7 @@ static void write_region_param(SiOPMWaveSamplerData &p_sample, uint32_t p_id, in
 // Empty keys have no loaded sample; writing them retains the existing no-op behavior.
 static void set_region_param(SiMMLVoice &p_voice, uint32_t p_id, int p_index, EngineParamValue p_value) {
 	const Ref<SiOPMWaveSamplerData> sample = p_voice.get_sampler_data(p_index);
-	if (sample.is_valid()) write_region_param(*sample.ptr(), p_id, int(p_value.integer));
+	if (sample.is_valid()) write_region_param(*sample.ptr(), p_id, p_value);
 }
 
 static EngineParamValue get_region_param(const SiMMLVoice &p_voice, uint32_t p_id, int p_index) {
@@ -978,7 +984,8 @@ const EngineParamSchema &SiOPMChannelSampler::get_engine_param_schema() {
 		{REGION_START, "sampler.region.start_point", EngineParamType::INT, 0, 2147483647, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
 		{REGION_END, "sampler.region.end_point", EngineParamType::INT, -1, 2147483647, EngineParamValue::from_int(-1), 128, true, set_region_param, get_region_param},
 		{REGION_MODE, "sampler.region.playback_mode", EngineParamType::INT, 0, 1, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
-		{REGION_LOOP, "sampler.region.loop_point", EngineParamType::INT, -1, 2147483647, EngineParamValue::from_int(-1), 128, true, set_region_param, get_region_param},
+		{REGION_LOOP, "sampler.region.loop_point", EngineParamType::INT, 0, 2147483647, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
+		{REGION_LOOP_ENABLED, "sampler.region.loop_enabled", EngineParamType::BOOL, 0, 1, EngineParamValue::from_bool(false), 128, true, set_region_param, get_region_param},
 		{REGION_ROOT, "sampler.region.root_offset", EngineParamType::INT, -48, 48, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
 		{REGION_COARSE, "sampler.region.coarse_offset", EngineParamType::INT, -24, 24, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
 		{REGION_FINE, "sampler.region.fine_offset", EngineParamType::INT, -100, 100, EngineParamValue::from_int(0), 128, true, set_region_param, get_region_param},
@@ -1009,9 +1016,9 @@ void SiOPMChannelSampler::apply_engine_param(uint32_t p_id, int p_index, EngineP
 		case AMP_SUSTAIN: set_amp_sustain_level(int(p_value.integer)); return;
 		case AMP_RELEASE: set_amp_release_rate(int(p_value.integer)); return;
 		case REGION_GAIN: case REGION_PAN: case REGION_START: case REGION_END: case REGION_MODE:
-		case REGION_LOOP: case REGION_ROOT: case REGION_COARSE: case REGION_FINE: break;
+		case REGION_LOOP: case REGION_LOOP_ENABLED: case REGION_ROOT: case REGION_COARSE: case REGION_FINE: break;
 		default: SiOPMChannelBase::apply_engine_param(p_id, p_index, p_value); return;
 	}
 	const Ref<SiOPMWaveSamplerData> sample = resolve_sampler_data_for_note(p_index);
-	if (sample.is_valid()) write_region_param(*sample.ptr(), p_id, int(p_value.integer));
+	if (sample.is_valid()) write_region_param(*sample.ptr(), p_id, p_value);
 }

@@ -1874,7 +1874,10 @@ bool TranslatorUtil::parse_sampler_wave(const Ref<SiOPMWaveSamplerTable> &p_tabl
 	int loop_point       = PARSE_ARGUMENT(6, -1);
 
 	Ref<SiOPMWaveSamplerData> sampler_data = memnew(SiOPMWaveSamplerData(p_sound_ref_table[wave_id], ignore_note_off, pan, 2, channel_count));
-	sampler_data->slice(start_point, end_point, loop_point);
+	sampler_data->set_start_point(start_point);
+	sampler_data->set_end_point(end_point);
+	sampler_data->set_loop_point(MAX(0, loop_point));
+	sampler_data->set_loop_enabled(loop_point >= 0);
 	p_table->set_sample(sampler_data, p_note_number);
 
 	return true;

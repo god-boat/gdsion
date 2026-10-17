@@ -133,14 +133,10 @@ SiOPMWaveSamplerData::PlaybackWindow SiOPMWaveSamplerData::resolve_playback_wind
 	}
 	window.end_point = MAX(window.start_point + 1, resolved_end);
 
-	if (_loop_point >= 0) {
-		const int resolved_loop = CLAMP(_loop_point, 0, length - 1);
-		if (resolved_loop >= window.start_point && resolved_loop < window.end_point) {
-			window.loop_point = resolved_loop;
-		}
-	}
+	window.loop_point = CLAMP(_loop_point, 0, length - 1);
+	window.loop_enabled = _loop_enabled && window.loop_point >= window.start_point && window.loop_point < window.end_point;
 
-	window.ignore_note_off = _ignore_note_off && window.loop_point == -1;
+	window.ignore_note_off = _ignore_note_off && !window.loop_enabled;
 	window.boundary_fade_samples = _get_sampler_boundary_fade_samples(_sample_rate, window.end_point - window.start_point);
 	return window;
 }
@@ -252,53 +248,6 @@ void SiOPMWaveSamplerData::_cache_effective_window_defaults() {
 	}
 }
 
-int SiOPMWaveSamplerData::_clamp_authored_start_point(int p_start) const {
-	if (p_start < 0) {
-		return -1;
-	}
-
-	const int length = get_length();
-	if (length <= 0) {
-		return 0;
-	}
-
-	return CLAMP(p_start, 0, length - 1);
-}
-
-int SiOPMWaveSamplerData::_clamp_authored_end_point(int p_end) const {
-	if (p_end < 0) {
-		return -1;
-	}
-
-	const int length = get_length();
-	if (length <= 0) {
-		return 0;
-	}
-
-	return CLAMP(p_end, 0, length);
-}
-
-int SiOPMWaveSamplerData::_clamp_authored_loop_point(int p_loop) const {
-	if (p_loop < 0) {
-		return -1;
-	}
-
-	const int length = get_length();
-	if (length <= 0) {
-		return -1;
-	}
-
-	return CLAMP(p_loop, 0, length - 1);
-}
-
-void SiOPMWaveSamplerData::slice(int p_start_point, int p_end_point, int p_loop_point) {
-	_start_point = _clamp_authored_start_point(p_start_point);
-	_end_point = _clamp_authored_end_point(p_end_point);
-	_loop_point = _clamp_authored_loop_point(p_loop_point);
-}
-
-//
-
 SiOPMWaveSamplerData::SiOPMWaveSamplerData(const Variant &p_data, bool p_ignore_note_off, int p_pan, int p_src_channel_count, int p_channel_count, bool p_fixed_pitch) :
 		SiOPMWaveBase(SiONModuleType::MODULE_SAMPLE) {
 
@@ -321,15 +270,15 @@ void SiOPMWaveSamplerData::set_gain_db(int p_db) {
 }
 
 void SiOPMWaveSamplerData::set_start_point(int p_start) {
-	_start_point = _clamp_authored_start_point(p_start);
+	_start_point = (p_start < 0) ? -1 : CLAMP(p_start, 0, MAX(0, get_length() - 1));
 }
 
 void SiOPMWaveSamplerData::set_end_point(int p_end) {
-	_end_point = _clamp_authored_end_point(p_end);
+	_end_point = (p_end < 0) ? -1 : CLAMP(p_end, 0, get_length());
 }
 
 void SiOPMWaveSamplerData::set_loop_point(int p_loop) {
-	_loop_point = _clamp_authored_loop_point(p_loop);
+	_loop_point = CLAMP(p_loop, 0, MAX(0, get_length() - 1));
 }
 
 void SiOPMWaveSamplerData::set_root_offset(int p_semitones) {
@@ -360,7 +309,8 @@ void SiOPMWaveSamplerData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_end_point"), &SiOPMWaveSamplerData::get_end_point);
 	ClassDB::bind_method(D_METHOD("set_loop_point", "loop"), &SiOPMWaveSamplerData::set_loop_point);
 	ClassDB::bind_method(D_METHOD("get_loop_point"), &SiOPMWaveSamplerData::get_loop_point);
-	ClassDB::bind_method(D_METHOD("slice", "start", "end", "loop"), &SiOPMWaveSamplerData::slice, DEFVAL(-1), DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("set_loop_enabled", "enabled"), &SiOPMWaveSamplerData::set_loop_enabled);
+	ClassDB::bind_method(D_METHOD("get_loop_enabled"), &SiOPMWaveSamplerData::get_loop_enabled);
 	ClassDB::bind_method(D_METHOD("get_length"), &SiOPMWaveSamplerData::get_length);
 	ClassDB::bind_method(D_METHOD("set_fixed_pitch", "fixed"), &SiOPMWaveSamplerData::set_fixed_pitch);
 	ClassDB::bind_method(D_METHOD("is_fixed_pitch"), &SiOPMWaveSamplerData::is_fixed_pitch);
@@ -376,6 +326,7 @@ void SiOPMWaveSamplerData::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "start_point"), "set_start_point", "get_start_point");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "end_point"), "set_end_point", "get_end_point");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "loop_point"), "set_loop_point", "get_loop_point");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "loop_enabled"), "set_loop_enabled", "get_loop_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "fixed_pitch"), "set_fixed_pitch", "is_fixed_pitch");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "ignore_note_off"), "set_ignore_note_off", "get_ignore_note_off");
 }
@@ -400,6 +351,7 @@ Ref<SiOPMWaveSamplerData> SiOPMWaveSamplerData::duplicate() const {
 	copy->_start_point = _start_point;
 	copy->_end_point = _end_point;
 	copy->_loop_point = _loop_point;
+	copy->_loop_enabled = _loop_enabled;
 	copy->_auto_start_point = _auto_start_point;
 	copy->_auto_end_point = _auto_end_point;
 
