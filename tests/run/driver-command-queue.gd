@@ -29,6 +29,8 @@ func run(scene_tree: SceneTree) -> void:
 	await _run_case(scene_tree, "reset retaining effect streams", _case_reset.bind(false))
 	await _run_case(scene_tree, "synchronous tempo", _case_tempo)
 	await _run_case(scene_tree, "track mute", _case_mute)
+	await _run_case(scene_tree, "track fader and pan", _case_fader)
+	await _run_case(scene_tree, "clip pan", _case_clip_pan)
 	await _run_case(scene_tree, "operator count scopes", _case_operator_count_scopes)
 
 
@@ -67,10 +69,35 @@ func _start_note(driver: SiONDriver, track_id: int) -> SiMMLTrack:
 	return track
 
 
+## A mono live stream of constant level, like the input monitor's. The key-on
+## starts from an empty ring, so the input arrives after it.
+func _start_live_stream(driver: SiONDriver, renderer: SiONOfflineRenderer, track_id: int) -> void:
+	var data := SiOPMWaveStreamData.new()
+	data.configure_live(int(driver.get_sample_rate()), 1, BUFFER_SIZE * 64)
+	data.activate()
+	var track: SiMMLTrack = driver.create_user_controllable_track(track_id)
+	var voice := SiONVoice.create()
+	voice.set_wave_data(data)
+	voice.update_track_voice(track)
+	driver.mailbox_stream_key_on(track_id, 60, 0, -1, track.get_instance_id())
+	renderer.render_block()
+	var pcm := PackedFloat32Array()
+	pcm.resize(BUFFER_SIZE * 48)
+	pcm.fill(0.25)
+	data.push_interleaved_pcm(pcm)
+
+
 func _peak(block: PackedFloat32Array) -> float:
 	var peak := 0.0
 	for sample in block:
 		peak = maxf(peak, absf(sample))
+	return peak
+
+
+func _channel_peak(block: PackedFloat32Array, channel: int) -> float:
+	var peak := 0.0
+	for i in range(channel, block.size(), 2):
+		peak = maxf(peak, absf(block[i]))
 	return peak
 
 
@@ -260,3 +287,66 @@ func _case_mute(label: String, driver: SiONDriver, renderer: SiONOfflineRenderer
 	_assert_equal("%s: renderer begin after reset" % label, renderer.begin(driver), true)
 	_start_note(driver, 1)
 	_assert_equal("%s: reset clears the old stream's mute" % label, _peak(renderer.render_block()) > 0.0, true)
+
+
+func _case_fader(label: String, driver: SiONDriver, renderer: SiONOfflineRenderer) -> void:
+	# The fader and pan belong to the track's stream: they apply before the track
+	# has a voice and hold while no voice is live.
+	driver.mailbox_set_track_volume(1, 0.5)
+	renderer.render_block()
+	var track := _start_note(driver, 1)
+	var faded := _render_peak(renderer, 4)
+	driver.mailbox_set_track_volume(1, 1.0)
+	var unity := _render_peak(renderer, 4)
+	_assert_equal("%s: the fader precedes the first note" % label, absf(faded / unity - 0.5) < 0.02, true)
+
+	driver.mailbox_set_track_pan(1, -64)
+	renderer.render_block()
+	var panned := renderer.render_block()
+	_assert_equal("%s: hard left pan silences the right side" % label, _channel_peak(panned, 1), 0.0)
+	_assert_equal("%s: hard left pan keeps the left side" % label, _channel_peak(panned, 0) > 0.0, true)
+	driver.mailbox_set_track_pan(1, 0)
+
+	driver.mailbox_set_track_volume(1, 0.5)
+	var instance_id := track.get_instance_id()
+	driver.mailbox_retire_track(1, instance_id)
+	_render_until(renderer, func() -> bool: return not is_instance_id_valid(instance_id))
+	track = _start_note(driver, 1)
+	_assert_equal("%s: a new voice plays at the held fader" % label, absf(_render_peak(renderer, 4) / unity - 0.5) < 0.02, true)
+	instance_id = track.get_instance_id()
+	driver.mailbox_retire_track(1, instance_id)
+	_render_until(renderer, func() -> bool: return not is_instance_id_valid(instance_id))
+
+	# A voice's own channel volume does not reach the track's fader.
+	var loud_voice := _make_voice()
+	loud_voice.get_channel_params().set_master_volume(0, 0.25)
+	loud_voice.set_update_volumes(true)
+	var other: SiMMLTrack = driver.create_user_controllable_track(3)
+	loud_voice.update_track_voice(other)
+	driver.mailbox_key_on(3, 60, 0, -1, -1, other.get_instance_id())
+	_assert_equal("%s: voice channel volume leaves the fader" % label, absf(_render_peak(renderer, 4) / unity - 1.0) < 0.02, true)
+
+
+func _case_clip_pan(label: String, driver: SiONDriver, renderer: SiONOfflineRenderer) -> void:
+	# A clip's pan places it in its track, unity at centre; the track's pan follows.
+	_start_live_stream(driver, renderer, 1)
+	var centred := renderer.render_block()
+	_assert_equal("%s: a centred clip sounds" % label, _channel_peak(centred, 0) > 0.0, true)
+	_assert_equal("%s: a centred clip is balanced" % label, is_equal_approx(_channel_peak(centred, 0), _channel_peak(centred, 1)), true)
+
+	driver.mailbox_stream_set_pan(1, -64)
+	renderer.render_block()
+	var clip_left := renderer.render_block()
+	_assert_equal("%s: hard left clip pan silences the right side" % label, _channel_peak(clip_left, 1), 0.0)
+	_assert_equal("%s: clip pan is equal power with unity at centre" % label,
+		absf(_channel_peak(clip_left, 0) / _channel_peak(centred, 0) - sqrt(2.0)) < 0.001, true)
+
+	driver.mailbox_set_track_pan(1, 64)
+	renderer.render_block()
+	_assert_equal("%s: clip pan and track pan compose" % label, _peak(renderer.render_block()), 0.0)
+
+	driver.mailbox_stream_set_pan(1, 0)
+	renderer.render_block()
+	var track_right := renderer.render_block()
+	_assert_equal("%s: a centred clip keeps the track's pan" % label, _channel_peak(track_right, 0), 0.0)
+	_assert_equal("%s: the track's pan keeps the clip audible" % label, _channel_peak(track_right, 1) > 0.0, true)

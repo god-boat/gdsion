@@ -368,10 +368,6 @@ private:
 		// Optional: when >= 0, restricts update further to one exact live note
 		// instance on the matched entity.
 		int64_t slot_scope_id = -1;
-		bool has_vol = false;
-		double vol_linear = 1.0;
-		bool has_pan = false;
-		int pan = 0;
 		bool has_fm_operator_count = false;
 		int fm_operator_count = 1;
 		int fm_algorithm = 0;
@@ -460,6 +456,8 @@ private:
 			FX_OP_SET_ARG,
 			FX_OP_SET_BYPASS,
 			FX_OP_SET_MUTE,
+			FX_OP_SET_VOLUME,
+			FX_OP_SET_PAN,
 		};
 		int fx_op = FX_OP_SET_CHAIN;
 		int fx_index = 0;
@@ -468,6 +466,8 @@ private:
 		double fx_arg_value = 0.0;
 		bool fx_bypassed = false;
 		bool fx_muted = false;
+		double fx_volume = 1.0;
+		int fx_pan = 0;
 		Vector<double> fx_args;
 		Ref<SiEffectBase> fx_effect;
 		Vector<Ref<SiEffectBase>> fx_chain;
@@ -504,11 +504,10 @@ private:
 	SiMMLTrack *_get_linked_track(uint64_t p_track_instance_id) const;
 
 	HashMap<int, SiEffectStream *> _track_effect_streams;
-	HashMap<int, SiOPMChannelBase *> _track_effect_channels;
 	SiEffectStream *_ensure_track_effect_stream(int p_track_id);
 	SiEffectStream *_get_track_effect_stream(int p_track_id);
 	void _bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id);
-	void _update_track_effect_post_fader();
+	void _bind_track_effect_channels();
 	void _clear_track_effect_streams(bool p_delete_streams);
 
 	// Core per-block render pipeline. Single source of truth used by
@@ -775,8 +774,6 @@ public:
 	// slot_scope_id tokens. When >= 0 the audio-thread drain restricts the
 	// update to tracks whose stamped tokens match (see section 7.3 of
 	// ScopeAddressingPlan).
-	void mailbox_set_track_volume(int p_track_id, double p_linear_volume, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
-	void mailbox_set_track_pan(int p_track_id, int p_pan, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	// FM operator params (by operator index)
 	void mailbox_set_fm_operator_count(int p_track_id, int p_operator_count, int p_algorithm, bool p_analog_like, int p_feedback, int p_feedback_connection, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
 	void mailbox_set_engine_param(int p_track_id, int p_engine_kind_id, int p_param_id, const Variant &p_value, int p_index = 0, int64_t p_entity_scope_id = -1, int64_t p_slot_scope_id = -1);
@@ -824,6 +821,9 @@ public:
 	void mailbox_track_effects_set_effect_arg(int p_track_id, int p_fx_index, int p_arg_index, double p_value);
 	void mailbox_track_effects_set_bypass(int p_track_id, int p_index, bool p_bypassed);
 	void mailbox_track_effects_set_mute(int p_track_id, bool p_mute);
+	// The track's fader and pan belong to its effect stream, so they hold with no live voice.
+	void mailbox_set_track_volume(int p_track_id, double p_linear_volume);
+	void mailbox_set_track_pan(int p_track_id, int p_pan);
 
 	// SiONOfflineRenderer: the offline render becomes the sole render owner. The
 	// driver stops its own Godot output for the duration; the lifecycle owner

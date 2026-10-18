@@ -724,6 +724,7 @@ void SiOPMChannelStream::reset() {
 	_source_frames_elapsed = 0.0;
 	_gain_db = 0;
 	_clip_gain = 1.0;
+	_clip_pan = 64;
 	_pitch_step = 1.0;
 	_pitch_cents = 0;
 	_fade_in_frames = 0;
@@ -753,6 +754,14 @@ void SiOPMChannelStream::reset() {
 // Stream writers (mirror sampler channel)
 // ---------------------------------------------------------------------------
 
+double SiOPMChannelStream::_clip_write_volume(double p_volume) const {
+	return _clip_pan == 64 ? p_volume : p_volume / _table->pan_table[64];
+}
+
+int SiOPMChannelStream::_clip_write_pan() const {
+	return _clip_pan == 64 ? SiOPMStream::PAN_NONE : _clip_pan;
+}
+
 void SiOPMChannelStream::_write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length) {
 	double volume_coef = _sound_chip->get_sampler_volume() * _instrument_gain;
 	int pan = CLAMP(_pan, 0, 128);
@@ -763,16 +772,16 @@ void SiOPMChannelStream::_write_stream_mono(SinglyLinkedList<int>::Element *p_ou
 			if (_volumes[i] > 0) {
 				SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 				if (stream) {
-					const double volume = (i == 0 && is_redirected_main_stream) ? volume_coef : (_volumes[i] * volume_coef);
-					const int write_pan = (i == 0 && is_redirected_main_stream) ? SiOPMStream::PAN_NONE : pan;
+					const double volume = (i == 0 && is_redirected_main_stream) ? _clip_write_volume(volume_coef) : (_volumes[i] * volume_coef);
+					const int write_pan = (i == 0 && is_redirected_main_stream) ? _clip_write_pan() : pan;
 					stream->write(p_output, _buffer_index, p_length, volume, write_pan);
 				}
 			}
 		}
 	} else {
 		SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-		const double volume = is_redirected_main_stream ? volume_coef : (_volumes[0] * volume_coef);
-		const int write_pan = is_redirected_main_stream ? SiOPMStream::PAN_NONE : pan;
+		const double volume = is_redirected_main_stream ? _clip_write_volume(volume_coef) : (_volumes[0] * volume_coef);
+		const int write_pan = is_redirected_main_stream ? _clip_write_pan() : pan;
 		stream->write(p_output, _buffer_index, p_length, volume, write_pan);
 	}
 }
@@ -787,16 +796,16 @@ void SiOPMChannelStream::_write_stream_stereo(SinglyLinkedList<int>::Element *p_
 			if (_volumes[i] > 0) {
 				SiOPMStream *stream = _streams[i] ? _streams[i] : _sound_chip->get_stream_slot(i);
 				if (stream) {
-					const double volume = (i == 0 && is_redirected_main_stream) ? volume_coef : (_volumes[i] * volume_coef);
-					const int write_pan = (i == 0 && is_redirected_main_stream) ? SiOPMStream::PAN_NONE : pan;
+					const double volume = (i == 0 && is_redirected_main_stream) ? _clip_write_volume(volume_coef) : (_volumes[i] * volume_coef);
+					const int write_pan = (i == 0 && is_redirected_main_stream) ? _clip_write_pan() : pan;
 					stream->write_stereo(p_output_left, p_output_right, _buffer_index, p_length, volume, write_pan);
 				}
 			}
 		}
 	} else {
 		SiOPMStream *stream = _streams[0] ? _streams[0] : _sound_chip->get_output_stream();
-		const double volume = is_redirected_main_stream ? volume_coef : (_volumes[0] * volume_coef);
-		const int write_pan = is_redirected_main_stream ? SiOPMStream::PAN_NONE : pan;
+		const double volume = is_redirected_main_stream ? _clip_write_volume(volume_coef) : (_volumes[0] * volume_coef);
+		const int write_pan = is_redirected_main_stream ? _clip_write_pan() : pan;
 		stream->write_stereo(p_output_left, p_output_right, _buffer_index, p_length, volume, write_pan);
 	}
 }
@@ -813,7 +822,7 @@ void SiOPMChannelStream::set_stream_gain(double p_gain_db) {
 
 void SiOPMChannelStream::set_stream_pan(int p_pan) {
 	// Match SiOPMChannelBase::set_pan convention: input is -64..+64, internal is 0..128.
-	_pan = CLAMP(p_pan, -64, 64) + 64;
+	_clip_pan = CLAMP(p_pan, -64, 64) + 64;
 }
 
 void SiOPMChannelStream::set_stream_pitch_cents(int p_cents) {
@@ -935,7 +944,7 @@ void SiOPMChannelStream::seek_to(int64_t p_position_sample) {
 String SiOPMChannelStream::_to_string() const {
 	String params = "";
 	params += "gain=" + itos(_gain_db) + "dB, ";
-	params += "pan=" + itos(_pan - 64) + ", ";
+	params += "pan=" + itos(_clip_pan - 64) + ", ";
 	params += "pitch=" + itos(_pitch_cents) + "c";
 	return "SiOPMChannelStream: " + params;
 }

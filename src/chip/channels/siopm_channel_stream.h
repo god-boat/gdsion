@@ -48,6 +48,7 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 
 	int _gain_db = 0;               // Gain in dB (-36..+36), matches sampler.
 	double _clip_gain = 1.0;        // Linear gain derived from _gain_db: pow(2, dB/6).
+	int _clip_pan = 64;             // 0..128, 64 = centre. Places the clip in its track.
 	double _pitch_step = 1.0;       // Source-frame advance per output sample.
 	int _pitch_cents = 0;           // Pitch shift in cents.
 	int _fade_in_frames = 0;        // Raw user fade-in param (cached for UI/live param parity).
@@ -103,6 +104,11 @@ class SiOPMChannelStream : public SiOPMChannelBase {
 	void _start_playback_at(int64_t p_start_sample);
 	// Ends playback; the filter tail rings out and the channel idles once it has decayed.
 	void _stop_source();
+
+	// The clip enters its track at its own pan, unity at centre. The track's pan
+	// follows the track's effects.
+	double _clip_write_volume(double p_volume) const;
+	int _clip_write_pan() const;
 
 	// Stream writers (mirror sampler channel pattern).
 	void _write_stream_mono(SinglyLinkedList<int>::Element *p_output, int p_length);

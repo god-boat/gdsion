@@ -1022,16 +1022,11 @@ void SiONDriver::_prepare_process(const Variant &p_data, bool p_reset_effector) 
 		_clear_track_effect_streams(false);
 	} else {
 		effector->reset();
-		// Retained streams keep their registry; the old channels are no longer current.
-		for (KeyValue<int, SiOPMChannelBase *> &entry : _track_effect_channels) {
-			entry.value = nullptr;
-		}
 	}
 
 	sequencer->prepare_process(_data, _sample_rate, _buffer_length); // Set sequencer tracks (should be called after sound_chip::reset()).
 	// Reserve the current track capacity while the render path is quiescent.
 	effector->reserve_local_effects(sequencer->get_max_track_count());
-	_track_effect_channels.reserve(sequencer->get_max_track_count());
 	if (_data.is_valid()) {
 		_parse_system_command(_data->get_system_commands());         // Parse #EFFECT command (should be called after effector::reset()).
 	}
@@ -1580,8 +1575,8 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_audio_playback"), &SiONDriver::get_audio_playback);
 
 	// Mailbox bindings
-	ClassDB::bind_method(D_METHOD("mailbox_set_track_volume", "track_id", "linear_volume", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_track_volume, DEFVAL(-1), DEFVAL(-1));
-	ClassDB::bind_method(D_METHOD("mailbox_set_track_pan", "track_id", "pan", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_track_pan, DEFVAL(-1), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_volume", "track_id", "linear_volume"), &SiONDriver::mailbox_set_track_volume);
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_pan", "track_id", "pan"), &SiONDriver::mailbox_set_track_pan);
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_operator_count", "track_id", "operator_count", "algorithm", "analog_like", "feedback", "feedback_connection", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_operator_count, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_engine_param", "track_id", "engine_kind_id", "param_id", "value", "index", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_engine_param, DEFVAL(0), DEFVAL(-1), DEFVAL(-1));
 	// Stream channel params (thread-safe via mailbox)
@@ -2259,26 +2254,6 @@ Dictionary SiONDriver::take_track_meter(int p_track_id) {
 }
 
 // --- Mailbox setters (main thread) --------------------------------------------
-void SiONDriver::mailbox_set_track_volume(int p_track_id, double p_linear_volume, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
-    _DriverCommand u;
-    u.track_id = p_track_id;
-    u.entity_scope_id = p_entity_scope_id;
-    u.slot_scope_id = p_slot_scope_id;
-    u.has_vol = true;
-    u.vol_linear = p_linear_volume;
-    _push_command(u);
-}
-
-void SiONDriver::mailbox_set_track_pan(int p_track_id, int p_pan, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
-    _DriverCommand u;
-    u.track_id = p_track_id;
-    u.entity_scope_id = p_entity_scope_id;
-    u.slot_scope_id = p_slot_scope_id;
-    u.has_pan = true;
-    u.pan = p_pan;
-    _push_command(u);
-}
-
 void SiONDriver::mailbox_set_fm_operator_count(int p_track_id, int p_operator_count, int p_algorithm, bool p_analog_like, int p_feedback, int p_feedback_connection, int64_t p_entity_scope_id, int64_t p_slot_scope_id) {
 	_DriverCommand u;
 	u.track_id = p_track_id;
@@ -2559,6 +2534,26 @@ void SiONDriver::mailbox_track_effects_set_mute(int p_track_id, bool p_mute) {
 	_push_command(u);
 }
 
+void SiONDriver::mailbox_set_track_volume(int p_track_id, double p_linear_volume) {
+	_ensure_track_effect_stream(p_track_id);
+	_DriverCommand u;
+	u.op = _DriverCommand::OP_EFFECT;
+	u.fx_op = _DriverCommand::FX_OP_SET_VOLUME;
+	u.track_id = p_track_id;
+	u.fx_volume = p_linear_volume;
+	_push_command(u);
+}
+
+void SiONDriver::mailbox_set_track_pan(int p_track_id, int p_pan) {
+	_ensure_track_effect_stream(p_track_id);
+	_DriverCommand u;
+	u.op = _DriverCommand::OP_EFFECT;
+	u.fx_op = _DriverCommand::FX_OP_SET_PAN;
+	u.track_id = p_track_id;
+	u.fx_pan = p_pan;
+	_push_command(u);
+}
+
 void SiONDriver::mailbox_track_effects_set_chain(int p_track_id, const Array &p_slots) {
 	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for mailbox track effects.", p_track_id));
 	_ensure_track_effect_stream(p_track_id);
@@ -2774,6 +2769,15 @@ void SiONDriver::_apply_effect_command(_DriverCommand &p_command) {
 		case _DriverCommand::FX_OP_SET_MUTE: {
 			stream->set_mute(p_command.fx_muted);
 		} break;
+
+		case _DriverCommand::FX_OP_SET_VOLUME: {
+			// Up to 2.0x (200%) for hot mixing headroom.
+			stream->set_post_fader_gain(CLAMP(p_command.fx_volume, 0.0, 2.0));
+		} break;
+
+		case _DriverCommand::FX_OP_SET_PAN: {
+			stream->set_post_pan(CLAMP(p_command.fx_pan, -64, 64) + 64);
+		} break;
 	}
 }
 
@@ -2809,15 +2813,6 @@ void SiONDriver::_apply_track_update(const _DriverCommand &u) {
         if (!matches_param_scope(*trk, u.track_id, u.entity_scope_id, u.slot_scope_id)) continue;
         SiOPMChannelBase *ch = trk->get_channel();
         if (!ch) continue;
-        if (u.has_vol) {
-            // Allow up to 2.0× (200%) for hot mixing headroom.
-            // This lets individual tracks exceed 0dBFS during mixing; downstream gain staging
-            // (driver volume / Godot buses) is expected to keep the final output in range.
-            ch->set_master_volume_linear(CLAMP(u.vol_linear, 0.0, 2.0));
-        }
-        if (u.has_pan) {
-            ch->set_pan(CLAMP(u.pan, -64, 64));
-        }
         if (u.has_fm_operator_count) {
             SiOPMChannelFM *fm = Object::cast_to<SiOPMChannelFM>(ch);
             if (fm) {
@@ -2929,21 +2924,7 @@ SiEffectStream *SiONDriver::_get_track_effect_stream(int p_track_id) {
 }
 
 void SiONDriver::_bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id) {
-	if (!p_track) {
-		return;
-	}
-	SiEffectStream *stream = _ensure_track_effect_stream(p_track_id);
-	if (!stream) {
-		return;
-	}
-	SiOPMChannelBase *channel = p_track->get_channel();
-	if (!channel) {
-		return;
-	}
-	_track_effect_channels[p_track_id] = channel;
-	stream->set_post_fader_gain(channel->get_stream_send(0));
-	stream->set_post_pan(CLAMP(channel->get_pan(), -64, 64) + 64);
-	channel->set_stream_buffer(0, stream->get_stream());
+	p_track->get_channel()->set_stream_buffer(0, _ensure_track_effect_stream(p_track_id)->get_stream());
 }
 
 SiEffectStream *SiONDriver::_ensure_track_effect_stream(int p_track_id) {
@@ -2962,11 +2943,6 @@ SiEffectStream *SiONDriver::_ensure_track_effect_stream(int p_track_id) {
 		return nullptr;
 	}
 	_track_effect_streams[p_track_id] = stream;
-	if (!_track_effect_channels.has(p_track_id)) {
-		// Keep channel map keys in sync with stream keys so the audio thread can
-		// update pointers without inserting into the map.
-		_track_effect_channels[p_track_id] = nullptr;
-	}
 	return stream;
 }
 
@@ -2974,60 +2950,20 @@ void SiONDriver::_process_one_block() {
 	sound_chip->begin_process();
 	effector->begin_process();
 	sequencer->process();
-	_update_track_effect_post_fader();
+	_bind_track_effect_channels();
 	effector->end_process();
 	sound_chip->end_process();
 }
 
-void SiONDriver::_update_track_effect_post_fader() {
-	// Pass 1: mark all effect-track channel slots unresolved for this block.
-	// We only touch existing keys to avoid map insertions in the audio thread.
-	for (const KeyValue<int, SiEffectStream *> &entry : _track_effect_streams) {
-		SiOPMChannelBase **slot = _track_effect_channels.getptr(entry.key);
-		if (slot) {
-			*slot = nullptr;
+// Every live channel of a logical track writes into that track's stream.
+void SiONDriver::_bind_track_effect_channels() {
+	for (SiMMLTrack *track : sequencer->get_tracks_ref()) {
+		SiEffectStream **stream = _track_effect_streams.getptr(track->get_track_id());
+		// As in the sequencer's own pass, a track still being created has no channel yet.
+		SiOPMChannelBase *channel = track->get_channel();
+		if (stream && channel) {
+			channel->set_stream_buffer(0, (*stream)->get_stream());
 		}
-	}
-
-	// Pass 2: resolve current channels in one scan over live tracks.
-	// Reverse iteration preserves previous "latest track wins" behavior.
-	const LocalVector<SiMMLTrack *> &tracks = sequencer->get_tracks_ref();
-	for (int i = tracks.size() - 1; i >= 0; i--) {
-		SiMMLTrack *track = tracks[i];
-		if (!track) {
-			continue;
-		}
-
-		const int track_id = track->get_track_id();
-		SiOPMChannelBase **slot = _track_effect_channels.getptr(track_id);
-		if (!slot || *slot != nullptr) {
-			continue;
-		}
-
-		SiOPMChannelBase *candidate = track->get_channel();
-		if (!candidate) {
-			continue;
-		}
-		*slot = candidate;
-	}
-
-	// Pass 3: apply post-fader/pan using resolved channels.
-	for (const KeyValue<int, SiEffectStream *> &entry : _track_effect_streams) {
-		SiEffectStream *stream = entry.value;
-		if (!stream) {
-			continue;
-		}
-
-		SiOPMChannelBase **channel_ptr = _track_effect_channels.getptr(entry.key);
-		if (!channel_ptr || !*channel_ptr) {
-			continue;
-		}
-		SiOPMChannelBase *channel = *channel_ptr;
-
-		// Keep stream routing attached to the currently resolved channel.
-		channel->set_stream_buffer(0, stream->get_stream());
-		stream->set_post_fader_gain(channel->get_stream_send(0));
-		stream->set_post_pan(CLAMP(channel->get_pan(), -64, 64) + 64);
 	}
 }
 
@@ -3040,7 +2976,6 @@ void SiONDriver::_clear_track_effect_streams(bool p_delete_streams) {
 		}
 	}
 	_track_effect_streams.clear();
-	_track_effect_channels.clear();
 }
 
 Vector<double> SiONDriver::_args_from_variant(const Variant &p_value) const {
