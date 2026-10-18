@@ -426,9 +426,6 @@
 		<member name="max_track_count" type="int" setter="set_max_track_count" getter="get_max_track_count" default="128">
 			Maximum number of tracks that can exist at the same time.
 		</member>
-		<member name="volume" type="float" setter="set_volume" getter="get_volume" default="1.0">
-			Base volume of the output, before fading is applied. The volume is set as a linear value between [code]0.0[/code] and [code]1[/code].
-		</member>
 	</members>
 	<signals>
 		<signal name="bpm_changed">
@@ -553,6 +550,15 @@
 		</signal>
 	</signals>
 	<constants>
+		<constant name="MAIN_TRACK_ID" value="65534">
+			The main track's id. Every other track stream sums into main, and main's effects, fader and pan apply to the whole mix. The track mailboxes and [code]take_track_meter()[/code] address main by this id.
+		</constant>
+		<constant name="TRACK_OUTPUT_MAIN" value="0" enum="TrackOutput">
+			The track stream writes into main. This is the default.
+		</constant>
+		<constant name="TRACK_OUTPUT_MONITOR" value="1" enum="TrackOutput">
+			The track stream writes into the monitor, which joins the output after main's effects, fader and meter. For signals outside the mix, such as a metronome. Set with [code]mailbox_set_track_output()[/code].
+		</constant>
 		<constant name="CHIP_AUTO" value="-1" enum="SiONChipType">
 			Used to select the chip type automatically. See [method SiONVoice.get_mml].
 		</constant>

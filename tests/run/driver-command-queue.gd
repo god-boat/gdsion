@@ -31,6 +31,7 @@ func run(scene_tree: SceneTree) -> void:
 	await _run_case(scene_tree, "track mute", _case_mute)
 	await _run_case(scene_tree, "track fader and pan", _case_fader)
 	await _run_case(scene_tree, "clip pan", _case_clip_pan)
+	await _run_case(scene_tree, "main track", _case_main)
 	await _run_case(scene_tree, "operator count scopes", _case_operator_count_scopes)
 
 
@@ -106,6 +107,13 @@ func _render_peak(renderer: SiONOfflineRenderer, block_count: int) -> float:
 	for i in range(block_count):
 		peak = maxf(peak, _peak(renderer.render_block()))
 	return peak
+
+
+## Renders one block; returns it and main's meter for that block alone.
+func _render_metered(driver: SiONDriver, renderer: SiONOfflineRenderer) -> Array:
+	driver.take_track_meter(SiONDriver.MAIN_TRACK_ID)
+	var block := renderer.render_block()
+	return [block, driver.take_track_meter(SiONDriver.MAIN_TRACK_ID)]
 
 
 ## Renders until [param condition] holds; returns the blocks it took, or -1.
@@ -350,3 +358,65 @@ func _case_clip_pan(label: String, driver: SiONDriver, renderer: SiONOfflineRend
 	var track_right := renderer.render_block()
 	_assert_equal("%s: a centred clip keeps the track's pan" % label, _channel_peak(track_right, 0), 0.0)
 	_assert_equal("%s: the track's pan keeps the clip audible" % label, _channel_peak(track_right, 1) > 0.0, true)
+
+
+func _case_main(label: String, driver: SiONDriver, renderer: SiONOfflineRenderer) -> void:
+	# Main is addressed by its reserved id through the track mailboxes. Every
+	# track stream sums into it, and it applies its effects, fader and pan in place.
+	var main := SiONDriver.MAIN_TRACK_ID
+	driver.set_metering_enabled(true)
+	driver.set_meter_downsample_factor(1)
+	_start_live_stream(driver, renderer, 1)
+	renderer.render_block()
+	var metered := _render_metered(driver, renderer)
+	var level := _channel_peak(metered[0], 0)
+	_assert_equal("%s: a track plays through main" % label, level > 0.0, true)
+	_assert_equal("%s: main at unity and centre keeps the mix balanced" % label, _channel_peak(metered[0], 1), level)
+	_assert_equal("%s: main's meter reads the output" % label, metered[1].get("peak_left"), level)
+
+	driver.mailbox_set_track_volume(main, 0.5)
+	metered = _render_metered(driver, renderer)
+	_assert_equal("%s: main's fader scales the output" % label, is_equal_approx(_channel_peak(metered[0], 0), level * 0.5), true)
+	_assert_equal("%s: main's meter follows its fader" % label, metered[1].get("peak_right"), _channel_peak(metered[0], 1))
+	driver.mailbox_set_track_volume(main, 1.0)
+
+	driver.mailbox_set_track_pan(main, -64)
+	var panned := renderer.render_block()
+	_assert_equal("%s: hard left main pan silences the right side" % label, _channel_peak(panned, 1), 0.0)
+	_assert_equal("%s: main pan is equal power with unity at centre" % label,
+		absf(_channel_peak(panned, 0) / level - sqrt(2.0)) < 0.001, true)
+	driver.mailbox_set_track_pan(main, 0)
+
+	driver.mailbox_track_effects_set_chain(main, [{ "kind": "waveShaper", "args": [0.0, 50.0] }])
+	metered = _render_metered(driver, renderer)
+	_assert_equal("%s: an effect on main changes the output" % label, is_equal_approx(_channel_peak(metered[0], 0), level * 0.5), true)
+	_assert_equal("%s: main's meter follows its effects" % label, metered[1].get("peak_left"), _channel_peak(metered[0], 0))
+	driver.mailbox_track_effects_set_bypass(main, 0, true)
+	_assert_equal("%s: a bypassed effect on main passes the mix" % label, _channel_peak(renderer.render_block(), 0), level)
+	driver.mailbox_track_effects_set_bypass(main, 0, false)
+
+	# A monitor track joins the output after main: main's effects, fader and meter leave it.
+	driver.mailbox_set_track_output(2, SiONDriver.TRACK_OUTPUT_MONITOR)
+	_start_live_stream(driver, renderer, 2)
+	renderer.render_block()
+	_assert_equal("%s: the monitor sums after main's effects" % label, is_equal_approx(_channel_peak(renderer.render_block(), 0), level * 1.5), true)
+	driver.mailbox_set_track_volume(main, 0.0)
+	metered = _render_metered(driver, renderer)
+	_assert_equal("%s: main's fader leaves the monitor" % label, _channel_peak(metered[0], 0), level)
+	_assert_equal("%s: main's meter precedes the monitor" % label, metered[1].get("peak_left"), 0.0)
+	driver.mailbox_set_track_volume(main, 1.0)
+	driver.mailbox_set_track_output(2, SiONDriver.TRACK_OUTPUT_MAIN)
+	_assert_equal("%s: a track routed back to main plays through it" % label, is_equal_approx(_channel_peak(renderer.render_block(), 0), level), true)
+
+	# Resetting the effector resets main with every track stream: no chain, unity, centred.
+	driver.mailbox_set_track_volume(main, 0.5)
+	driver.mailbox_set_track_pan(main, 64)
+	renderer.render_block()
+	renderer.finish()
+	driver.stop()
+	driver.stream_without_output()
+	_assert_equal("%s: renderer begin after reset" % label, renderer.begin(driver), true)
+	_start_live_stream(driver, renderer, 1)
+	renderer.render_block()
+	var fresh := renderer.render_block()
+	_assert_equal("%s: reset restores main's defaults" % label, [_channel_peak(fresh, 0), _channel_peak(fresh, 1)], [level, level])

@@ -78,6 +78,8 @@ public:
 	void set_post_pan(int p_pan);
 	void prepare_process();
 	void process(int p_start_idx, int p_length, bool p_write_in_stream = true);
+	// A stream that is itself the output applies its fader and pan in place.
+	void apply_output_stage(int p_start_idx, int p_length);
 
 	//
 

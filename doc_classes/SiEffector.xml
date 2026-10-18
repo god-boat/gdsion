@@ -5,7 +5,7 @@
 	</brief_description>
 	<description>
 		It is responsible for management of various effects and filters applied globally to the entire generated sound wave.
-		Effects can populate up to [constant SiOPMSoundChip.STREAM_SEND_SIZE] slots. Slot [code]0[/code] has a special meaning as the master slot.
+		Effects can populate up to [constant SiOPMSoundChip.STREAM_SEND_SIZE] slots. Slot [code]0[/code] is main: its stream is the chip output, which every track stream sums into.
 	</description>
 	<tutorials>
 	</tutorials>

@@ -185,7 +185,7 @@ void SiEffector::clear_slot_effects(int p_slot) {
 	ERR_FAIL_INDEX_MSG(p_slot, SiOPMSoundChip::STREAM_SEND_SIZE, "SiEffector: Invalid effect slot index.");
 
 	if (p_slot == 0) {
-		_master_effect->initialize(0);
+		_main_effect->initialize(0);
 	} else {
 		if (_global_effects[p_slot] != nullptr) {
 			_global_effects[p_slot]->free();
@@ -247,11 +247,12 @@ void SiEffector::prepare_process() {
 		}
 	}
 
-	_master_effect->prepare_process();
+	_main_effect->prepare_process();
 }
 
 void SiEffector::begin_process() {
-	// Do nothing with the master effect.
+	// The main stream's buffer is the chip output, which the chip clears.
+	_monitor_stream->clear();
 
 	for (SiEffectStream *effect : _local_effects) {
 		effect->get_stream()->clear();
@@ -287,7 +288,17 @@ void SiEffector::end_process() {
 		}
 	}
 
-	_master_effect->process(0, _sound_chip->get_buffer_length(), false);
+	_main_effect->process(0, _sound_chip->get_buffer_length(), false);
+	_main_effect->apply_output_stage(0, _sound_chip->get_buffer_length());
+}
+
+void SiEffector::mix_monitor() {
+	const double *monitor = _monitor_stream->get_buffer_ptr()->ptr();
+	Vector<double> *output = _sound_chip->get_output_stream()->get_buffer_ptr();
+	double *dst = output->ptrw();
+	for (int i = 0; i < output->size(); i++) {
+		dst[i] += monitor[i];
+	}
 }
 
 void SiEffector::reset() {
@@ -301,8 +312,9 @@ void SiEffector::reset() {
 		}
 	}
 
-	_master_effect->reset();
-	_global_effects.write[0] = _master_effect;
+	_main_effect->reset();
+	_global_effects.write[0] = _main_effect;
+	_monitor_stream->resize(_sound_chip->get_buffer_length() << 1);
 }
 
 //
@@ -326,8 +338,9 @@ void SiEffector::initialize() {
 	}
 	_global_effect_count = 0;
 
-	_master_effect->initialize(0);
-	_global_effects.write[0] = _master_effect;
+	_main_effect->initialize(0);
+	_global_effects.write[0] = _main_effect;
+	_monitor_stream->resize(_sound_chip->get_buffer_length() << 1);
 }
 
 void SiEffector::_bind_methods() {
@@ -338,9 +351,10 @@ void SiEffector::_bind_methods() {
 SiEffector::SiEffector(SiOPMSoundChip *p_chip) {
 	_sound_chip = p_chip;
 
-	_master_effect = memnew(SiEffectStream(_sound_chip, _sound_chip->get_output_stream()));
+	_main_effect = memnew(SiEffectStream(_sound_chip, _sound_chip->get_output_stream()));
+	_monitor_stream = memnew(SiOPMStream);
 	_global_effects.resize_zeroed(SiOPMSoundChip::STREAM_SEND_SIZE);
-	_global_effects.write[0] = _master_effect;
+	_global_effects.write[0] = _main_effect;
 
 	// Register default effect instances.
 
@@ -372,7 +386,9 @@ SiEffector::SiEffector(SiOPMSoundChip *p_chip) {
 
 SiEffector::~SiEffector() {
 	_sound_chip = nullptr;
-	_master_effect = nullptr;
+	_main_effect = nullptr;
+	memdelete(_monitor_stream);
+	_monitor_stream = nullptr;
 
 	for (SiEffectStream *effect : _free_effect_streams) {
 		memdelete(effect);

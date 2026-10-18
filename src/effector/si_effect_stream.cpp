@@ -9,6 +9,7 @@
 #include <godot_cpp/classes/reg_ex.hpp>
 #include <godot_cpp/classes/reg_ex_match.hpp>
 #include <algorithm>
+#include "chip/siopm_ref_table.h"
 #include "chip/siopm_sound_chip.h"
 #include "chip/siopm_stream.h"
 #include "effector/si_effector.h"
@@ -180,6 +181,19 @@ void SiEffectStream::process(int p_start_idx, int p_length, bool p_write_in_stre
 			}
 			stream->write_from_vector(buffer, p_start_idx, p_start_idx, p_length, _volumes[0] * _post_fader_gain, _post_pan, 2);
 		}
+	}
+}
+
+void SiEffectStream::apply_output_stage(int p_start_idx, int p_length) {
+	// Equal power with unity at centre, as a clip's pan places it in its track.
+	double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
+	const double gain_l = _post_fader_gain * (pan_table[128 - _post_pan] / pan_table[64]);
+	const double gain_r = _post_fader_gain * (pan_table[_post_pan] / pan_table[64]);
+
+	double *buffer = _stream->get_buffer_ptr()->ptrw();
+	for (int i = p_start_idx << 1; i < (p_start_idx + p_length) << 1; i += 2) {
+		buffer[i] *= gain_l;
+		buffer[i + 1] *= gain_r;
 	}
 }
 

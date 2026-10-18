@@ -82,6 +82,17 @@ public:
 		NEM_MAX = 4
 	};
 
+	// The main track's id. Its stream is the effector's main stream, which every
+	// other track stream sums into.
+	static const int MAIN_TRACK_ID = 0xFFFE;
+
+	// Where a track stream writes after its fader. The monitor joins the output
+	// after main's chain, fader and meter.
+	enum TrackOutput {
+		TRACK_OUTPUT_MAIN,
+		TRACK_OUTPUT_MONITOR,
+	};
+
 private:
 	enum FrameProcessingType {
 		NONE = 0,
@@ -196,13 +207,11 @@ private:
 	bool _auto_stop = false;
 	bool _is_paused = false;
 	double _start_position = 0; // ms
-	double _master_volume = 1;
 	double _fader_volume = 1;
 
 	// --- Output capture (for export/resampling) ---
 	mutable std::mutex _capture_mutex;
 	bool _capture_active = false;
-	bool _capture_post_master = true;
 	Vector<float> _capture_buffer;  // Interleaved stereo float32
 	size_t _capture_write_pos = 0;
 
@@ -219,10 +228,6 @@ private:
 	std::atomic<int64_t> _frame_clock_anchor_host_time_ns{0};
 	void _publish_frame_clock_anchor();
 
-	// --- Professional audio metering infrastructure ---
-	// Track meters live on each track's SiEffectStream.
-	MeterState _master_meter;
-
 	// Flush denormals to zero on the render thread. Read once per render_interleaved()
 	// call, so it can be toggled from the main thread while audio is running --
 	// which is what lets a benchmark interleave A/B in one process instead of
@@ -235,10 +240,8 @@ private:
 	std::atomic<int> _meter_downsample_factor{4};  // Process every Nth buffer
 	int _meter_downsample_counter = 0; // Render-thread owned.
 
-	// Metering helper functions
-	void _update_batch_meters(const Vector<double> *out_buf, int frames);
-	void _meter_track_output(MeterState &p_meter, const Vector<double> *track_buf, int frames, double p_post_fader_gain, int p_post_pan);
-	void _meter_all_track_outputs(int frames);
+	// Meters live on each track's SiEffectStream, main's included.
+	void _update_meters();
 
 	ExceptionMode _note_on_exception_mode = NEM_IGNORE;
 	SiMMLTrack *_find_or_create_track(int p_track_id, double p_delay, double p_quant, bool p_disposable, int *r_delay_samples);
@@ -458,6 +461,7 @@ private:
 			FX_OP_SET_MUTE,
 			FX_OP_SET_VOLUME,
 			FX_OP_SET_PAN,
+			FX_OP_SET_OUTPUT,
 		};
 		int fx_op = FX_OP_SET_CHAIN;
 		int fx_index = 0;
@@ -468,6 +472,7 @@ private:
 		bool fx_muted = false;
 		double fx_volume = 1.0;
 		int fx_pan = 0;
+		TrackOutput fx_output = TRACK_OUTPUT_MAIN;
 		Vector<double> fx_args;
 		Ref<SiEffectBase> fx_effect;
 		Vector<Ref<SiEffectBase>> fx_chain;
@@ -504,6 +509,8 @@ private:
 	SiMMLTrack *_get_linked_track(uint64_t p_track_instance_id) const;
 
 	HashMap<int, SiEffectStream *> _track_effect_streams;
+	// Content track streams. MAIN_TRACK_ID resolves to the effector's main stream,
+	// which stays out of this map.
 	SiEffectStream *_ensure_track_effect_stream(int p_track_id);
 	SiEffectStream *_get_track_effect_stream(int p_track_id);
 	void _bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id);
@@ -606,8 +613,6 @@ public:
 	double get_sample_rate() const { return _sample_rate; }
 	double get_bitrate() const { return _bitrate; }
 
-	double get_volume() const;
-	void set_volume(double p_value);
 	// Reads the published effective tempo.
 	double get_bpm() const;
 	// Synchronous pending track/channel lifecycle ownership.
@@ -683,7 +688,7 @@ public:
 	void set_timer_interval_beats(double p_length_beats = 0.0625);
 
 	// Output capture API (for export/resampling).
-	bool begin_output_capture(int p_max_seconds = 0, bool p_post_master = true);
+	bool begin_output_capture(int p_max_seconds = 0);
 	PackedFloat32Array end_output_capture();
 	void abort_output_capture();
 	bool is_output_capturing() const;
@@ -701,7 +706,7 @@ public:
 	void set_meter_downsample_factor(int p_factor);
 	int get_meter_downsample_factor() const;
 	// Reading takes the held peaks: the next read reports peaks from here on.
-	Dictionary take_master_meter();
+	// MAIN_TRACK_ID reads the output level, before the monitor joins it.
 	Dictionary take_track_meter(int p_track_id);
 
 	// MIDI.
@@ -824,6 +829,7 @@ public:
 	// The track's fader and pan belong to its effect stream, so they hold with no live voice.
 	void mailbox_set_track_volume(int p_track_id, double p_linear_volume);
 	void mailbox_set_track_pan(int p_track_id, int p_pan);
+	void mailbox_set_track_output(int p_track_id, TrackOutput p_output);
 
 	// SiONOfflineRenderer: the offline render becomes the sole render owner. The
 	// driver stops its own Godot output for the duration; the lifecycle owner
@@ -835,5 +841,7 @@ public:
 	// producer's, so it services the command queue first.
 	void render_offline_block(AudioFrame *p_buffer, int32_t p_frames);
 };
+
+VARIANT_ENUM_CAST(SiONDriver::TrackOutput);
 
 #endif // SION_DRIVER_H

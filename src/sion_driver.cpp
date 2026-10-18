@@ -344,19 +344,8 @@ void SiONDriver::_update_volume() {
 	if (!_audio_player) {
 		return;
 	}
-	double db_volume = Math::linear2db(_master_volume * _fader_volume);
+	double db_volume = Math::linear2db(_fader_volume);
 	_audio_player->set_volume_db(db_volume);
-}
-
-double SiONDriver::get_volume() const {
-	return _master_volume;
-}
-
-void SiONDriver::set_volume(double p_value) {
-	ERR_FAIL_COND_MSG(p_value < 0 || p_value > 1, "SiONDriver: Volume must be between 0.0 and 1.0 (inclusive).");
-
-	_master_volume = p_value;
-	_update_volume();
 }
 
 double SiONDriver::get_bpm() const {
@@ -1355,7 +1344,7 @@ void SiONDriver::set_timer_interval_beats(double p_length_beats) {
 
 // --- Output capture (for export/resampling) ---
 
-bool SiONDriver::begin_output_capture(int p_max_seconds, bool p_post_master) {
+bool SiONDriver::begin_output_capture(int p_max_seconds) {
 	if (_capture_active) {
 		ERR_PRINT("SiONDriver: Cannot start capture while already capturing.");
 		return false;
@@ -1374,7 +1363,6 @@ bool SiONDriver::begin_output_capture(int p_max_seconds, bool p_post_master) {
 	if ((size_t)_capture_buffer.size() != target_capacity) {
 		_capture_buffer.resize(target_capacity);
 	}
-	_capture_post_master = p_post_master;
 	_capture_write_pos = 0;
 	_capture_active = true;
 	return true;
@@ -1577,6 +1565,7 @@ void SiONDriver::_bind_methods() {
 	// Mailbox bindings
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_volume", "track_id", "linear_volume"), &SiONDriver::mailbox_set_track_volume);
 	ClassDB::bind_method(D_METHOD("mailbox_set_track_pan", "track_id", "pan"), &SiONDriver::mailbox_set_track_pan);
+	ClassDB::bind_method(D_METHOD("mailbox_set_track_output", "track_id", "output"), &SiONDriver::mailbox_set_track_output);
 	ClassDB::bind_method(D_METHOD("mailbox_set_fm_operator_count", "track_id", "operator_count", "algorithm", "analog_like", "feedback", "feedback_connection", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_fm_operator_count, DEFVAL(-1), DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("mailbox_set_engine_param", "track_id", "engine_kind_id", "param_id", "value", "index", "entity_scope_id", "slot_scope_id"), &SiONDriver::mailbox_set_engine_param, DEFVAL(0), DEFVAL(-1), DEFVAL(-1));
 	// Stream channel params (thread-safe via mailbox)
@@ -1633,12 +1622,9 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_rendered_frame_count"), &SiONDriver::get_rendered_frame_count);
 	ClassDB::bind_method(D_METHOD("get_bitrate"), &SiONDriver::get_bitrate);
 
-	ClassDB::bind_method(D_METHOD("get_volume"), &SiONDriver::get_volume);
-	ClassDB::bind_method(D_METHOD("set_volume", "value"), &SiONDriver::set_volume);
 	ClassDB::bind_method(D_METHOD("get_bpm"), &SiONDriver::get_bpm);
 	ClassDB::bind_method(D_METHOD("set_bpm", "bpm"), &SiONDriver::set_bpm);
 
-	ClassDB::add_property("SiONDriver", PropertyInfo(Variant::FLOAT, "volume"), "set_volume", "get_volume");
 	ClassDB::add_property("SiONDriver", PropertyInfo(Variant::FLOAT, "bpm"), "set_bpm", "get_bpm");
 
 	// Events.
@@ -1647,7 +1633,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_timer_interval_beats", "length_beats"), &SiONDriver::set_timer_interval_beats);
 
 	// Output capture (for export/resampling).
-	ClassDB::bind_method(D_METHOD("begin_output_capture", "max_seconds", "post_master"), &SiONDriver::begin_output_capture, DEFVAL(0), DEFVAL(true));
+	ClassDB::bind_method(D_METHOD("begin_output_capture", "max_seconds"), &SiONDriver::begin_output_capture, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("end_output_capture"), &SiONDriver::end_output_capture);
 	ClassDB::bind_method(D_METHOD("abort_output_capture"), &SiONDriver::abort_output_capture);
 	ClassDB::bind_method(D_METHOD("is_output_capturing"), &SiONDriver::is_output_capturing);
@@ -1661,7 +1647,6 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_metering_enabled"), &SiONDriver::is_metering_enabled);
 	ClassDB::bind_method(D_METHOD("set_meter_downsample_factor", "factor"), &SiONDriver::set_meter_downsample_factor);
 	ClassDB::bind_method(D_METHOD("get_meter_downsample_factor"), &SiONDriver::get_meter_downsample_factor);
-	ClassDB::bind_method(D_METHOD("take_master_meter"), &SiONDriver::take_master_meter);
 	ClassDB::bind_method(D_METHOD("take_track_meter", "track_id"), &SiONDriver::take_track_meter);
 
 	ClassDB::bind_method(D_METHOD("set_beat_event_enabled", "enabled"), &SiONDriver::set_beat_event_enabled);
@@ -1744,6 +1729,11 @@ void SiONDriver::_bind_methods() {
 	ADD_SIGNAL(MethodInfo(SiONTrackEvent::USER_DEFINED, PropertyInfo(Variant::OBJECT, "event", PROPERTY_HINT_RESOURCE_TYPE, "SiONTrackEvent")));
 
 	//
+
+	BIND_CONSTANT(MAIN_TRACK_ID);
+
+	BIND_ENUM_CONSTANT(TRACK_OUTPUT_MAIN);
+	BIND_ENUM_CONSTANT(TRACK_OUTPUT_MONITOR);
 
 	BIND_ENUM_CONSTANT(CHIP_AUTO);
 	BIND_ENUM_CONSTANT(CHIP_SIOPM);
@@ -2011,15 +2001,6 @@ int SiONDriver::render_interleaved(float *p_output, int p_frames, int p_channels
 			_process_one_block();
 
 			Vector<double> *out_buf = sound_chip->get_output_buffer_ptr();
-
-			if (_metering_enabled.load(std::memory_order_relaxed)) {
-				if (++_meter_downsample_counter >= _meter_downsample_factor.load(std::memory_order_relaxed)) {
-					_meter_downsample_counter = 0;
-					_meter_all_track_outputs(block);
-					_update_batch_meters(out_buf, block);
-				}
-			}
-
 			_residual_buffer_frame_count = block;
 			_residual_frame_offset = 0;
 			int sample_count = block * 2;
@@ -2114,59 +2095,15 @@ void SiONDriver::_streaming() {
 
 // --- Professional Metering Implementation ------------------------------------
 
-void SiONDriver::_update_batch_meters(const Vector<double> *out_buf, int frames) {
-	if (!out_buf || frames <= 0) {
-		return;
-	}
-
+static void meter_buffer(MeterState &p_meter, const Vector<double> &p_buffer, int p_frames, double p_gain_left, double p_gain_right) {
 	float peak_left = 0.0f;
 	float peak_right = 0.0f;
 	double sum_sq_left = 0.0;
 	double sum_sq_right = 0.0;
 
-	// Process all samples in the buffer for accurate RMS and peak detection
-	for (int i = 0; i < frames; ++i) {
-		float left = (float)(*out_buf)[i * 2];
-		float right = (float)(*out_buf)[i * 2 + 1];
-
-		// Track peaks (absolute max)
-		peak_left = std::max(peak_left, fabsf(left));
-		peak_right = std::max(peak_right, fabsf(right));
-
-		// Accumulate for RMS
-		sum_sq_left += left * left;
-		sum_sq_right += right * right;
-	}
-
-	_master_meter.rms_left.store(sqrtf(float(sum_sq_left / frames)), std::memory_order_relaxed);
-	_master_meter.rms_right.store(sqrtf(float(sum_sq_right / frames)), std::memory_order_relaxed);
-	_master_meter.peak_left.raise(peak_left);
-	_master_meter.peak_right.raise(peak_right);
-}
-
-void SiONDriver::_meter_track_output(MeterState &p_meter, const Vector<double> *track_buf, int frames, double p_post_fader_gain, int p_post_pan) {
-	if (!_metering_enabled.load(std::memory_order_relaxed)) {
-		return;
-	}
-
-	if (!track_buf || frames <= 0) {
-		return;
-	}
-
-	double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
-	const int clamped_pan = CLAMP(p_post_pan, 0, 128);
-	const double post_fader_gain = std::max(p_post_fader_gain, 0.0);
-	const double gain_l = pan_table[128 - clamped_pan] * post_fader_gain;
-	const double gain_r = pan_table[clamped_pan] * post_fader_gain;
-
-	float peak_left = 0.0f;
-	float peak_right = 0.0f;
-	double sum_sq_left = 0.0;
-	double sum_sq_right = 0.0;
-
-	for (int i = 0; i < frames; ++i) {
-		float left = fabsf((float)((*track_buf)[i * 2] * gain_l));
-		float right = fabsf((float)((*track_buf)[i * 2 + 1] * gain_r));
+	for (int i = 0; i < p_frames; ++i) {
+		float left = fabsf((float)(p_buffer[i * 2] * p_gain_left));
+		float right = fabsf((float)(p_buffer[i * 2 + 1] * p_gain_right));
 
 		peak_left = std::max(peak_left, left);
 		peak_right = std::max(peak_right, right);
@@ -2175,44 +2112,33 @@ void SiONDriver::_meter_track_output(MeterState &p_meter, const Vector<double> *
 		sum_sq_right += right * right;
 	}
 
-	p_meter.rms_left.store(sqrtf(float(sum_sq_left / frames)), std::memory_order_relaxed);
-	p_meter.rms_right.store(sqrtf(float(sum_sq_right / frames)), std::memory_order_relaxed);
+	p_meter.rms_left.store(sqrtf(float(sum_sq_left / p_frames)), std::memory_order_relaxed);
+	p_meter.rms_right.store(sqrtf(float(sum_sq_right / p_frames)), std::memory_order_relaxed);
 	p_meter.peak_left.raise(peak_left);
 	p_meter.peak_right.raise(peak_right);
 }
 
-void SiONDriver::_meter_all_track_outputs(int frames) {
+// A track meter reads its stream after the effects, at the stream's fader and pan.
+// The main meter reads the mix after main's output stage, before the monitor joins it.
+void SiONDriver::_update_meters() {
 	if (!_metering_enabled.load(std::memory_order_relaxed)) {
 		return;
 	}
+	if (++_meter_downsample_counter < _meter_downsample_factor.load(std::memory_order_relaxed)) {
+		return;
+	}
+	_meter_downsample_counter = 0;
 
-	// Iterate through all track effect streams
+	double (&pan_table)[129] = SiOPMRefTable::get_instance()->pan_table;
 	for (const KeyValue<int, SiEffectStream *> &entry : _track_effect_streams) {
 		SiEffectStream *stream = entry.value;
-
-		if (!stream) {
-			continue;
-		}
-
-		// Get the stream's output buffer (post-effects)
-		SiOPMStream *opm_stream = stream->get_stream();
-		if (!opm_stream) {
-			continue;
-		}
-
-		Vector<double> *track_buf = opm_stream->get_buffer_ptr();
-		if (!track_buf || track_buf->is_empty()) {
-			continue;
-		}
-
-		// Verify buffer has enough samples for the requested frames
-		if (track_buf->size() < frames * 2) {
-			continue;
-		}
-
-		// Meter this track's post-effects output
-		_meter_track_output(stream->get_meter(), track_buf, frames, stream->get_post_fader_gain(), stream->get_post_pan());
+		const double gain = stream->get_post_fader_gain();
+		const int pan = stream->get_post_pan();
+		meter_buffer(stream->get_meter(), *stream->get_stream()->get_buffer_ptr(), _buffer_length, pan_table[128 - pan] * gain, pan_table[pan] * gain);
 	}
+
+	SiEffectStream *main = effector->get_main_stream();
+	meter_buffer(main->get_meter(), *main->get_stream()->get_buffer_ptr(), _buffer_length, 1.0, 1.0);
 }
 
 void SiONDriver::set_denormal_flush_enabled(bool p_enabled) {
@@ -2240,17 +2166,13 @@ int SiONDriver::get_meter_downsample_factor() const {
 	return _meter_downsample_factor.load(std::memory_order_acquire);
 }
 
-Dictionary SiONDriver::take_master_meter() {
-	return _master_meter.take();
-}
-
 Dictionary SiONDriver::take_track_meter(int p_track_id) {
 	// Main-thread lookup of a registered effect stream.
-	SiEffectStream **stream = _track_effect_streams.getptr(p_track_id);
+	SiEffectStream *stream = _get_track_effect_stream(p_track_id);
 	if (!stream) {
 		return Dictionary();  // Track has no effect stream yet
 	}
-	return (*stream)->get_meter().take();
+	return stream->get_meter().take();
 }
 
 // --- Mailbox setters (main thread) --------------------------------------------
@@ -2554,6 +2476,16 @@ void SiONDriver::mailbox_set_track_pan(int p_track_id, int p_pan) {
 	_push_command(u);
 }
 
+void SiONDriver::mailbox_set_track_output(int p_track_id, TrackOutput p_output) {
+	_ensure_track_effect_stream(p_track_id);
+	_DriverCommand u;
+	u.op = _DriverCommand::OP_EFFECT;
+	u.fx_op = _DriverCommand::FX_OP_SET_OUTPUT;
+	u.track_id = p_track_id;
+	u.fx_output = p_output;
+	_push_command(u);
+}
+
 void SiONDriver::mailbox_track_effects_set_chain(int p_track_id, const Array &p_slots) {
 	ERR_FAIL_COND_MSG(p_track_id < 0, vformat("SiONDriver: Invalid track id %d for mailbox track effects.", p_track_id));
 	_ensure_track_effect_stream(p_track_id);
@@ -2778,6 +2710,11 @@ void SiONDriver::_apply_effect_command(_DriverCommand &p_command) {
 		case _DriverCommand::FX_OP_SET_PAN: {
 			stream->set_post_pan(CLAMP(p_command.fx_pan, -64, 64) + 64);
 		} break;
+
+		case _DriverCommand::FX_OP_SET_OUTPUT: {
+			// A null output writes into main.
+			stream->connect(p_command.fx_output == TRACK_OUTPUT_MONITOR ? effector->get_monitor_stream() : nullptr);
+		} break;
 	}
 }
 
@@ -2917,10 +2854,11 @@ void SiONDriver::_apply_track_update(const _DriverCommand &u) {
 // --- Track effect streams -----------------------------------------------------
 
 SiEffectStream *SiONDriver::_get_track_effect_stream(int p_track_id) {
-	if (p_track_id < 0 || !_track_effect_streams.has(p_track_id)) {
-		return nullptr;
+	if (p_track_id == MAIN_TRACK_ID) {
+		return effector->get_main_stream();
 	}
-	return _track_effect_streams[p_track_id];
+	SiEffectStream **stream = _track_effect_streams.getptr(p_track_id);
+	return stream ? *stream : nullptr;
 }
 
 void SiONDriver::_bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id) {
@@ -2929,19 +2867,12 @@ void SiONDriver::_bind_track_effect_stream(SiMMLTrack *p_track, int p_track_id) 
 
 SiEffectStream *SiONDriver::_ensure_track_effect_stream(int p_track_id) {
 	ERR_FAIL_COND_V_MSG(p_track_id < 0, nullptr, vformat("SiONDriver: Invalid track id %d for effect stream.", p_track_id));
-	if (!effector) {
-		return nullptr;
-	}
-	if (_track_effect_streams.has(p_track_id)) {
-		return _track_effect_streams[p_track_id];
+	SiEffectStream *stream = _get_track_effect_stream(p_track_id);
+	if (stream) {
+		return stream;
 	}
 
-	Vector<Ref<SiEffectBase>> empty_chain;
-	SiEffectStream *stream = effector->create_local_effect(0, empty_chain);
-	if (!stream) {
-		ERR_PRINT(vformat("SiONDriver: Failed to allocate effect stream for track %d.", p_track_id));
-		return nullptr;
-	}
+	stream = effector->create_local_effect(0, Vector<Ref<SiEffectBase>>());
 	_track_effect_streams[p_track_id] = stream;
 	return stream;
 }
@@ -2952,6 +2883,8 @@ void SiONDriver::_process_one_block() {
 	sequencer->process();
 	_bind_track_effect_channels();
 	effector->end_process();
+	_update_meters();
+	effector->mix_monitor();
 	sound_chip->end_process();
 }
 

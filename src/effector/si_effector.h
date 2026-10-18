@@ -18,6 +18,7 @@ using namespace godot;
 
 class SiEffectStream;
 class SiOPMSoundChip;
+class SiOPMStream;
 
 class SiEffector : public Object {
 	GDCLASS(SiEffector, Object)
@@ -26,7 +27,10 @@ class SiEffector : public Object {
 
 	SiOPMSoundChip *_sound_chip = nullptr;
 
-	SiEffectStream *_master_effect = nullptr;;
+	// The main stream's buffer is the chip output: every track stream sums into it.
+	SiEffectStream *_main_effect = nullptr;
+	// Signals outside the mix, such as the metronome. Joins the output after main.
+	SiOPMStream *_monitor_stream = nullptr;
 	List<SiEffectStream *> _free_effect_streams;
 	LocalVector<SiEffectStream *> _local_effects;
 	// Expected to be SiOPMSoundChip::STREAM_SEND_SIZE at most.
@@ -43,6 +47,8 @@ public:
 	// Effects.
 
 	int get_global_effect_count() const { return _global_effect_count; }
+	SiEffectStream *get_main_stream() const { return _main_effect; }
+	SiOPMStream *get_monitor_stream() const { return _monitor_stream; }
 
 	template <class T>
 	static void register_effect(const String &p_name);
@@ -67,7 +73,10 @@ public:
 
 	void prepare_process();
 	void begin_process();
+	// Runs every track stream, then main's chain and output stage.
 	void end_process();
+	// Sums the monitor stream into the output, after main.
+	void mix_monitor();
 	void reset();
 
 	//
