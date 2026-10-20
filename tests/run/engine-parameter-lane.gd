@@ -27,6 +27,23 @@ func run(scene_tree: SceneTree) -> void:
 	_test_engine_changes()
 	_test_fm_voice_state()
 	_test_analog_like_envelope()
+	_test_fm_routing_state()
+	for mode in [1, 2, 3]:
+		var analog_audio := await _render_fm_routing(scene_tree, 2, mode, false, true)
+		for count in [1, 2, 3, 4]:
+			var prepared_routing := await _render_fm_routing(scene_tree, count, mode)
+			var queued_routing := await _render_fm_routing(scene_tree, count, mode, true)
+			_assert_equal("%d-op routing %d live edits equal prepared audio" % [count, mode], queued_routing, prepared_routing)
+			_assert_equal("%d-op routing %d produces audio" % [count, mode],
+				Array(prepared_routing).any(func(value: float) -> bool: return absf(value) > 0.0), true)
+			if count == 2:
+				_assert_equal("routing %d preserves the existing AL DSP" % mode, prepared_routing, analog_audio)
+			if count > 2:
+				var changed := await _render_fm_routing(scene_tree, count, mode, false, false, true)
+				_assert_equal("routing %d uses operator %d" % [mode, count], changed != prepared_routing, true)
+				var unfed := await _render_fm_routing(scene_tree, count, mode, false, false, false, 0)
+				var fed_by_last := await _render_fm_routing(scene_tree, count, mode, false, false, false, 2, count - 1)
+				_assert_equal("routing %d feeds back from operator %d" % [mode, count], fed_by_last != unfed, true)
 	_test_sampler_aliases()
 	var looping := await _render_sampler_loop(scene_tree, false, true)
 	var live_looping := await _render_sampler_loop(scene_tree, true, true)
@@ -98,6 +115,79 @@ func _test_guitar6_mml_precision() -> void:
 	for id: String in values:
 		_assert_equal("%s MML retains float precision" % id,
 			absf(float(imported.get_engine_param(parameters[id])) - float(values[id])) < 1e-12, true)
+
+
+func _test_fm_routing_state() -> void:
+	var routing: int = _fm_params["voice.routing.mode"]
+	var algorithm: int = _fm_params["voice.algorithm"]
+	for count in [1, 2, 3, 4]:
+		var voice := SiONVoice.create_engine(5, 0)
+		voice.get_channel_params().set_operator_count(count)
+		voice.set_engine_param(algorithm, 1)
+		for mode in [1, 2, 3, 0]:
+			voice.set_engine_param(routing, mode)
+			var copy := voice.clone()
+			voice.set_engine_param(routing, (mode + 1) % 4)
+			_assert_equal("%d-op routing %d owns its cloned state" % [count, mode], copy.get_engine_param(routing), mode)
+			_assert_equal("routing preserves authored operator count", copy.get_channel_params().get_operator_count(), count)
+			_assert_equal("routing preserves the FM algorithm", copy.get_engine_param(algorithm), 1)
+			_assert_equal("routing preserves FM identity", copy.get_channel_params().is_analog_like(), false)
+			var imported := SiONVoice.create()
+			_assert_equal("routed FM MML imports", imported.set_by_mml(copy.get_mml(7)), 7)
+			_assert_equal("routed FM MML retains routing", imported.get_engine_param(routing), mode)
+			_assert_equal("routed FM MML retains its operators", imported.get_channel_params().get_operator_count(), count)
+
+
+func _render_fm_routing(
+	scene_tree: SceneTree,
+	count: int,
+	mode: int,
+	queued: bool = false,
+	analog: bool = false,
+	change_last: bool = false,
+	feedback: int = 2,
+	feedback_connection: int = 0
+) -> PackedFloat32Array:
+	var driver := SiONDriver.create(BUFFER_SIZE)
+	scene_tree.root.add_child(driver)
+	await scene_tree.process_frame
+	driver.stream_without_output()
+	var renderer := SiONOfflineRenderer.new()
+	_assert_equal("FM routing renderer owns render", renderer.begin(driver), true)
+	var voice := SiONVoice.create_engine(5, 7 if analog else 0)
+	voice.get_channel_params().set_operator_count(count)
+	voice.set_engine_param(_fm_params["voice.algorithm"], 1)
+	voice.set_engine_param(_fm_params["voice.feedback.amount"], feedback)
+	voice.set_engine_param(_fm_params["voice.feedback.connection"], feedback_connection)
+	for index in count:
+		voice.set_engine_param(_fm_params["operator.waveform"], 32 + index, index)
+		voice.set_engine_param(_fm_params["operator.frequency.fine_multiple"], 128 + index * 71, index)
+		voice.set_engine_param(_fm_params["operator.envelope.attack_rate"], 63, index)
+		voice.set_engine_param(_fm_params["operator.output.attenuation"], 8 + index, index)
+	if change_last:
+		voice.set_engine_param(_fm_params["operator.waveform"], 40, count - 1)
+	if analog:
+		voice.set_engine_param(_fm_params["voice.analog_like.connection_mode"], mode - 1)
+	elif not queued:
+		voice.set_engine_param(_fm_params["voice.routing.mode"], mode)
+	var track := driver.create_user_controllable_track(1)
+	voice.update_track_voice(track)
+	var channel: Object = track.get_channel()
+	if queued:
+		driver.mailbox_set_engine_param(1, 5, _fm_params["voice.routing.mode"], mode)
+		# An algorithm edit must retain the selected route and the existing feedback.
+		driver.mailbox_set_engine_param(1, 5, _fm_params["voice.algorithm"], 1)
+	driver.mailbox_key_on(1, 60, 0, -1, -1, track.get_instance_id())
+	var audio := PackedFloat32Array()
+	for block in 4:
+		audio.append_array(renderer.render_block())
+	_assert_equal("routing retains its live channel", is_same(channel, track.get_channel()), true)
+	renderer.finish()
+	driver.stop()
+	await scene_tree.process_frame
+	driver.get_parent().remove_child(driver)
+	driver.free()
+	return audio
 
 
 func _voice() -> SiONVoice:

@@ -61,6 +61,9 @@ const EngineParamSchema &SiOPMChannelFM::get_shared_engine_param_schema() {
 		{ALGORITHM, "voice.algorithm", EngineParamType::INT, 0, 15, EngineParamValue::from_int(0), 1, true,
 			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_algorithm(int(value.integer)); },
 			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_algorithm()); }},
+		{ROUTING_MODE, "voice.routing.mode", EngineParamType::INT, 0, 3, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_routing_mode(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_routing_mode()); }},
 		{FEEDBACK, "voice.feedback.amount", EngineParamType::INT, 0, 19, EngineParamValue::from_int(0), 1, true,
 			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_feedback(int(value.integer)); },
 			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_feedback()); }},
@@ -173,11 +176,17 @@ void SiOPMChannelFM::apply_engine_param(uint32_t p_id, int p_index, EngineParamV
 		case AL_DETUNE: _operators[1]->set_ptss_detune(int(p_value.integer)); return;
 		case SCC_WAVETABLE: apply_engine_param(WAVEFORM, 0, EngineParamValue::from_int(SiONPulseGeneratorType::PULSE_CUSTOM + int(p_value.integer))); return;
 
-		case ALGORITHM: {
+		case ALGORITHM:
+		case ROUTING_MODE: {
 			const int feedback = _scalar_feedback;
 			const int connection = _scalar_feedback_connection;
-			const bool analog_like = _process_function_type >= PROCESS_ANALOG_LIKE && _process_function_type < PROCESS_ANALOG_LIKE + 4;
-			set_algorithm(_operator_count, analog_like, int(p_value.integer));
+			int algorithm = _algorithm;
+			if (p_id == ALGORITHM) {
+				algorithm = int(p_value.integer);
+			} else {
+				_routing_mode = int(p_value.integer);
+			}
+			set_algorithm(_operator_count, _analog_like, algorithm);
 			set_feedback(feedback, connection);
 		} return;
 		case FEEDBACK: set_feedback(int(p_value.integer), _scalar_feedback_connection); return;
@@ -290,6 +299,8 @@ void SiOPMChannelFM::get_channel_params(const Ref<SiOPMChannelParams> &p_params)
 	p_params->set_operator_count(_operator_count);
 
 	p_params->set_algorithm(_algorithm);
+	p_params->set_analog_like(_analog_like);
+	p_params->set_routing_mode(_routing_mode);
 	p_params->set_envelope_frequency_ratio(_frequency_ratio);
 
 	p_params->set_feedback(0);
@@ -383,6 +394,7 @@ void SiOPMChannelFM::set_channel_params(const Ref<SiOPMChannelParams> &p_params,
 		return;
 	}
 
+	_routing_mode = p_params->get_routing_mode();
 	set_algorithm(p_params->get_operator_count(), p_params->is_analog_like(), p_params->get_algorithm());
 	set_feedback(p_params->get_feedback(), p_params->get_feedback_connection());
 	_apply_common_channel_params(p_params, p_with_volume, p_with_modulation);
@@ -773,39 +785,33 @@ void SiOPMChannelFM::_set_algorithm_operator4(int p_algorithm) {
 	}
 }
 
-void SiOPMChannelFM::_set_algorithm_analog_like(int p_algorithm) {
-	int target_algorithm = (p_algorithm >= 0 && p_algorithm <= 3) ? p_algorithm : 0;
-	ProcessType target_process_type = (ProcessType)(PROCESS_ANALOG_LIKE + target_algorithm);
-	
-	// Skip if already configured for this analog-like algorithm to prevent redundant updates
-	if (_operator_count == 2 && _algorithm == target_algorithm && _process_function_type == target_process_type) {
-		return;
-	}
-	
-	_update_operator_count(2);
-	_operators[0]->set_pipes(_pipe0, nullptr, true);
-	_operators[1]->set_pipes(_pipe0, nullptr, true);
-
-	_algorithm = target_algorithm;
-	_process_function_type = target_process_type;
-	_update_process_function();
-}
-
 void SiOPMChannelFM::set_algorithm(int p_operator_count, bool p_analog_like, int p_algorithm) {
-	// Skip if algorithm hasn't changed - prevents race conditions with audio thread
-	// during rapid note triggers with the same voice
-	bool is_analog_like_now = (_process_function_type >= PROCESS_ANALOG_LIKE && _process_function_type < PROCESS_ANALOG_LIKE + 4);
-	if (p_analog_like == is_analog_like_now && _operator_count == p_operator_count && _algorithm == p_algorithm) {
-		return;
-	}
-
-
+	const int operator_count = p_analog_like ? 2 : p_operator_count;
+	ProcessType process_type = (ProcessType)(operator_count - 1);
 	if (p_analog_like) {
-		_set_algorithm_analog_like(p_algorithm);
+		process_type = (ProcessType)(PROCESS_ANALOG_LIKE + p_algorithm);
+	} else if (_routing_mode != 0) {
+		process_type = (ProcessType)(PROCESS_ANALOG_LIKE + _routing_mode - 1);
+	}
+
+	// Routing changes rewire the existing operators without restarting their envelopes.
+	if (_analog_like == p_analog_like && _operator_count == operator_count && _algorithm == p_algorithm && _process_function_type == process_type) {
+		return;
+	}
+	_analog_like = p_analog_like;
+
+	if (p_analog_like || _routing_mode != 0) {
+		_update_operator_count(operator_count);
+		_algorithm = p_algorithm;
+		for (int i = 0; i < operator_count; i++) {
+			_operators[i]->set_pipes(_pipe0, nullptr, true);
+		}
+		_process_function_type = process_type;
+		_update_process_function();
 		return;
 	}
 
-	switch (p_operator_count) {
+	switch (operator_count) {
 		case 1:
 			_set_algorithm_operator1(p_algorithm);
 			break;
@@ -1595,45 +1601,27 @@ void SiOPMChannelFM::_process_analog_like(int p_length) {
 	SinglyLinkedList<int>::Element *out_pipe  = _out_pipe->get();
 
 	SiOPMOperator *ope0 = _operators[0];
-	SiOPMOperator *ope1 = _operators[1];
 
 	for (int i = 0; i < p_length; i++) {
-		int output0 = 0;
-		int output1 = 0;
-
-		// Update LFO.
-		_update_lfo(2);
-
-		// Update EG.
+		_update_lfo(_operator_count);
 		ope0->tick_eg(_eg_timer_initial);
-		ope1->update_eg_output_from(ope0);
-
-		// Update PG.
-		{
-			// Operator 0.
-			{
-				ope0->tick_pulse_generator();
-				int am_level = _amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift();
-				output0 = ope0->get_super_output(in_pipe->value, _input_level, am_level);
-			}
-
-			// Operator 1 (w/ operator0's envelope and AMS).
-			{
-				ope1->tick_pulse_generator();
-				int am_level = _amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift();
-				output1 = ope1->get_super_output(0, 0, am_level);
-			}
-
-			ope0->get_feed_pipe()->get()->value = output0;
+		const int am_level = _amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift();
+		ope0->tick_pulse_generator();
+		int output = ope0->get_super_output(in_pipe->value, _input_level, am_level);
+		// Each operator's feed pipe carries its own output, so any feedback connection is live.
+		ope0->get_feed_pipe()->get()->value = output;
+		for (int op_index = 1; op_index < _operator_count; op_index++) {
+			SiOPMOperator *op = _operators[op_index];
+			op->update_eg_output_from(ope0);
+			op->tick_pulse_generator();
+			const int op_output = op->get_super_output(0, 0, am_level);
+			op->get_feed_pipe()->get()->value = op_output;
+			output += op_output;
 		}
-
-		// Output and increment pointers.
-		{
-			out_pipe->value = output0 + output1 + base_pipe->value;
-			in_pipe = in_pipe->next();
-			base_pipe = base_pipe->next();
-			out_pipe = out_pipe->next();
-		}
+		out_pipe->value = output + base_pipe->value;
+		in_pipe = in_pipe->next();
+		base_pipe = base_pipe->next();
+		out_pipe = out_pipe->next();
 	}
 
 	_in_pipe->set(in_pipe);
@@ -1647,51 +1635,31 @@ void SiOPMChannelFM::_process_ring(int p_length) {
 	SinglyLinkedList<int>::Element *out_pipe  = _out_pipe->get();
 
 	SiOPMOperator *ope0 = _operators[0];
-	SiOPMOperator *ope1 = _operators[1];
+	SiOPMOperator *output_op = _operators[_operator_count - 1];
 
 	for (int i = 0; i < p_length; i++) {
-		int output = 0;
-
-		// Update LFO.
-		_update_lfo(2);
-
-		// Update EG.
+		_update_lfo(_operator_count);
 		ope0->tick_eg(_eg_timer_initial);
-		ope1->update_eg_output_from(ope0);
-
-		// Update PG.
-		{
-			int log_idx = 0;
-
-			// Operator 0.
-			{
-				ope0->tick_pulse_generator();
-				int t = ope0->get_phase_index_with_modulation(in_pipe->value, _input_level);
-				log_idx = ope0->get_wave_value_fast(t);
-			}
-
-			// Operator 1 (w/ operator0's envelope and AMS).
-			{
-				ope1->tick_pulse_generator();
-				int t = ope1->get_phase_index_with_modulation(0, 0);
-
-				log_idx += ope1->get_wave_value_fast(t);
-				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				output = _safe_log_lookup(_table, log_idx);
-			}
-
-			ope0->set_feedback_output(output);
-			ope1->set_feedback_output(output);
-			ope0->get_feed_pipe()->get()->value = output;
+		ope0->tick_pulse_generator();
+		int log_idx = ope0->get_wave_value_fast(ope0->get_phase_index_with_modulation(in_pipe->value, _input_level));
+		for (int op_index = 1; op_index < _operator_count; op_index++) {
+			SiOPMOperator *op = _operators[op_index];
+			op->update_eg_output_from(ope0);
+			op->tick_pulse_generator();
+			log_idx += op->get_wave_value_fast(op->get_phase_index_with_modulation(0, 0));
 		}
-
-		// Output and increment pointers.
-		{
-			out_pipe->value = output + base_pipe->value;
-			in_pipe = in_pipe->next();
-			base_pipe = base_pipe->next();
-			out_pipe = out_pipe->next();
+		// AL applies its shared envelope once, with the final operator's output level.
+		log_idx += output_op->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
+		const int output = _safe_log_lookup(_table, log_idx);
+		// The routed output is every operator's output, so any feedback connection reads it.
+		for (int op_index = 0; op_index < _operator_count; op_index++) {
+			_operators[op_index]->set_feedback_output(output);
+			_operators[op_index]->get_feed_pipe()->get()->value = output;
 		}
+		out_pipe->value = output + base_pipe->value;
+		in_pipe = in_pipe->next();
+		base_pipe = base_pipe->next();
+		out_pipe = out_pipe->next();
 	}
 
 	_in_pipe->set(in_pipe);
@@ -1705,52 +1673,39 @@ void SiOPMChannelFM::_process_sync(int p_length) {
 	SinglyLinkedList<int>::Element *out_pipe  = _out_pipe->get();
 
 	SiOPMOperator *ope0 = _operators[0];
-	SiOPMOperator *ope1 = _operators[1];
+	// A single oscillator is audible; with slaves, only their sum is audible.
+	const int first_output = _operator_count == 1 ? 0 : 1;
 
 	for (int i = 0; i < p_length; i++) {
-		int output = 0;
-
-		// Update LFO.
-		_update_lfo(2);
-
-		// Update EG.
+		_update_lfo(_operator_count);
 		ope0->tick_eg(_eg_timer_initial);
-		ope1->update_eg_output_from(ope0);
-
-		// Update PG.
-		{
-			// Operator 0.
-			{
-				ope0->tick_pulse_generator(static_cast<int>(ope0->get_phase_modulation(in_pipe->value, _input_level)));
-				if (ope0->get_phase() & SiOPMRefTable::PHASE_MAX) {
-					ope1->set_phase(ope1->get_key_on_phase_raw());
+		ope0->tick_pulse_generator(static_cast<int>(ope0->get_phase_modulation(in_pipe->value, _input_level)));
+		const bool wrapped = ope0->get_phase() & SiOPMRefTable::PHASE_MAX;
+		ope0->set_phase(ope0->get_phase() & SiOPMRefTable::PHASE_FILTER);
+		const int am_level = _amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift();
+		int output = 0;
+		for (int op_index = first_output; op_index < _operator_count; op_index++) {
+			SiOPMOperator *op = _operators[op_index];
+			if (op_index != 0) {
+				op->update_eg_output_from(ope0);
+				if (wrapped) {
+					op->set_phase(op->get_key_on_phase_raw());
 				}
-
-				ope0->set_phase(ope0->get_phase() & SiOPMRefTable::PHASE_FILTER);
+				op->tick_pulse_generator();
 			}
-
-			// Operator 1 (w/ operator0's envelope and AMS).
-			{
-				ope1->tick_pulse_generator();
-				int t = ope1->get_phase_index_with_modulation(0, 0);
-
-				int log_idx = ope1->get_wave_value_fast(t);
-				log_idx += ope1->get_eg_output() + (_amplitude_modulation_output_level >> ope0->get_amplitude_modulation_shift());
-				output = _safe_log_lookup(_table, log_idx);
-			}
-
-			ope0->set_feedback_output(output);
-			ope1->set_feedback_output(output);
-			ope0->get_feed_pipe()->get()->value = output;
+			int log_idx = op->get_wave_value_fast(op->get_phase_index_with_modulation(0, 0));
+			log_idx += op->get_eg_output() + am_level;
+			output += _safe_log_lookup(_table, log_idx);
 		}
-
-		// Output and increment pointers.
-		{
-			out_pipe->value = output + base_pipe->value;
-			in_pipe = in_pipe->next();
-			base_pipe = base_pipe->next();
-			out_pipe = out_pipe->next();
+		// The routed output is every operator's output, so any feedback connection reads it.
+		for (int op_index = 0; op_index < _operator_count; op_index++) {
+			_operators[op_index]->set_feedback_output(output);
+			_operators[op_index]->get_feed_pipe()->get()->value = output;
 		}
+		out_pipe->value = output + base_pipe->value;
+		in_pipe = in_pipe->next();
+		base_pipe = base_pipe->next();
+		out_pipe = out_pipe->next();
 	}
 
 	_in_pipe->set(in_pipe);
@@ -2016,6 +1971,8 @@ void SiOPMChannelFM::buffer(int p_length) {
 //
 
 void SiOPMChannelFM::initialize(SiOPMChannelBase *p_prev, int p_buffer_index) {
+	_analog_like = false;
+	_routing_mode = 0;
 	_update_operator_count(1);
 	_operators[0]->initialize();
 

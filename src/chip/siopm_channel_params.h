@@ -39,6 +39,8 @@ private:
 
 	// Algorithm [0,15]
 	int algorithm = 0;
+	// Routing: 0 = algorithm, 1 = shared additive, 2 = ring, 3 = sync.
+	int routing_mode = 0;
 
 	void _update_carrier_mask();
 	// Feedback [0,7]
@@ -97,6 +99,8 @@ public:
 
 	int get_algorithm() const { return algorithm; }
 	void set_algorithm(int p_value);
+	int get_routing_mode() const { return routing_mode; }
+	void set_routing_mode(int p_value);
 	int get_feedback() const { return feedback; }
 	void set_feedback(int p_value) { feedback = p_value; }
 	int get_feedback_connection() const { return feedback_connection; }

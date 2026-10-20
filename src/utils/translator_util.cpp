@@ -1339,7 +1339,7 @@ static const int MML_PORTAMENT_FPS = 60;
 void TranslatorUtil::parse_voice_setting(const Ref<SiMMLVoice> &p_voice, String p_mml, Vector<Ref<SiMMLEnvelopeTable>> p_envelopes) {
 	Ref<SiOPMChannelParams> params = p_voice->channel_params;
 
-	String base_re_exp = "(%[fvx]|@[fpqv]|@er|@lfo|kt?|m[ap]|_?@@|_?n[aptf]|po|p|q|s|x|v)";
+	String base_re_exp = "(%[fvx]|@[fpqv]|@er|@lfo|@routing|kt?|m[ap]|_?@@|_?n[aptf]|po|p|q|s|x|v)";
 	String args_re_exp = "(-?\\d*)" + String("(\\s*,\\s*(-?\\d*))?").repeat(10); // One mandatory and 10 optional arguments supported.
 
 	Ref<RegEx> re_setting = RegEx::create_from_string(base_re_exp + args_re_exp);
@@ -1372,6 +1372,11 @@ void TranslatorUtil::parse_voice_setting(const Ref<SiMMLVoice> &p_voice, String 
 			params->filter_decay_offset2  = EXTRACT_ARGUMENT(7, 64);
 			params->filter_sustain_offset = EXTRACT_ARGUMENT(8, 32);
 			params->filter_release_offset = EXTRACT_ARGUMENT(9, 128);
+
+		} else if (command == "@routing") {
+			const int mode = EXTRACT_ARGUMENT(0, 0);
+			ERR_FAIL_COND_MSG(mode < 0 || mode > 3, "FM routing mode must be between 0 and 3.");
+			params->set_routing_mode(mode);
 
 		} else if (command == "@lfo") {
 			int lfo_arg0 = EXTRACT_ARGUMENT(0, 30);
@@ -1542,6 +1547,10 @@ void TranslatorUtil::parse_voice_setting(const Ref<SiMMLVoice> &p_voice, String 
 String TranslatorUtil::get_voice_setting_as_mml(const Ref<SiMMLVoice> &p_voice) {
 	Ref<SiOPMChannelParams> params = p_voice->channel_params;
 	String mml;
+
+	if (params->get_routing_mode() != 0) {
+		mml += "@routing" + itos(params->get_routing_mode());
+	}
 
 	if (params->filter_type > 0) {
 		mml += "%f" + itos(params->filter_type);

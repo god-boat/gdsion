@@ -33,6 +33,11 @@ void SiOPMChannelParams::set_algorithm(int p_value) {
 	_update_carrier_mask();
 }
 
+void SiOPMChannelParams::set_routing_mode(int p_value) {
+	routing_mode = p_value;
+	_update_carrier_mask();
+}
+
 void SiOPMChannelParams::_update_carrier_mask() {
 	// Carrier mask lookup tables derived from SiOPMChannelFM algorithm routing.
 	// Each entry is a bitmask where bit i = 1 means operator i is a carrier.
@@ -112,6 +117,9 @@ void SiOPMChannelParams::_update_carrier_mask() {
 			return;
 	}
 
+	if (routing_mode != 0) {
+		mask_bits = (1 << operator_count) - 1;
+	}
 	for (int i = 0; i < operator_count; i++) {
 		carrier_mask.set(i, (mask_bits >> i) & 1);
 	}
@@ -239,6 +247,7 @@ void SiOPMChannelParams::initialize() {
 	operator_count = 1;
 
 	algorithm = 0;
+	routing_mode = 0;
 	feedback = 0;
 	feedback_connection = 0;
 
@@ -295,6 +304,7 @@ void SiOPMChannelParams::copy_from(const Ref<SiOPMChannelParams> &p_params) {
 	set_analog_like(p_params->is_analog_like());
 
 	algorithm = p_params->algorithm;
+	routing_mode = p_params->routing_mode;
 	feedback = p_params->feedback;
 	feedback_connection = p_params->feedback_connection;
 

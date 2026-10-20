@@ -44,6 +44,8 @@ class SiOPMChannelFM : public SiOPMChannelBase {
 	void _release_operator(SiOPMOperator *p_operator);
 
 	int _algorithm = 0;
+	bool _analog_like = false;
+	int _routing_mode = 0;
 	int _scalar_feedback = 0;
 	int _scalar_feedback_connection = 0;
 
@@ -89,7 +91,6 @@ class SiOPMChannelFM : public SiOPMChannelBase {
 	void _set_algorithm_operator2(int p_algorithm);
 	void _set_algorithm_operator3(int p_algorithm);
 	void _set_algorithm_operator4(int p_algorithm);
-	void _set_algorithm_analog_like(int p_algorithm);
 
 	// LFO control.
 
@@ -167,6 +168,7 @@ public:
 		FINE_MULTIPLE = 0x316,
 		MUTE = 0x317,
 		RESET_ON_ATTACK = 0x318,
+		ROUTING_MODE = 0x319,
 	};
 	static const EngineParamSchema &get_shared_engine_param_schema();
 	static const EngineParamSchema &get_prepared_engine_param_schema();
