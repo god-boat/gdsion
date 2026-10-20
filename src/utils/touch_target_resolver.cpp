@@ -63,14 +63,9 @@ void TouchTargetResolver::configure_roots(const Array &p_roots) {
 // 573-node difference between a 3428- and a 4001-node tree is tree size, not per-pick work;
 // do not repeat that number as a cost.
 //
-// Pooly does not use ScrollContainer's built-in scrollbars, and CustomScrollContainer adds
-// its drag handle INTERNAL_MODE_BACK, so what is behind that door is chrome the gesture
-// layer is meant to ignore. Skipping it is the point.
-//
-// Note this is NOT what makes the scroll handle mismatch the engine picker: the handle is
-// also is_set_as_top_level(), and that alone hides it (measured -- including internal
-// children left all 25 mismatches in place). See the top_level accepted deviation in
-// tools/touch_target/README.md.
+// Pooly does not use ScrollContainer's built-in scrollbars. Interactive chrome such as
+// CustomScrollContainer's handle lives in the regular canvas tree so picking reaches it
+// before the content underneath. See tools/touch_target/README.md for accepted deviations.
 Control *TouchTargetResolver::_find_control_in_children(Node *p_parent, const Vector2 &p_position) const {
 	for (int child_index = p_parent->get_child_count() - 1; child_index >= 0; child_index--) {
 		Node *child = p_parent->get_child(child_index);
