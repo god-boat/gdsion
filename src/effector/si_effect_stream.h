@@ -12,6 +12,7 @@
 #include <godot_cpp/variant/string.hpp>
 #include "effector/si_effect_base.h"
 #include "utils/meter_state.h"
+#include "utils/signal_tap.h"
 
 using namespace godot;
 
@@ -29,6 +30,8 @@ class SiEffectStream {
 	int _post_pan = 64; // 0-128
 	// Post-fader level of this stream's output, read by the mixer.
 	MeterState _meter;
+	// Pre-fader frames along the chain, read by device displays.
+	SignalTaps _signal_taps;
 	// Deeper streams execute first.
 	int _depth = 0;
 	int _pan = 64;
@@ -59,6 +62,7 @@ public:
 	double get_post_fader_gain() const { return _post_fader_gain; }
 	int get_post_pan() const { return _post_pan; }
 	MeterState &get_meter() { return _meter; }
+	SignalTaps &get_signal_taps() { return _signal_taps; }
 
 	int get_depth() const { return _depth; }
 	int get_pan() const;

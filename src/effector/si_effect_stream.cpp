@@ -153,11 +153,12 @@ void SiEffectStream::process(int p_start_idx, int p_length, bool p_write_in_stre
 	const sion::dsp::ProcessContext &context = _sound_chip->get_process_context();
 	Vector<double> *buffer = _stream->get_buffer_ptr();
 
+	_signal_taps.capture(0, buffer->ptr() + (p_start_idx << 1), p_length);
 	for (int i = 0; i < _chain.size(); i++) {
-		if (i < _bypassed.size() && _bypassed[i]) {
-			continue;
+		if (i >= _bypassed.size() || !_bypassed[i]) {
+			_chain[i]->process(context, buffer, p_start_idx, p_length);
 		}
-		_chain[i]->process(context, buffer, p_start_idx, p_length);
+		_signal_taps.capture(i + 1, buffer->ptr() + (p_start_idx << 1), p_length);
 	}
 
 	// Only write to output if not muted
@@ -333,6 +334,7 @@ void SiEffectStream::initialize(int p_depth) {
 	_post_pan = _pan;
 	_mute = false;
 	_meter.reset();
+	_signal_taps.release_all();
 	_has_effect_send = false;
 	_depth = p_depth;
 }

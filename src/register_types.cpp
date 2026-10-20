@@ -82,6 +82,7 @@
 #include "utils/offline_renderer.h"
 #include "utils/onset_detector.h"
 #include "utils/sion_voice_preset_util.h"
+#include "utils/spectrum_analyzer.h"
 #include "utils/touch_target_resolver.h"
 #include "utils/waveform_native_builder.h"
 
@@ -183,6 +184,7 @@ void initialize_sion_module(ModuleInitializationLevel p_level) {
 		ClassDB::register_class<SiONOfflineRenderer>();
 		ClassDB::register_class<OnsetDetector>();
 		ClassDB::register_class<SiONVoicePresetUtil>();
+		ClassDB::register_class<SpectrumAnalyzer>();
 		ClassDB::register_class<TouchTargetResolver>();
 		ClassDB::register_class<WaveformNativeBuilder>();
 

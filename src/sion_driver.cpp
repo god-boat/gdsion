@@ -1648,6 +1648,7 @@ void SiONDriver::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_meter_downsample_factor", "factor"), &SiONDriver::set_meter_downsample_factor);
 	ClassDB::bind_method(D_METHOD("get_meter_downsample_factor"), &SiONDriver::get_meter_downsample_factor);
 	ClassDB::bind_method(D_METHOD("take_track_meter", "track_id"), &SiONDriver::take_track_meter);
+	ClassDB::bind_method(D_METHOD("read_track_effect_output", "track_id", "fx_index", "frame_count"), &SiONDriver::read_track_effect_output);
 
 	ClassDB::bind_method(D_METHOD("set_beat_event_enabled", "enabled"), &SiONDriver::set_beat_event_enabled);
 	ClassDB::bind_method(D_METHOD("set_stream_event_enabled", "enabled"), &SiONDriver::set_stream_event_enabled);
@@ -2173,6 +2174,21 @@ Dictionary SiONDriver::take_track_meter(int p_track_id) {
 		return Dictionary();  // Track has no effect stream yet
 	}
 	return stream->get_meter().take();
+}
+
+PackedFloat32Array SiONDriver::read_track_effect_output(int p_track_id, int p_fx_index, int p_frame_count) {
+	ERR_FAIL_COND_V_MSG(p_fx_index < 0, PackedFloat32Array(), vformat("SiONDriver: Invalid effect index %d to read.", p_fx_index));
+	ERR_FAIL_COND_V_MSG(p_frame_count <= 0 || p_frame_count > SignalTap::CAPACITY, PackedFloat32Array(),
+			vformat("SiONDriver: A signal read takes 1 to %d frames, not %d.", SignalTap::CAPACITY, p_frame_count));
+	SiEffectStream *stream = _get_track_effect_stream(p_track_id);
+	ERR_FAIL_NULL_V_MSG(stream, PackedFloat32Array(), vformat("SiONDriver: Track %d has no effects to read.", p_track_id));
+	// Position 0 is the stream's input, so an effect's output is one past its index.
+	SignalTap *tap = stream->get_signal_taps().lease(p_fx_index + 1);
+	ERR_FAIL_NULL_V_MSG(tap, PackedFloat32Array(), vformat("SiONDriver: Every signal tap of track %d is read elsewhere.", p_track_id));
+	PackedFloat32Array frames;
+	frames.resize(p_frame_count);
+	tap->read(frames.ptrw(), p_frame_count);
+	return frames;
 }
 
 // --- Mailbox setters (main thread) --------------------------------------------

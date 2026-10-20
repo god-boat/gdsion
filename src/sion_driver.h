@@ -708,6 +708,10 @@ public:
 	// Reading takes the held peaks: the next read reports peaks from here on.
 	// MAIN_TRACK_ID reads the output level, before the monitor joins it.
 	Dictionary take_track_meter(int p_track_id);
+	// The newest mono frames leaving the track's effect at p_fx_index, oldest
+	// first, before the fader. A read keeps that point capturing for a while; a
+	// point nobody reads costs the render nothing.
+	PackedFloat32Array read_track_effect_output(int p_track_id, int p_fx_index, int p_frame_count);
 
 	// MIDI.
 	// FIXME: Implement SMF/MIDI support.
