@@ -319,7 +319,7 @@ void SiMMLVoice::update_track_voice(SiMMLTrack *p_track) {
 	p_track->set_engine_kind_id(module_type);
 	if (schema != nullptr) {
 		for (const EngineParamDescriptor *d : schema->local_parameters) {
-			if (!d->realtime || !d->applies_on_voice) continue;
+			if (!d->realtime) continue;
 			for (int index = 0; index < d->instance_count; index++) {
 				p_track->get_channel()->apply_engine_param(d->id, index, engine_params.get(d->id, index));
 			}

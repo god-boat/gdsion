@@ -26,7 +26,7 @@ func run(scene_tree: SceneTree) -> void:
 	_test_voice_state(descriptors)
 	_test_engine_changes()
 	_test_fm_voice_state()
-	_test_global_envelope_inputs()
+	_test_analog_like_envelope()
 	_test_sampler_aliases()
 	var looping := await _render_sampler_loop(scene_tree, false, true)
 	var live_looping := await _render_sampler_loop(scene_tree, true, true)
@@ -234,9 +234,11 @@ func _render_fm_scalars(scene_tree: SceneTree, queued: bool) -> PackedFloat32Arr
 	base.set_engine_param(_fm_params["voice.amplitude_modulation.depth"], 64)
 	base.set_engine_param(_fm_params["voice.amplitude_modulation.end_depth"], 64)
 	var edits := [
-		["voice.amplitude_envelope.attack_rate", 25, 0],
-		["voice.amplitude_envelope.sustain_attenuation", 3, 0],
-		["voice.amplitude_envelope.attenuation", 15, 0],
+		["operator.envelope.attack_rate", 25, 0],
+		["operator.envelope.sustain_attenuation", 3, 0],
+		["operator.output.attenuation", 15, 0],
+		["operator.envelope.sustain_attenuation", 3, 1],
+		["operator.output.attenuation", 15, 1],
 		["voice.amplitude_modulation.depth", 10, 0],
 		["voice.amplitude_modulation.end_depth", 90, 0],
 		["voice.amplitude_modulation.delay", 1, 0],
@@ -487,25 +489,30 @@ func _test_retirement(label: String, driver: SiONDriver, renderer: SiONOfflineRe
 	_assert_equal("%s: surviving scoped target receives its edit" % label, _read(sibling, "color"), 8765)
 
 
-func _test_global_envelope_inputs() -> void:
-	var voice := SiONVoice.create_engine(5, 0)
-	voice.get_channel_params().set_operator_count(2)
-	var global_attack: int = _fm_params["voice.amplitude_envelope.attack_rate"]
-	var operator_attack: int = _fm_params["operator.envelope.attack_rate"]
-	voice.set_engine_param(global_attack, 25)
-	voice.set_engine_param(operator_attack, 37, 1)
-	_assert_equal("an operator edit preserves the authored global input", voice.get_engine_param(global_attack), 25)
-	_assert_equal("a global edit stamps the other operator", voice.get_engine_param(operator_attack, 0), 25)
-	_assert_equal("the later operator edit keeps its own precedence", voice.get_engine_param(operator_attack, 1), 37)
+func _test_analog_like_envelope() -> void:
 	var analog := SiONVoice.create_engine(5, 7)
 	var balance: int = _fm_params["voice.analog_like.balance"]
 	for value in range(-64, 65):
 		analog.set_engine_param(balance, value)
 		_assert_equal("AnalogLike balance %d reads back exactly" % value, analog.get_engine_param(balance), value)
 	var levels := [analog.get_channel_params().get_operator_params(0).get_total_level(), analog.get_channel_params().get_operator_params(1).get_total_level()]
-	analog.set_engine_param(global_attack, 31)
-	analog.set_engine_param(_fm_params["voice.amplitude_envelope.attenuation"], 32)
-	_assert_equal("AnalogLike global envelope edits preserve oscillator balance", [analog.get_channel_params().get_operator_params(0).get_total_level(), analog.get_channel_params().get_operator_params(1).get_total_level()], levels)
+	for suffix in ["attack_rate", "decay_rate", "sustain_rate", "release_rate", "sustain_attenuation"]:
+		var shared_id: int = _fm_params["voice.amplitude_envelope.%s" % suffix]
+		var operator_id: int = _fm_params["operator.envelope.%s" % suffix]
+		var value := 7 if suffix == "sustain_attenuation" else 31
+		analog.set_engine_param(shared_id, value)
+		_assert_equal("AnalogLike %s reads its shared native envelope" % suffix, analog.get_engine_param(shared_id), value)
+		for index in 2:
+			_assert_equal("AnalogLike %s reaches oscillator %d" % [suffix, index], analog.get_engine_param(operator_id, index), value)
+	var imported := SiONVoice.create()
+	_assert_equal("AnalogLike shared envelope imports through its codec", imported.set_by_mml(analog.get_mml(7, 7, false)), 7)
+	# The legacy #AL@ codec has no sustain-rate field.
+	for suffix in ["attack_rate", "decay_rate", "release_rate", "sustain_attenuation"]:
+		var shared_id: int = _fm_params["voice.amplitude_envelope.%s" % suffix]
+		_assert_equal("AnalogLike %s codec reads native fields without shadow seeding" % suffix,
+			imported.get_engine_param(shared_id), analog.get_engine_param(shared_id))
+	_assert_equal("AnalogLike envelope edits preserve oscillator balance", [analog.get_channel_params().get_operator_params(0).get_total_level(), analog.get_channel_params().get_operator_params(1).get_total_level()], levels)
+	_assert_equal("FM has no global attenuation input", _fm_params.has("voice.amplitude_envelope.attenuation"), false)
 
 
 ## The typed lane deliberately keeps the sampler's existing shared-resource values.

@@ -39,7 +39,7 @@ String TranslatorUtil::get_engine_params_as_mml(const EngineParamState &p_params
 	const EngineParamSchema &schema = *p_params.schema();
 	for (int i = 0; i < schema.count; i++) {
 		const EngineParamDescriptor &d = schema.parameters[i];
-		if (!d.uses_local_state() || !d.applies_on_voice) continue;
+		if (!d.uses_local_state()) continue;
 		for (int index = 0; index < d.instance_count; index++) {
 			EngineParamValue value = p_params.get(d.id, index);
 			switch (value.type) {
@@ -61,7 +61,7 @@ bool TranslatorUtil::parse_engine_params(EngineParamState &p_params, const Strin
 	int position = 0;
 	for (int i = 0; i < schema.count; i++) {
 		const EngineParamDescriptor &d = schema.parameters[i];
-		if (!d.uses_local_state() || !d.applies_on_voice) continue;
+		if (!d.uses_local_state()) continue;
 		for (int index = 0; index < d.instance_count && position < parts.size(); index++) {
 			String token = parts[position++].strip_edges();
 			EngineParamValue value;

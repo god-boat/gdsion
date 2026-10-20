@@ -25,24 +25,23 @@
 
 const EngineParamSchema &SiOPMChannelFM::get_shared_engine_param_schema() {
 	static const EngineParamDescriptor parameters[] = {
-		{GLOBAL_ATTACK, "voice.amplitude_envelope.attack_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(58), 1, true,
-			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_attack_rate(int(value.integer)); },
-			load_engine_param, false},
-		{GLOBAL_DECAY, "voice.amplitude_envelope.decay_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(0), 1, true,
-			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_decay_rate(int(value.integer)); },
-			load_engine_param, false},
-		{GLOBAL_SUSTAIN, "voice.amplitude_envelope.sustain_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(0), 1, true,
-			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_sustain_rate(int(value.integer)); },
-			load_engine_param, false},
-		{GLOBAL_RELEASE, "voice.amplitude_envelope.release_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(63), 1, true,
-			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_release_rate(int(value.integer)); },
-			load_engine_param, false},
-		{GLOBAL_SUSTAIN_ATTENUATION, "voice.amplitude_envelope.sustain_attenuation", EngineParamType::INT, 0, 15, EngineParamValue::from_int(0), 1, true,
-			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_sustain_level(int(value.integer)); },
-			load_engine_param, false},
-		{GLOBAL_ATTENUATION, "voice.amplitude_envelope.attenuation", EngineParamType::INT, 0, 127, EngineParamValue::from_int(0), 1, true,
-			[](SiMMLVoice &voice, uint32_t id, int index, EngineParamValue value) { store_engine_param(voice, id, index, value); if (voice.get_channel_params()->is_analog_like()) return; for (int i = 0; i < voice.get_channel_params()->get_operator_count(); i++) voice.get_channel_params()->get_operator_params(i)->set_total_level(int(value.integer)); },
-			load_engine_param, false},
+		// AnalogLike exposes one envelope shared by its two oscillators. FM
+		// catalogs expose only operator envelopes; these are not global FM inputs.
+		{AL_ATTACK, "voice.amplitude_envelope.attack_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(58), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { for (int i = 0; i < 2; i++) voice.get_channel_params()->get_operator_params(i)->set_attack_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_attack_rate()); }},
+		{AL_DECAY, "voice.amplitude_envelope.decay_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { for (int i = 0; i < 2; i++) voice.get_channel_params()->get_operator_params(i)->set_decay_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_decay_rate()); }},
+		{AL_SUSTAIN, "voice.amplitude_envelope.sustain_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { for (int i = 0; i < 2; i++) voice.get_channel_params()->get_operator_params(i)->set_sustain_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_sustain_rate()); }},
+		{AL_RELEASE, "voice.amplitude_envelope.release_rate", EngineParamType::INT, 0, 63, EngineParamValue::from_int(63), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { for (int i = 0; i < 2; i++) voice.get_channel_params()->get_operator_params(i)->set_release_rate(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_release_rate()); }},
+		{AL_SUSTAIN_ATTENUATION, "voice.amplitude_envelope.sustain_attenuation", EngineParamType::INT, 0, 15, EngineParamValue::from_int(0), 1, true,
+			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { for (int i = 0; i < 2; i++) voice.get_channel_params()->get_operator_params(i)->set_sustain_level(int(value.integer)); },
+			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_operator_params(0)->get_sustain_level()); }},
 		{AL_CONNECTION, "voice.analog_like.connection_mode", EngineParamType::INT, 0, 3, EngineParamValue::from_int(0), 1, true,
 			[](SiMMLVoice &voice, uint32_t, int, EngineParamValue value) { voice.get_channel_params()->set_algorithm(int(value.integer)); },
 			[](const SiMMLVoice &voice, uint32_t, int) { return EngineParamValue::from_int(voice.get_channel_params()->get_algorithm()); }},
@@ -147,24 +146,20 @@ static _FORCE_INLINE_ int _safe_log_lookup(class SiOPMRefTable *p_table, int p_i
 void SiOPMChannelFM::apply_engine_param(uint32_t p_id, int p_index, EngineParamValue p_value) {
 	SiOPMOperator *op = _operators[p_index];
 	switch (p_id) {
-		case GLOBAL_ATTACK:
-			for (int i = 0; i < _operator_count; i++) _operators[i]->set_attack_rate(int(p_value.integer));
+		case AL_ATTACK:
+			for (int i = 0; i < 2; i++) _operators[i]->set_attack_rate(int(p_value.integer));
 			return;
-		case GLOBAL_DECAY:
-			for (int i = 0; i < _operator_count; i++) _operators[i]->set_decay_rate(int(p_value.integer));
+		case AL_DECAY:
+			for (int i = 0; i < 2; i++) _operators[i]->set_decay_rate(int(p_value.integer));
 			return;
-		case GLOBAL_SUSTAIN:
-			for (int i = 0; i < _operator_count; i++) _operators[i]->set_sustain_rate(int(p_value.integer));
+		case AL_SUSTAIN:
+			for (int i = 0; i < 2; i++) _operators[i]->set_sustain_rate(int(p_value.integer));
 			return;
-		case GLOBAL_RELEASE:
-			for (int i = 0; i < _operator_count; i++) _operators[i]->set_release_rate(int(p_value.integer));
+		case AL_RELEASE:
+			for (int i = 0; i < 2; i++) _operators[i]->set_release_rate(int(p_value.integer));
 			return;
-		case GLOBAL_SUSTAIN_ATTENUATION:
-			for (int i = 0; i < _operator_count; i++) _operators[i]->set_sustain_level(int(p_value.integer));
-			return;
-		case GLOBAL_ATTENUATION:
-			if (_process_function_type >= PROCESS_ANALOG_LIKE && _process_function_type < PROCESS_ANALOG_LIKE + 4) return;
-			for (int i = 0; i < _operator_count; i++) _operators[i]->set_total_level(int(p_value.integer));
+		case AL_SUSTAIN_ATTENUATION:
+			for (int i = 0; i < 2; i++) _operators[i]->set_sustain_level(int(p_value.integer));
 			return;
 
 		case AL_CONNECTION: set_algorithm(2, true, int(p_value.integer)); return;

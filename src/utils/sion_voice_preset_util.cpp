@@ -1156,12 +1156,12 @@ void SiONVoicePresetUtil::_create_wave_table_voice(const String &p_key, const St
 	// update_track_voice to call set_wave_data() AFTER set_channel_params(),
 	// clobbering the operator's PG type with stale data when voiceParams overrides
 	// the wave shape to a different table index.
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_ATTACK, p_attack_rate);
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_DECAY, p_decay_rate);
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_SUSTAIN, p_sustain_rate);
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_RELEASE, p_release_rate);
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_SUSTAIN_ATTENUATION, p_sustain_level);
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_ATTENUATION, p_total_level + 4);
+	voice->set_engine_param(SiOPMChannelFM::ATTACK, p_attack_rate);
+	voice->set_engine_param(SiOPMChannelFM::DECAY, p_decay_rate);
+	voice->set_engine_param(SiOPMChannelFM::SUSTAIN, p_sustain_rate);
+	voice->set_engine_param(SiOPMChannelFM::RELEASE, p_release_rate);
+	voice->set_engine_param(SiOPMChannelFM::SUSTAIN_ATTENUATION, p_sustain_level);
+	voice->set_engine_param(SiOPMChannelFM::ATTENUATION, p_total_level + 4);
 	voice->get_channel_params()->get_operator_params(0)->set_multiple(p_multiple);
 
 	voice->set_name(p_name);
@@ -1178,12 +1178,12 @@ void SiONVoicePresetUtil::_create_pcm_voice(const String &p_key, const String &p
 
 void SiONVoicePresetUtil::_create_single_drum_voice(const String &p_key, const String &p_name, int p_wave_shape, int p_attack_rate, int p_decay_rate, int p_sustain_rate, int p_release_rate, int p_sustain_level, int p_total_level, int p_release_sweep, double p_fine_multiple) {
 	Ref<SiONVoice> voice = memnew(SiONVoice(SiONModuleType::MODULE_GENERIC_PG, p_wave_shape));
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_ATTACK, p_attack_rate);
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_DECAY, p_decay_rate);
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_SUSTAIN, p_sustain_rate);
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_RELEASE, p_release_rate);
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_SUSTAIN_ATTENUATION, p_sustain_level);
-	voice->set_engine_param(SiOPMChannelFM::GLOBAL_ATTENUATION, p_total_level);
+	voice->set_engine_param(SiOPMChannelFM::ATTACK, p_attack_rate);
+	voice->set_engine_param(SiOPMChannelFM::DECAY, p_decay_rate);
+	voice->set_engine_param(SiOPMChannelFM::SUSTAIN, p_sustain_rate);
+	voice->set_engine_param(SiOPMChannelFM::RELEASE, p_release_rate);
+	voice->set_engine_param(SiOPMChannelFM::SUSTAIN_ATTENUATION, p_sustain_level);
+	voice->set_engine_param(SiOPMChannelFM::ATTENUATION, p_total_level);
 	voice->get_channel_params()->get_operator_params(0)->set_fine_multiple((int)(p_fine_multiple * 128));
 	voice->set_release_sweep(p_release_sweep);
 

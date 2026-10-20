@@ -5,7 +5,6 @@
 /***************************************************/
 
 #include "sion_voice.h"
-#include "chip/channels/siopm_channel_fm.h"
 #include "chip/channels/siopm_channel_ks.h"
 #include "engine_param_api.h"
 
@@ -26,60 +25,39 @@
 #include "utils/translator_util.h"
 #include "sequencer/simml_track.h"
 
-// Legacy FM codecs author operator fields. Seed the unscoped envelope inputs
-// once at that import boundary; later scalar operator edits retain their own
-// precedence and never rewrite the authored global input.
-static void import_global_envelope_inputs(SiMMLVoice &p_voice) {
-	const Ref<SiOPMChannelParams> params = p_voice.get_channel_params();
-	if (params->get_operator_count() == 0) return; // A silent FM definition has no envelope to import.
-	const Ref<SiOPMOperatorParams> op = params->get_operator_params(0);
-	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_ATTACK, 0, EngineParamValue::from_int(op->get_attack_rate()));
-	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_DECAY, 0, EngineParamValue::from_int(op->get_decay_rate()));
-	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_SUSTAIN, 0, EngineParamValue::from_int(op->get_sustain_rate()));
-	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_RELEASE, 0, EngineParamValue::from_int(op->get_release_rate()));
-	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_SUSTAIN_ATTENUATION, 0, EngineParamValue::from_int(op->get_sustain_level()));
-	store_engine_param(p_voice, SiOPMChannelFM::GLOBAL_ATTENUATION, 0, EngineParamValue::from_int(op->get_total_level()));
-}
-
 void SiONVoice::set_params(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_siopm_params(channel_params, data);
-	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_SIOPM;
 }
 
 void SiONVoice::set_params_opl(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_opl_params(channel_params, data);
-	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_OPL;
 }
 
 void SiONVoice::set_params_opm(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_opm_params(channel_params, data);
-	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_OPM;
 }
 
 void SiONVoice::set_params_opn(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_opn_params(channel_params, data);
-	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_OPN;
 }
 
 void SiONVoice::set_params_opx(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_opx_params(channel_params, data);
-	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_OPX;
 }
 
 void SiONVoice::set_params_ma3(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_ma3_params(channel_params, data);
-	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_MA3;
 
 }
@@ -87,7 +65,6 @@ void SiONVoice::set_params_ma3(TypedArray<int> p_args) {
 void SiONVoice::set_params_al(TypedArray<int> p_args) {
 	Vector<int> data = make_vector_from_typed_array<int>(p_args);
 	::TranslatorUtil::set_al_params(channel_params, data);
-	import_global_envelope_inputs(*this);
 	chip_type = SiONChipType::CHIP_ANALOG_LIKE;
 
 }
@@ -220,31 +197,24 @@ int SiONVoice::set_by_mml(String p_mml) {
 
 	if (command == "#@") {
 		::TranslatorUtil::parse_siopm_params(channel_params, data);
-		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_SIOPM;
 	} else if (command == "#OPL@") {
 		::TranslatorUtil::parse_opl_params(channel_params, data);
-		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_OPL;
 	} else if (command == "#OPM@") {
 		::TranslatorUtil::parse_opm_params(channel_params, data);
-		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_OPM;
 	} else if (command == "#OPN@") {
 		::TranslatorUtil::parse_opn_params(channel_params, data);
-		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_OPN;
 	} else if (command == "#OPX@") {
 		::TranslatorUtil::parse_opx_params(channel_params, data);
-		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_OPX;
 	} else if (command == "#MA@") {
 		::TranslatorUtil::parse_ma3_params(channel_params, data);
-		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_MA3;
 	} else if (command == "#AL@") {
 		::TranslatorUtil::parse_al_params(channel_params, data);
-		import_global_envelope_inputs(*this);
 		chip_type = SiONChipType::CHIP_ANALOG_LIKE;
 	} else if (command == "#KS@") {
 		int ws, ar, dr, tl, fn, tn;
@@ -256,7 +226,6 @@ int SiONVoice::set_by_mml(String p_mml) {
 		String local = itos(tn);
 		if (parts.size() > 6) local += "," + String(",").join(parts.slice(6));
 		if (!::TranslatorUtil::parse_engine_params(engine_params, local)) return -1;
-		import_global_envelope_inputs(*this);
 	} else if (command == "#G6@") {
 		_set_engine_type(SiONModuleType::MODULE_GUITAR6);
 		channel_num = 0;
