@@ -50,6 +50,8 @@ static constexpr double BPM_MIN_ONSET_INTERVAL_SECONDS = 0.05;
 static constexpr double SLICE_WINDOW_TIME_SECONDS = 0.005333333333333333;
 static constexpr double SLICE_HOP_TIME_SECONDS = 0.0026666666666666666;
 static constexpr double SLICE_MIN_ONSET_INTERVAL_SECONDS = 0.085;
+// Analysis noise rejection is fixed, independent of the selection control.
+static constexpr double SLICE_STRENGTH_NOISE_FLOOR = 1e-7;
 
 static constexpr OnsetProfile BPM_ONSET_PROFILE = {
 	"BPM",
@@ -536,7 +538,50 @@ OnsetAnalysis _analyze_onsets(
 }
 
 // ---------------------------------------------------------------------------
-// Candidate generation
+// Slice candidate extraction
+// ---------------------------------------------------------------------------
+
+TypedArray<Dictionary> _analyze_slice_candidates(
+	const Vector<double> &p_wave_data,
+	int p_channel_count,
+	int p_sample_rate
+) {
+	int window_size, hop_size, frame_count;
+	Vector<double> rms_envelope;
+	Vector<double> strengths = _compute_onset_strength_envelope(
+		p_wave_data, p_channel_count, p_sample_rate, SLICE_ONSET_PROFILE,
+		&rms_envelope, &window_size, &hop_size, &frame_count
+	);
+	double maximum = 0.0;
+	for (int i = 0; i < strengths.size(); i++) {
+		maximum = MAX(maximum, strengths[i]);
+	}
+
+	Vector<int> positions;
+	Vector<double> retained_strengths;
+	// Release, retrigger and interval suppression operate on the complete fixed
+	// analysis pass. Filtering its scored output never runs this state machine.
+	_peak_pick_onsets(strengths, rms_envelope, hop_size,
+		MAX(static_cast<int>(p_sample_rate * SLICE_MIN_ONSET_INTERVAL_SECONDS), hop_size * 2),
+		MAX(SLICE_STRENGTH_NOISE_FLOOR, maximum * SLICE_ONSET_PROFILE.threshold_floor_ratio),
+		SLICE_ONSET_PROFILE, &positions, &retained_strengths);
+
+	maximum = 0.0;
+	for (int i = 0; i < retained_strengths.size(); i++) {
+		maximum = MAX(maximum, retained_strengths[i]);
+	}
+	TypedArray<Dictionary> candidates;
+	for (int i = 0; i < positions.size(); i++) {
+		Dictionary candidate;
+		candidate["position"] = positions[i];
+		candidate["score"] = retained_strengths[i] / maximum;
+		candidates.push_back(candidate);
+	}
+	return candidates;
+}
+
+// ---------------------------------------------------------------------------
+// BPM candidate generation
 // ---------------------------------------------------------------------------
 
 Vector<BpmCandidate> _autocorr_candidates(
@@ -1004,6 +1049,10 @@ Dictionary _estimate_bpm_detailed_internal(
 // ---------------------------------------------------------------------------
 
 void OnsetDetector::_bind_methods() {
+	ClassDB::bind_static_method("OnsetDetector", D_METHOD("analyze_slice_candidates", "wave_data", "channel_count", "sample_rate"),
+		&OnsetDetector::analyze_slice_candidates);
+	ClassDB::bind_static_method("OnsetDetector", D_METHOD("analyze_slice_candidates_from_stream", "stream"),
+		&OnsetDetector::analyze_slice_candidates_from_stream);
 	ClassDB::bind_static_method("OnsetDetector", D_METHOD("detect_onsets", "wave_data", "channel_count", "sensitivity", "sample_rate"),
 		&OnsetDetector::detect_onsets, DEFVAL(2), DEFVAL(50), DEFVAL(0));
 	ClassDB::bind_static_method("OnsetDetector", D_METHOD("detect_onsets_from_stream", "stream", "sensitivity"),
@@ -1020,6 +1069,26 @@ void OnsetDetector::_bind_methods() {
 		&OnsetDetector::estimate_bpm_detailed, DEFVAL(2), DEFVAL(0));
 	ClassDB::bind_static_method("OnsetDetector", D_METHOD("estimate_bpm_detailed_from_stream", "stream"),
 		&OnsetDetector::estimate_bpm_detailed_from_stream);
+}
+
+TypedArray<Dictionary> OnsetDetector::analyze_slice_candidates(
+	const PackedFloat32Array &p_wave_data,
+	int p_channel_count,
+	int p_sample_rate
+) {
+	Vector<double> wave_data;
+	wave_data.resize(p_wave_data.size());
+	for (int i = 0; i < p_wave_data.size(); i++) {
+		wave_data.write[i] = static_cast<double>(p_wave_data[i]);
+	}
+	return _analyze_slice_candidates(wave_data, p_channel_count, p_sample_rate);
+}
+
+TypedArray<Dictionary> OnsetDetector::analyze_slice_candidates_from_stream(const Ref<AudioStream> &p_stream) {
+	const int sample_rate = _resolve_stream_sample_rate(p_stream);
+	int channel_count = 0;
+	Vector<double> wave_data = SiOPMWaveBase::extract_wave_data(p_stream, &channel_count);
+	return _analyze_slice_candidates(wave_data, channel_count, sample_rate);
 }
 
 PackedInt32Array OnsetDetector::detect_onsets(
@@ -1120,8 +1189,15 @@ Vector<int> OnsetDetector::detect_slice_onsets_internal(
 	if (p_wave_data.is_empty() || p_channel_count < 1) return onsets;
 	ERR_FAIL_COND_V_MSG(p_sample_rate <= 0, onsets, vformat("OnsetDetector: detect_slice_onsets_internal() requires an explicit positive sample rate, got %d.", p_sample_rate));
 
-	OnsetAnalysis a = _analyze_onsets(p_wave_data, p_channel_count, p_sensitivity, p_sample_rate, SLICE_ONSET_PROFILE);
-	return a.positions;
+	TypedArray<Dictionary> candidates = _analyze_slice_candidates(p_wave_data, p_channel_count, p_sample_rate);
+	const double threshold = (100 - p_sensitivity) / 100.0;
+	for (int i = 0; i < candidates.size(); i++) {
+		Dictionary candidate = candidates[i];
+		if (double(candidate["score"]) >= threshold) {
+			onsets.push_back(int(candidate["position"]));
+		}
+	}
+	return onsets;
 }
 
 double OnsetDetector::estimate_bpm(

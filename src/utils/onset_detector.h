@@ -13,6 +13,7 @@
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
+#include <godot_cpp/variant/typed_array.hpp>
 
 using namespace godot;
 
@@ -25,6 +26,19 @@ protected:
 	static void _bind_methods();
 
 public:
+	// Sensitivity-independent slice analysis, ordered by source-frame position.
+	// Each candidate is {position: int, score: double}, with score in (0, 1]
+	// normalized to the strongest retained candidate. No anchor is fabricated.
+	static TypedArray<Dictionary> analyze_slice_candidates(
+		const PackedFloat32Array &p_wave_data,
+		int p_channel_count,
+		int p_sample_rate
+	);
+
+	static TypedArray<Dictionary> analyze_slice_candidates_from_stream(
+		const Ref<AudioStream> &p_stream
+	);
+
 	// Detect onset (transient) positions in audio sample data.
 	// p_wave_data: Interleaved audio samples (mono or stereo) in [-1.0, 1.0] range.
 	// p_channel_count: Number of audio channels (1 = mono, 2 = stereo).
@@ -44,7 +58,8 @@ public:
 		int p_sensitivity = 50
 	);
 
-	// Detect denser transient positions for sampler slicing.
+	// Positions-only adapters for existing slice authoring callers. Selection is
+	// applied AFTER candidate extraction; new authoring retains the scored result.
 	static PackedInt32Array detect_slice_onsets(
 		const PackedFloat32Array &p_wave_data,
 		int p_channel_count = 2,
